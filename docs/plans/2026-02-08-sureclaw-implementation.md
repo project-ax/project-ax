@@ -20,8 +20,8 @@
 - [x] Task 0.13: Sandbox Providers
 - [x] Task 0.14: Container-Side Components
 - [x] Task 0.15: Scheduler Provider (Cron)
-- [ ] Task 0.16: Host Process (Main Loop)
-- [ ] Task 0.17: End-to-End Integration Test
+- [x] Task 0.16: Host Process (Main Loop)
+- [x] Task 0.17: End-to-End Integration Test
 
 ### Phase 1: Standard Profile
 - [ ] Task 1.1: Taint Budget Core (SC-SEC-003)
