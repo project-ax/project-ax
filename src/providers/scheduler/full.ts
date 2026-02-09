@@ -16,7 +16,7 @@ import type {
 
 /**
  * Parse a single cron field (minute, hour, dom, month, dow).
- * Supports: *, N, N-M, *​/N, N-M/N, comma-separated lists.
+ * Supports: *, N, N-M, * /N, N-M/N, comma-separated lists.
  * Returns a Set of matching values within [min, max].
  */
 function parseCronField(field: string, min: number, max: number): Set<number> {

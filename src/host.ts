@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
 import { loadConfig } from './config.js';
 
 // ═══════════════════════════════════════════════════════
@@ -205,7 +204,7 @@ async function main(): Promise<void> {
     } finally {
       // Clean up workspace
       if (workspace) {
-        try { rmSync(workspace, { recursive: true, force: true }); } catch {}
+        try { rmSync(workspace, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
       }
     }
   }
@@ -232,7 +231,7 @@ async function main(): Promise<void> {
     conversations.close();
 
     // Clean up socket
-    try { rmSync(socketDir, { recursive: true, force: true }); } catch {}
+    try { rmSync(socketDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 
     console.log('[host] Shutdown complete');
     process.exit(0);

@@ -12,7 +12,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:fuzz": "vitest run tests/ipc-fuzz.test.ts",
-    "start": "NODE_NO_WARNINGS=1 tsx src/host.ts"
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint --fix src/ tests/",
+    "start": "NODE_NO_WARNINGS=1 tsx src/host.ts",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js}": "eslint"
   },
   "keywords": [
     "ai",
@@ -31,11 +37,18 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.2.2",
+    "eslint": "^9.39.2",
+    "eslint-plugin-no-secrets": "^2.2.1",
+    "eslint-plugin-security": "^3.0.1",
     "fast-check": "^4.5.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0",
     "vitest": "^4.0.18"
   }
 }

@@ -29,6 +29,9 @@ Thumbs.db
 # Worktrees
 .worktrees/
 
+# Lint cache
+.eslintcache
+
 # Logs / crashes
 *.log
 npm-debug.log*

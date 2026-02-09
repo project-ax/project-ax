@@ -46,6 +46,7 @@ function makeErrorMessage(errorText: string): AssistantMessage {
  * pi-ai's AssistantMessageEventStream that the Agent class expects.
  */
 export function createIPCStreamFn(client: IPCClient): StreamFn {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pi-ai Model generic requires provider-specific type
   return async (model: Model<any>, context: Context, options?: SimpleStreamOptions): Promise<AssistantMessageEventStream> => {
     const stream = createAssistantMessageEventStream();
 
@@ -161,7 +162,7 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
         }
 
         // Done
-        stream.push({ type: 'done', reason: stopReason as 'stop' | 'toolUse', message: msg });
+        stream.push({ type: 'done', reason: stopReason, message: msg });
       } catch (err: unknown) {
         const errMsg = makeErrorMessage((err as Error).message);
         stream.push({ type: 'start', partial: errMsg });

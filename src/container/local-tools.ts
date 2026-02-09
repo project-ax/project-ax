@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, resolve, relative } from 'node:path';
+import { resolve, relative } from 'node:path';
 import { execSync } from 'node:child_process';
 import { Type } from '@sinclair/typebox';
 import type { AgentTool } from '@mariozechner/pi-agent-core';

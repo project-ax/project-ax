@@ -16,6 +16,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
 
   const taintBudget = opts?.taintBudget;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- IPC handlers accept/return heterogeneous types
   const handlers: Record<string, (req: any, ctx: IPCContext) => Promise<any>> = {
 
     llm_call: async (req) => {

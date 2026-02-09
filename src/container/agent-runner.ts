@@ -11,6 +11,7 @@ import { createIPCTools } from './ipc-tools.js';
 // Default model — the actual model ID is forwarded through IPC to the host,
 // which routes it to the configured LLM provider. This just needs to be a
 // valid Model object for pi-agent-core's Agent class.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pi-ai Model generic requires provider-specific type
 const DEFAULT_MODEL: Model<any> = {
   id: 'claude-sonnet-4-5-20250929',
   name: 'Claude Sonnet 4.5',
