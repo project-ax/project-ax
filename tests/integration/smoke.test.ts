@@ -165,6 +165,29 @@ describe('Smoke Test', () => {
     expect(fullOutput).toContain('blocked');
   }, 60_000);
 
+  test('multi-turn conversation preserves context', async () => {
+    proc = startHost();
+    const output = collectOutput(proc);
+    await waitForReady(proc, output);
+
+    // Send first message
+    proc.stdin!.write('hello\n');
+    await waitForResponse(output, 'agent> ');
+
+    // Clear output tracking to isolate second response
+    const outputAfterFirst = { stdout: [] as string[], stderr: [] as string[] };
+    proc.stdout!.on('data', (d: Buffer) => outputAfterFirst.stdout.push(d.toString()));
+
+    // Send second message — the agent should receive history from first turn
+    proc.stdin!.write('what did I just say?\n');
+
+    // Wait for second response
+    const secondOutput = await waitForResponse(outputAfterFirst, 'agent> ');
+    expect(secondOutput).toContain('agent> ');
+    const agentResponse = secondOutput.split('agent> ').pop() ?? '';
+    expect(agentResponse.trim().length).toBeGreaterThan(0);
+  }, 60_000);
+
   test.skipIf(!IS_MACOS)('seatbelt sandbox: agent runs inside sandbox-exec', async () => {
     proc = startHost(SEATBELT_CONFIG);
     const output = collectOutput(proc);

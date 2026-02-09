@@ -30,7 +30,7 @@ function loadDotEnv(): void {
 }
 loadDotEnv();
 import { loadProviders } from './registry.js';
-import { MessageQueue } from './db.js';
+import { MessageQueue, ConversationStore } from './db.js';
 import { createRouter } from './router.js';
 import { createIPCHandler, createIPCServer } from './ipc.js';
 import { TaintBudget, thresholdForProfile } from './taint-budget.js';
@@ -73,6 +73,7 @@ async function main(): Promise<void> {
   // Step 3: Initialize DB + Taint Budget + Router + IPC
   mkdirSync('data', { recursive: true });
   const db = new MessageQueue('data/messages.db');
+  const conversations = new ConversationStore('data/conversations.db');
   const taintBudget = new TaintBudget({
     threshold: thresholdForProfile(config.profile),
   });
@@ -128,6 +129,9 @@ async function main(): Promise<void> {
       writeFileSync(join(workspace, 'CONTEXT.md'), `# Session: ${queued.session_id}\n`);
       writeFileSync(join(workspace, 'message.txt'), queued.content);
 
+      // Load conversation history for this session
+      const history = conversations.getHistory(queued.session_id);
+
       // Spawn sandbox — use tsx to run TypeScript directly
       // Use direct path to tsx binary (not npx) to avoid network access in sandbox
       const tsxBin = resolve('node_modules/.bin/tsx');
@@ -144,8 +148,9 @@ async function main(): Promise<void> {
         ],
       });
 
-      // Pipe message content to agent's stdin
-      proc.stdin.write(queued.content);
+      // Pipe conversation history + current message as JSON to agent's stdin
+      const stdinPayload = JSON.stringify({ history, message: queued.content });
+      proc.stdin.write(stdinPayload);
       proc.stdin.end();
 
       // Collect stdout
@@ -179,6 +184,10 @@ async function main(): Promise<void> {
       if (outbound.canaryLeaked) {
         console.error('[host] SECURITY: Canary token leaked — response redacted');
       }
+
+      // Store conversation turns (user message + agent response)
+      conversations.addTurn(queued.session_id, 'user', queued.content);
+      conversations.addTurn(queued.session_id, 'assistant', outbound.content);
 
       // Send response back through the originating channel
       for (const ch of providers.channels) {
@@ -220,6 +229,7 @@ async function main(): Promise<void> {
 
     ipcServer.close();
     db.close();
+    conversations.close();
 
     // Clean up socket
     try { rmSync(socketDir, { recursive: true, force: true }); } catch {}

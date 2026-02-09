@@ -92,6 +92,49 @@ describe('agent-runner', () => {
     expect(output).toContain('Hello from mock LLM');
   });
 
+  test('run() includes conversation history in LLM call', async () => {
+    let receivedMessages: any[] = [];
+    server = createMockIPCServer(socketPath, (req) => {
+      if (req.action === 'llm_call') {
+        receivedMessages = (req.messages as any[]) ?? [];
+        return {
+          ok: true,
+          chunks: [
+            { type: 'text', content: 'I remember!' },
+            { type: 'done', usage: { inputTokens: 10, outputTokens: 5 } },
+          ],
+        };
+      }
+      return { ok: true };
+    });
+    await new Promise<void>((r) => server.on('listening', r));
+
+    const origWrite = process.stdout.write;
+    process.stdout.write = (() => true) as typeof process.stdout.write;
+
+    try {
+      await run({
+        ipcSocket: socketPath,
+        workspace,
+        skills: skillsDir,
+        userMessage: 'Do you remember?',
+        history: [
+          { role: 'user', content: 'My name is Alice' },
+          { role: 'assistant', content: 'Nice to meet you, Alice!' },
+        ],
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    // Should have: system prompt, history (user, assistant), current message (user)
+    const nonSystemMsgs = receivedMessages.filter((m: any) => m.role !== 'system');
+    expect(nonSystemMsgs.length).toBe(3);
+    expect(nonSystemMsgs[0]).toEqual({ role: 'user', content: 'My name is Alice' });
+    expect(nonSystemMsgs[1]).toEqual({ role: 'assistant', content: 'Nice to meet you, Alice!' });
+    expect(nonSystemMsgs[2]).toEqual({ role: 'user', content: 'Do you remember?' });
+  });
+
   test('run() loads CONTEXT.md into system prompt', async () => {
     writeFileSync(join(workspace, 'CONTEXT.md'), 'Custom context instructions');
 

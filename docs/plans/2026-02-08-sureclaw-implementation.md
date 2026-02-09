@@ -32,6 +32,7 @@
 - [x] Task 1.6: Proxied Web Fetch with DNS Pinning
 - [x] Task 1.7: Pi Agent Core Integration (Agent Loop + IPC Tools)
 - [x] Task 1.8: Cron Scheduler + ProactiveHint Bridge
+- [x] Task 1.8.1: Conversation History (Multi-Turn Support)
 - [ ] Task 1.9: Slack Channel
 - [ ] Task 1.10: Completions Gateway
 - [ ] Task 1.11: Git-Backed Skills
@@ -55,6 +56,7 @@
 - Node engine requirement: >=24.0.0
 - Zod v4 uses `z.strictObject()` instead of `z.object().strict()` — adapt IPC schemas accordingly
 - **Pi Staged Adoption:** Stage 0–1 uses `pi-agent-core` + `pi-ai` only (~50KB Agent class). Container instantiates `Agent` with a `streamFn` that routes LLM calls through IPC — trust boundaries unchanged. Stage 2+ swaps `Agent` for `AgentSession` from `pi-coding-agent` to gain persistent sessions, compaction, model failover, and extension hooks (~10 lines changed in agent runner).
+- **Conversation History:** Host-managed SQLite `ConversationStore` stores user/assistant text pairs per session. Full history passed to each agent invocation via JSON stdin. Channels provide stable session IDs (CLI: per-process, Slack/Discord: per-sender). Generalizes across all channels without architecture changes.
 
 ---
 
@@ -655,6 +657,35 @@ Wire `MemoryProvider.onProactiveHint()` to scheduler. Confidence thresholds, coo
 **Depends on:** Task 1.3 (SQLite memory for onProactiveHint)
 
 **Commit:** "feat: full scheduler with ProactiveHint bridge"
+
+---
+
+### Task 1.8.1: Conversation History (Multi-Turn Support)
+
+**Files:**
+- Modify: `src/db.ts` — add `ConversationStore` class (~40 LOC)
+- Modify: `src/providers/channel/cli.ts` — stable session ID per CLI process
+- Modify: `src/host.ts` — load/store conversation history, pass to agent as JSON
+- Modify: `src/container/agent-runner.ts` — parse JSON stdin, pre-populate Agent with history
+- Create: `tests/db-conversation.test.ts`
+- Modify: `tests/container/agent-runner.test.ts` — update for JSON stdin format
+- Modify: `tests/integration/smoke.test.ts` — add multi-turn test
+
+**Problem:** Each user message spawns a brand new agent process with no conversation context. The CLI channel generates a new UUID per message, the host creates a fresh workspace per message, and the agent runner receives only the current message via stdin. The LLM never sees prior turns.
+
+**Fix (host-managed history, generalizes to all channels):**
+
+1. **CLI channel**: Generate one `randomUUID()` at `connect()` time, reuse for all messages in the session. Other channels (Slack, Discord, etc.) will map their sender/channel IDs to stable session IDs.
+
+2. **ConversationStore** (SQLite): `addTurn(sessionId, role, content)`, `getHistory(sessionId)`, `clearSession(sessionId)`. Stores user/assistant text pairs only (not tool calls — those are internal to a single agent invocation).
+
+3. **Host**: Before spawning agent, load `getHistory(sessionId)`. Write JSON to stdin: `{"history": [{role, content}, ...], "message": "current message"}`. After response, `addTurn()` for both user and assistant.
+
+4. **Agent runner**: Parse stdin as JSON. Convert history to pi-ai messages (UserMessage + AssistantMessage objects). Pre-populate `initialState.messages` on the Agent. Fall back to plain text stdin for backward compat.
+
+**Why not long-lived containers?** Simpler, works across all channels, doesn't fight the current process-per-message architecture. Phase 2 Task 2.1 upgrades to `AgentSession` (pi-coding-agent) with persistent JSONL sessions — the plumbing (session ID routing, history passing) stays the same.
+
+**Commit:** "feat: multi-turn conversation history"
 
 ---
 

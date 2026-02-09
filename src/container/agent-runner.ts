@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Agent } from '@mariozechner/pi-agent-core';
-import type { Model } from '@mariozechner/pi-ai';
+import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { Model, UserMessage, AssistantMessage } from '@mariozechner/pi-ai';
 import { IPCClient } from './ipc-client.js';
 import { createIPCStreamFn } from './ipc-transport.js';
 import { createLocalTools } from './local-tools.js';
@@ -23,11 +24,43 @@ const DEFAULT_MODEL: Model<any> = {
   maxTokens: 8192,
 };
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface AgentConfig {
   ipcSocket: string;
   workspace: string;
   skills: string;
   userMessage?: string;
+  history?: ConversationTurn[];
+}
+
+/**
+ * Convert stored conversation history to pi-ai message format
+ * for pre-populating the Agent's state.
+ */
+function historyToPiMessages(history: ConversationTurn[]): AgentMessage[] {
+  return history.map((turn): AgentMessage => {
+    if (turn.role === 'user') {
+      return {
+        role: 'user',
+        content: turn.content,
+        timestamp: Date.now(),
+      } satisfies UserMessage;
+    }
+    return {
+      role: 'assistant',
+      content: [{ type: 'text', text: turn.content }],
+      api: 'anthropic-messages',
+      provider: 'anthropic',
+      model: DEFAULT_MODEL.id,
+      usage: { inputTokens: 0, outputTokens: 0, inputCachedTokens: 0, reasoningTokens: 0, totalCost: 0 },
+      stopReason: 'stop',
+      timestamp: Date.now(),
+    } satisfies AssistantMessage;
+  });
 }
 
 function parseArgs(): AgentConfig {
@@ -113,12 +146,16 @@ export async function run(config: AgentConfig): Promise<void> {
   const ipcTools = createIPCTools(client);
   const allTools = [...localTools, ...ipcTools];
 
-  // Create agent with IPC-proxied LLM calls
+  // Convert conversation history to pi-ai messages
+  const historyMessages = config.history ? historyToPiMessages(config.history) : [];
+
+  // Create agent with IPC-proxied LLM calls, pre-populated with history
   const agent = new Agent({
     initialState: {
       systemPrompt,
       model: DEFAULT_MODEL,
       tools: allTools,
+      messages: historyMessages,
     },
     streamFn: createIPCStreamFn(client),
   });
@@ -137,13 +174,35 @@ export async function run(config: AgentConfig): Promise<void> {
   client.disconnect();
 }
 
+/**
+ * Parse stdin data. Supports two formats:
+ * 1. JSON: {"history": [{role, content}, ...], "message": "current message"}
+ * 2. Plain text (backward compat): treated as the current message with no history
+ */
+function parseStdinPayload(data: string): { message: string; history: ConversationTurn[] } {
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed && typeof parsed === 'object' && typeof parsed.message === 'string') {
+      return {
+        message: parsed.message,
+        history: Array.isArray(parsed.history) ? parsed.history : [],
+      };
+    }
+  } catch {
+    // Not JSON — fall through to plain text
+  }
+  return { message: data, history: [] };
+}
+
 // Run if this is the main module
 const isMain = process.argv[1]?.endsWith('agent-runner.js') ||
                process.argv[1]?.endsWith('agent-runner.ts');
 if (isMain) {
   const config = parseArgs();
-  readStdin().then((msg) => {
-    config.userMessage = msg;
+  readStdin().then((data) => {
+    const { message, history } = parseStdinPayload(data);
+    config.userMessage = message;
+    config.history = history;
     return run(config);
   }).catch((err) => {
     console.error('Agent runner error:', err);

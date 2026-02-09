@@ -428,7 +428,8 @@ Main entry point. Responsibilities:
 - Load providers via registry
 - Start channels (call `connect()` on each)
 - Start scheduler
-- Main message loop: channel message → router → sandbox → response → channel
+- **Conversation history**: maintain per-session history in `ConversationStore` (SQLite). On each message: load prior turns, pass full history + current message as JSON to agent stdin, store user + assistant turns after response.
+- Main message loop: channel message → router → load history → sandbox → response → store turn → channel
 - Graceful shutdown
 
 ### 6.2 router.ts (~150 LOC)
@@ -465,9 +466,21 @@ skill_propose     → SkillStoreProvider.propose()
 oauth_call        → CredentialProvider.get() + scoped HTTP call
 ```
 
-### 6.4 db.ts (~80 LOC)
+### 6.4 db.ts (~120 LOC)
 
-SQLite message queue (same pattern as NanoClaw). Stores pending messages, dequeued by the main loop. Ensures no message loss if the agent crashes mid-response.
+Two SQLite stores:
+
+**MessageQueue**: Task queue for pending messages. Stores pending messages, dequeued by the main loop. Ensures no message loss if the agent crashes mid-response.
+
+**ConversationStore**: Per-session conversation history. Stores user/assistant message pairs keyed by `session_id`. The host loads the full history before spawning each agent invocation and passes it as JSON via stdin. After the agent responds, both the user message and assistant response are appended. This enables multi-turn conversations even though each agent invocation is a fresh process.
+
+```typescript
+// Schema: conversation_history(id, session_id, role, content, created_at)
+const store = new ConversationStore('data/conversations.db');
+store.addTurn(sessionId, 'user', userMessage);
+store.addTurn(sessionId, 'assistant', agentResponse);
+const history = store.getHistory(sessionId); // [{role, content}, ...]
+```
 
 ### 6.5 completions.ts (~200 LOC) [Stage 2]
 
@@ -485,28 +498,32 @@ OpenAI-compatible `/v1/chat/completions` endpoint.
 
 Uses `Agent` from `@mariozechner/pi-agent-core` with a custom `streamFn` that routes all LLM calls through IPC to the host (keeping API keys out of the container). See `docs/plans/pi-package-strategy.md` for the staged adoption rationale.
 
+**Conversation history**: The agent runner receives the full conversation history via stdin as JSON: `{"history": [{role, content}, ...], "message": "current message"}`. Prior turns are converted to pi-ai messages and pre-populated in the Agent's `initialState.messages`. This gives the LLM full conversation context even though each agent invocation is a fresh process.
+
 ```typescript
 import { Agent } from '@mariozechner/pi-agent-core';
 
+// Parse stdin — host sends JSON with history + current message
+const input = JSON.parse(stdinData);
+const historyMessages = convertHistoryToPiMessages(input.history);
+
 const agent = new Agent({
-  initialState: { systemPrompt, model, tools: [...localTools, ...ipcTools] },
+  initialState: {
+    systemPrompt, model,
+    tools: [...localTools, ...ipcTools],
+    messages: historyMessages,  // prior conversation turns
+  },
   streamFn: (model, messages, options) => ipc.stream('llm_call', { model, messages, options }),
 });
 
-// Taint markers injected via transformContext callback
-agent.transformContext = (messages) => injectTaintMarkers(messages, taintBudget);
-
-// Audit logging via event subscription
-agent.subscribe((event) => ipc.call({ action: 'audit_log', event }));
-
-// Process user message — Agent handles the full tool loop internally
-await agent.send(userMessage);
+// Process current user message — Agent includes history in LLM call automatically
+await agent.prompt(input.message);
 ```
 
 **Key design decisions:**
 - **`streamFn` override**: All LLM calls route through IPC → host injects API key → forwards to provider. The container never sees credentials.
 - **Tools split into two categories**: `local-tools.ts` (execute directly in sandbox) and `ipc-tools.ts` (route through IPC to host-side providers).
-- **In-memory sessions** at Stage 0–1. Persistent JSONL sessions via `pi-coding-agent` at Stage 2+.
+- **Host-managed conversation history** at Stage 0–1. Host stores user/assistant text pairs in SQLite, passes full history to each agent invocation. Persistent JSONL sessions via `pi-coding-agent` at Stage 2+.
 - **TypeBox schemas** for tool parameter validation (pi-agent-core convention). IPC schemas remain Zod.
 
 ### 7.2 ipc-client.ts (~100 LOC)
@@ -546,28 +563,34 @@ Tools that route through IPC to host-side providers, also defined as `AgentTool`
 ```
 1. User sends "summarize my inbox" via WhatsApp
 2. channel-whatsapp.ts receives message, calls router
+   - Channel provides a STABLE session ID (per-sender or per-conversation)
 3. Router:
-   a. Assigns session ID
+   a. Uses channel-provided session ID (not a random UUID per message)
    b. Injects canary token into system prompt
    c. Passes message through scanner (input scan)
    d. If external content involved: wraps in taint tags
-4. Host spawns sandbox (nsjail by default):
+4. Host loads conversation history for this session from ConversationStore
+5. Host spawns sandbox (nsjail by default):
    a. Bind-mount: /workspace/{session}, /skills (ro), /ipc/proxy.sock
    b. No network, no env vars, no host filesystem
-5. agent-runner.ts inside sandbox (pi-agent-core Agent loop):
-   a. Reads context and skills, instantiates pi Agent with local + IPC tools
-   b. Agent.send(userMessage) starts the agent loop
-   c. Agent calls streamFn → IPC transport → host injects API key → forwards to LLM provider
-   d. LLM requests tool use → Agent dispatches to local-tools (bash/read/write/edit in sandbox)
+   c. Pipes JSON to stdin: {"history": [...prior turns...], "message": "current message"}
+6. agent-runner.ts inside sandbox (pi-agent-core Agent loop):
+   a. Parses JSON stdin, converts history to pi-ai messages
+   b. Reads context and skills, instantiates pi Agent with local + IPC tools
+   c. Pre-populates Agent with conversation history
+   d. Agent.prompt(currentMessage) starts the agent loop (history included in LLM call)
+   e. Agent calls streamFn → IPC transport → host injects API key → forwards to LLM provider
+   f. LLM requests tool use → Agent dispatches to local-tools (bash/read/write/edit in sandbox)
       or ipc-tools (memory/web/skills routed through IPC to host providers)
-   e. Host-side tools taint-tag external content before returning through IPC
-   f. Agent feeds tool results back to LLM, repeats until done
-   g. Agent returns final response via stdout
-6. Host receives response:
+   g. Host-side tools taint-tag external content before returning through IPC
+   h. Agent feeds tool results back to LLM, repeats until done
+   i. Agent returns final response via stdout
+7. Host receives response:
    a. Scanner checks output (canary leak, PII, unexpected tool calls)
-   b. If clean: deliver to WhatsApp
-   c. Log everything to audit provider
-7. Sandbox is destroyed
+   b. If clean: store user + assistant turns in ConversationStore
+   c. Deliver to WhatsApp
+   d. Log everything to audit provider
+8. Sandbox is destroyed
 ```
 
 ---
