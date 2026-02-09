@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="docs/sureclaw-logo.svg" alt="Sureclaw" width="200">
+  <img src="docs/ax-logo.svg" alt="Project AX" width="128">
 </p>
 
-<h1 align="center">Sureclaw</h1>
-<p align="center"><em>Like OpenClaw but with trust issues</em> 🦀🫣</p>
+<p align="center"><em>Like OpenClaw but with trust issues</em></p>
+<p align="center"><strong>Always-on AI agents that act autonomously</strong></p>
 
 ---
 
-Sureclaw is a **personal AI agent** that lets you message an AI assistant (via CLI, Slack, WhatsApp, Telegram, etc.) and have it take actions on your behalf — read emails, fetch web pages, control a browser, manage your calendar, remember your preferences.
+AX is a **personal AI agent** that lets you message an AI assistant (via CLI, Slack, WhatsApp, Telegram, etc.) and have it take actions on your behalf — read emails, fetch web pages, control a browser, manage your calendar, remember your preferences.
 
 Sound familiar? It should. **OpenClaw** proved that AI agents can be genuinely useful. The problem is that OpenClaw also proved what happens when you don't think about security until it's too late: ~173k lines of code nobody can audit, 42,665 exposed instances on Shodan, a remote code execution CVE, and 341 malicious skills in its marketplace.
 
 We love what OpenClaw does. We just couldn't sleep at night running it.
 
-Sureclaw gives you the same power — **multi-channel messaging, web access, browser automation, long-term memory, extensible skills** — but with security guardrails that are actually enforced by the architecture, not just by good intentions. And at ~4,150 lines of code, it's small enough to audit in a day.
+AX gives you the same power — **multi-channel messaging, web access, browser automation, long-term memory, extensible skills** — but with security guardrails that are actually enforced by the architecture, not just by good intentions. And at ~4,150 lines of code, it's small enough to audit in a day.
 
 The best part? **You decide where you sit on the spectrum.** Lock everything down, open everything up, or land somewhere in the middle. We give you the dial. We just make sure the safety net is always there, even when you crank it to 11.
 

@@ -5,11 +5,12 @@ import { Logo } from "@/components/icons/logo";
 import { Button } from "@/components/ui/button";
 import { Github, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PROJECT_NAME, GITHUB_URL } from "@/lib/constants";
 
 const navLinks = [
   { label: "Features", href: "#features" },
   { label: "How It Works", href: "#how-it-works" },
-  { label: "GitHub", href: "https://github.com/ax-llm/ax" },
+  { label: "GitHub", href: GITHUB_URL },
   { label: "Docs", href: "#" },
 ];
 
@@ -38,7 +39,7 @@ export function Navbar() {
         <a href="/" className="flex items-center gap-2.5 group">
           <Logo className="w-7 h-7" />
           <span className="font-semibold text-lg tracking-tight text-text-primary">
-            project ax
+            {PROJECT_NAME}
           </span>
         </a>
 
@@ -58,7 +59,7 @@ export function Navbar() {
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center gap-3">
           <a
-            href="https://github.com/ax-llm/ax"
+            href={GITHUB_URL}
             className="text-text-tertiary hover:text-text-primary transition-colors"
             target="_blank"
             rel="noopener noreferrer"

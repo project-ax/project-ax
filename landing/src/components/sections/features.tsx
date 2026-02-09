@@ -15,44 +15,44 @@ import { cn } from "@/lib/utils";
 const features = [
   {
     icon: Shield,
-    title: "Autonomous Agents",
+    title: "Sandboxed Execution",
     description:
-      "Define a goal and let your agent figure out the rest. ax agents run continuously, use tools, make decisions, and handle multi-step tasks on their own.",
+      "Every AI agent runs in an isolated sandbox — no network access, no credential leaks, no escape hatches. We support seatbelt, nsjail, and Docker.",
     iconColor: "text-indigo-400",
   },
   {
     icon: Fingerprint,
-    title: "Pluggable Tools",
+    title: "Taint Tracking",
     description:
-      "Connect any tool — bash, file I/O, web search, APIs, databases. Write your own in a few lines of TypeScript or use the built-in ones.",
+      "Every piece of external content is tagged at the source. We trace it through the entire pipeline so you always know what's user-generated and what isn't.",
     iconColor: "text-violet-400",
   },
   {
     icon: ScanSearch,
-    title: "Any LLM",
+    title: "Prompt Injection Scanning",
     description:
-      "Anthropic, OpenAI, or anything with an API. Swap models with a single config change — no code rewrites, no vendor lock-in.",
+      "Multi-layer scanning catches injection attempts before they reach your LLM. Regex patterns, ML classifiers, and canary tokens — belt, suspenders, and a backup belt.",
     iconColor: "text-sky-400",
   },
   {
     icon: Lock,
-    title: "Persistent Memory",
+    title: "Encrypted Credentials",
     description:
-      "Agents remember across conversations. Built-in SQLite with full-text search, or bring your own storage — it's just a TypeScript interface.",
+      "API keys never enter the sandbox. AES-256-GCM encryption at rest, OS keychain integration, and a paranoid credential store.",
     iconColor: "text-emerald-400",
   },
   {
     icon: Layers,
-    title: "Everything Is Swappable",
+    title: "Provider Architecture",
     description:
-      "LLM, memory, tools, sandbox — every subsystem is a provider you can replace. Start with defaults, swap pieces as you grow.",
+      "Every subsystem is a swappable provider. Bring your own LLM, memory store, scanner, or sandbox — the contracts are TypeScript interfaces.",
     iconColor: "text-amber-400",
   },
   {
     icon: Zap,
     title: "OpenAI-Compatible API",
     description:
-      "Expose your agents as a /v1/chat/completions endpoint. Works with any tool that speaks the OpenAI protocol.",
+      "Drop-in /v1/chat/completions endpoint. Point your existing tools at ax and get security for free.",
     iconColor: "text-rose-400",
   },
 ];
@@ -64,14 +64,14 @@ export function Features() {
         <Reveal>
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Everything you need to{" "}
+              Security that{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-accent-glow">
-                build real agents
+                doesn&apos;t get in the way
               </span>
             </h2>
             <p className="text-text-secondary text-lg max-w-2xl mx-auto">
-              ax is a batteries-included, open source framework for building
-              AI agents that do real work. Free forever, MIT licensed.
+              We obsess over security so you can obsess over your product.
+              Every layer is designed to be invisible until something goes wrong.
             </p>
           </div>
         </Reveal>

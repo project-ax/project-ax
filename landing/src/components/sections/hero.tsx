@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Reveal, StaggerContainer, StaggerItem } from "@/components/ui/reveal";
 import { LogoLarge } from "@/components/icons/logo";
 import { Github, ArrowRight } from "lucide-react";
+import { PROJECT_NAME, GITHUB_URL, INSTALL_CMD } from "@/lib/constants";
 
 export function Hero() {
   return (
@@ -27,13 +28,13 @@ export function Hero() {
         <StaggerContainer className="flex flex-col items-center gap-6" staggerDelay={0.15}>
           {/* Logo */}
           <StaggerItem className="text-4xl sm:text-5xl md:text-4xl font-bold tracking-tight">
-            project ax
+            {PROJECT_NAME}
             {/*<LogoLarge className="w-28 md:w-36 h-auto" />*/}
           </StaggerItem>
 
           {/* Eyebrow badge */}
           <StaggerItem>
-            <Badge>Like OpenClaw with trust issues</Badge>
+            <Badge>Like OpenClaw but with trust issues</Badge>
           </StaggerItem>
 
           {/* Main heading */}
@@ -63,7 +64,7 @@ export function Hero() {
                 <ArrowRight className="w-4 h-4" />
               </Button>
               <Button
-                href="https://github.com/ax-llm/ax"
+                href={GITHUB_URL}
                 variant="outline"
                 size="lg"
               >
@@ -77,11 +78,11 @@ export function Hero() {
           <StaggerItem>
             <div className="mt-4 inline-flex items-center gap-3 px-4 py-2.5 rounded-xl bg-bg-secondary border border-border font-mono text-sm text-text-secondary">
               <span className="text-accent-glow">$</span>
-              <span>npx ax init</span>
+              <span>{INSTALL_CMD}</span>
               <button
                 className="text-text-tertiary hover:text-text-primary transition-colors"
                 onClick={() => {
-                  navigator.clipboard.writeText("npx ax init");
+                  navigator.clipboard.writeText(INSTALL_CMD);
                 }}
                 title="Copy to clipboard"
               >

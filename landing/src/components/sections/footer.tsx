@@ -1,4 +1,5 @@
 import { Logo } from "@/components/icons/logo";
+import { PROJECT_NAME, GITHUB_URL } from "@/lib/constants";
 
 const footerLinks = [
   {
@@ -12,7 +13,7 @@ const footerLinks = [
   {
     title: "Community",
     links: [
-      { label: "GitHub", href: "https://github.com/ax-llm/ax" },
+      { label: "GitHub", href: GITHUB_URL },
       { label: "Discord", href: "#" },
       { label: "Twitter / X", href: "#" },
     ],
@@ -36,7 +37,7 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-3">
               <Logo className="w-6 h-6" />
-              <span className="font-semibold tracking-tight">ax</span>
+              <span className="font-semibold tracking-tight">{PROJECT_NAME}</span>
             </div>
             <p className="text-sm text-text-tertiary leading-relaxed">
               Open source AI agent framework.

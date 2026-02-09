@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Reveal, StaggerContainer, StaggerItem } from "@/components/ui/reveal";
 import { Button } from "@/components/ui/button";
 import { Github, MessageCircle } from "lucide-react";
+import { GITHUB_URL } from "@/lib/constants";
 
 function AnimatedCounter({
   target,
@@ -106,7 +107,7 @@ export function Community() {
         <Reveal>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button
-              href="https://github.com/ax-llm/ax"
+              href={GITHUB_URL}
               size="lg"
             >
               <Github className="w-4 h-4" />
