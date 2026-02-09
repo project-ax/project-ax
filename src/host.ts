@@ -189,6 +189,16 @@ async function main(): Promise<void> {
       conversations.addTurn(queued.session_id, 'user', queued.content);
       conversations.addTurn(queued.session_id, 'assistant', outbound.content);
 
+      // Call memorize() if the memory provider supports it
+      if (providers.memory.memorize) {
+        try {
+          const fullHistory = conversations.getHistory(queued.session_id);
+          await providers.memory.memorize(fullHistory);
+        } catch (err) {
+          console.error(`[host] memorize() failed (non-fatal): ${err}`);
+        }
+      }
+
       // Send response back through the originating channel
       for (const ch of providers.channels) {
         if (ch.name === queued.channel) {

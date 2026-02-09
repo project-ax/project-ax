@@ -216,12 +216,18 @@ export interface LLMProvider {
   models(): Promise<string[]>;
 }
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface MemoryProvider {
   write(entry: MemoryEntry): Promise<string>;
   query(q: MemoryQuery): Promise<MemoryEntry[]>;
   read(id: string): Promise<MemoryEntry | null>;
   delete(id: string): Promise<void>;
   list(scope: string, limit?: number): Promise<MemoryEntry[]>;
+  memorize?(conversation: ConversationTurn[]): Promise<void>;
   onProactiveHint?(handler: (hint: ProactiveHint) => void): void;
 }
 
