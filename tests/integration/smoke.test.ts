@@ -14,14 +14,16 @@ import { rmSync } from 'node:fs';
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '../..');
 const TEST_CONFIG = resolve(import.meta.dirname, 'sureclaw-test.yaml');
+const SEATBELT_CONFIG = resolve(import.meta.dirname, 'sureclaw-test-seatbelt.yaml');
 const DATA_DIR = resolve(PROJECT_ROOT, 'data');
 const IS_BUN = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined';
+const IS_MACOS = process.platform === 'darwin';
 
-function startHost(): ChildProcess {
+function startHost(configPath: string = TEST_CONFIG): ChildProcess {
   const hostScript = resolve(PROJECT_ROOT, 'src/host.ts');
   const args = IS_BUN
-    ? ['run', hostScript, '--config', TEST_CONFIG]
-    : ['tsx', hostScript, '--config', TEST_CONFIG];
+    ? ['run', hostScript, '--config', configPath]
+    : ['tsx', hostScript, '--config', configPath];
   const cmd = IS_BUN ? 'bun' : 'npx';
   return spawn(cmd, args, {
     cwd: PROJECT_ROOT,
@@ -159,4 +161,27 @@ describe('Smoke Test', () => {
     const fullOutput = await waitForResponse(output, 'agent> ');
     expect(fullOutput).toContain('blocked');
   }, 60_000);
+
+  test.skipIf(!IS_MACOS)('seatbelt sandbox: agent runs inside sandbox-exec', async () => {
+    proc = startHost(SEATBELT_CONFIG);
+    const output = collectOutput(proc);
+
+    await waitForReady(proc, output);
+
+    // Send a message through the seatbelt sandbox
+    proc.stdin!.write('hello from seatbelt test\n');
+
+    // Wait for agent response or stderr indicating what went wrong
+    try {
+      const fullOutput = await waitForResponse(output, 'agent> ', 15_000);
+      expect(fullOutput).toContain('agent> ');
+    } catch {
+      const stderr = output.stderr.join('');
+      const stdout = output.stdout.join('');
+      throw new Error(`Seatbelt test failed.\nstdout: ${stdout}\nstderr: ${stderr}`);
+    }
+    // Verify no sandbox errors in stderr
+    const stderrText = output.stderr.join('');
+    expect(stderrText).not.toContain('sandbox-exec: invalid argument');
+  }, 30_000);
 });

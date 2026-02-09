@@ -26,11 +26,11 @@
 ### Phase 1: Standard Profile
 - [x] Task 1.1: Taint Budget Core (SC-SEC-003)
 - [x] Task 1.2: Taint Budget IPC + Router Integration
-- [ ] Task 1.3: SQLite Providers (Memory + Audit)
-- [ ] Task 1.4: Encrypted Credentials
-- [ ] Task 1.5: Expanded Scanner Patterns
+- [x] Task 1.3: SQLite Providers (Memory + Audit)
+- [x] Task 1.4: Encrypted Credentials
+- [x] Task 1.5: Expanded Scanner Patterns
 - [ ] Task 1.6: Proxied Web Fetch with DNS Pinning
-- [ ] Task 1.7: OpenAI-Compatible LLM Provider
+- [ ] Task 1.7: Pi Agent Core Integration (Agent Loop + IPC Tools)
 - [ ] Task 1.8: Cron Scheduler + ProactiveHint Bridge
 - [ ] Task 1.9: Slack Channel
 - [ ] Task 1.10: Completions Gateway
@@ -39,7 +39,7 @@
 - [ ] Task 1.13: Phase 1 Integration Tests + Profile Config
 
 ### Phase 2: Power User
-- [ ] Task 2.1: Multi-LLM Model Router
+- [ ] Task 2.1: Pi Coding Agent Upgrade (Sessions + Compaction + Extensions)
 - [ ] Task 2.2: Messaging Channels (WhatsApp + Telegram + Discord)
 - [ ] Task 2.3: Web Search API
 - [ ] Task 2.4: Sandboxed Playwright Browser
@@ -54,6 +54,7 @@
 - All packages updated to latest versions (zod 4.x, vitest 4.x, etc.)
 - Node engine requirement: >=24.0.0
 - Zod v4 uses `z.strictObject()` instead of `z.object().strict()` — adapt IPC schemas accordingly
+- **Pi Staged Adoption:** Stage 0–1 uses `pi-agent-core` + `pi-ai` only (~50KB Agent class). Container instantiates `Agent` with a `streamFn` that routes LLM calls through IPC — trust boundaries unchanged. Stage 2+ swaps `Agent` for `AgentSession` from `pi-coding-agent` to gain persistent sessions, compaction, model failover, and extension hooks (~10 lines changed in agent runner).
 
 ---
 
@@ -569,15 +570,76 @@ DNS resolution host-side before connecting (SSRF protection). Blocklist/allowlis
 
 ---
 
-### Task 1.7: OpenAI-Compatible LLM Provider
+### Task 1.7: Pi Agent Core Integration (Agent Loop + IPC Tools)
 
 **Files:**
-- Create: `src/providers/llm-openai.ts` (~80 LOC)
-- Create: `tests/providers/llm-openai.test.ts`
+- Modify: `package.json` — add `@mariozechner/pi-agent-core`, `@mariozechner/pi-ai`, `@sinclair/typebox`
+- Rewrite: `src/container/agent-runner.ts` (~100 LOC)
+- Create: `src/container/ipc-tools.ts` (~100 LOC)
+- Create: `src/container/local-tools.ts` (~80 LOC)
+- Create: `src/container/ipc-transport.ts` (~60 LOC)
+- Modify: `tests/container/ipc-client.test.ts` — update for new agent flow
+- Create: `tests/container/agent-runner.test.ts`
 
-Configurable base URL (local models, Azure, etc.). SSE streaming. Tool use (function calling). `models()` calls /v1/models. Credential injection via credential provider.
+**Why pi-agent-core (not pi-coding-agent)?** We adopt pi bottom-up. The `Agent` class from pi-agent-core is ~50KB and gives us exactly what we need for Stage 0–1 without pulling in `SessionManager`, `SettingsManager`, `AuthStorage`, `ModelRegistry`, compaction, the extension runner, or `pi-tui`. Those are deferred to Stage 2+ (Task 2.1).
 
-**Commit:** "feat: OpenAI-compatible LLM provider"
+**What pi-agent-core gives us:**
+- Agent loop (prompt → LLM call → tool execution → result → repeat until done)
+- Tool argument validation via TypeBox schemas + AJV (errors returned to LLM for self-correction)
+- Event streaming via `agent.subscribe()` (`message_start`, `tool_execution_start`, etc.)
+- Message queuing: `agent.steer()` (interrupt) and `agent.followUp()` (wait until idle)
+- `streamFn` override — **this is the key integration point** — routes all LLM calls through IPC
+- State management (`agent.state.messages`, `agent.state.tools`)
+
+**What we handle ourselves (for now):**
+- Session persistence: in-memory message array in the container. Host snapshots if needed.
+- Compaction: not needed at Stage 0–1 (short sessions, CLI channel only)
+- Model failover: single provider, no failover needed
+- Taint markers: injected via `transformContext` callback on the Agent
+
+**ipc-transport.ts:** The `streamFn` that routes LLM calls through IPC:
+```typescript
+// streamFn signature matches what Agent expects
+const streamFn = (model, messages, options) =>
+  ipc.stream('llm_call', { model, messages, ...options });
+```
+The container holds NO API keys. The host's `llm_call` IPC handler calls the actual LLM provider (e.g. `llm-anthropic.ts`). **Trust boundaries unchanged.**
+
+**agent-runner.ts:** Replaces the hand-rolled 87-line loop with pi-agent-core's `Agent`:
+```typescript
+const agent = new Agent({
+  initialState: { systemPrompt, model, tools },
+  streamFn: ipcStreamFn,
+});
+agent.subscribe((event) => { /* audit logging via IPC */ });
+await agent.send(userMessage);
+```
+1. Parse CLI args (`--ipc-socket`, `--workspace`, `--skills`)
+2. Connect IPC client
+3. Build system prompt from workspace CONTEXT.md + skills
+4. Instantiate `Agent` with `streamFn` pointing to IPC transport
+5. Subscribe to agent events for audit logging (tool executions, errors)
+6. Inject taint markers via `transformContext` callback
+7. Read stdin → `agent.send()` → collect response → stdout
+8. Disconnect and exit
+
+**local-tools.ts:** Tools that execute directly inside the sandbox:
+- `bash` — run commands within the sandboxed filesystem
+- `read_file`, `write_file`, `edit_file` — file operations within workspace
+Each defined as a pi `AgentTool` with TypeBox schema.
+
+**ipc-tools.ts:** Tools that route through IPC to the host:
+- `memory_write`, `memory_query`, `memory_read`, `memory_delete`, `memory_list`
+- `skill_read`, `skill_list`
+- `web_fetch`, `web_search` (uses Task 1.6 host-side provider)
+- `audit_query`
+Each defined as a pi `AgentTool` with TypeBox schema, internally calling `ipcClient.call()`.
+
+**What this replaces:** The hand-rolled agent loop (`MAX_TOOL_LOOPS`, manual tool dispatch, message accumulation). Pi's `Agent` handles the loop, tool argument validation, error recovery (invalid tool args sent back to LLM), and event streaming.
+
+**Parallelizable with:** Task 1.6 (web fetch is host-side, this is container-side)
+
+**Commit:** "feat: pi-agent-core integration with IPC transport and tools"
 
 ---
 
@@ -590,7 +652,7 @@ Configurable base URL (local models, Azure, etc.). SSE streaming. Tool use (func
 
 Wire `MemoryProvider.onProactiveHint()` to scheduler. Confidence thresholds, cooldown dedup, active hours, token budgets. All hints flow through standard pipeline. Log all fired/suppressed hints.
 
-**Depends on:** Tasks 1.3 (SQLite memory for onProactiveHint)
+**Depends on:** Task 1.3 (SQLite memory for onProactiveHint)
 
 **Commit:** "feat: full scheduler with ProactiveHint bridge"
 
@@ -660,7 +722,7 @@ Escalation logic in host.ts: start in nsjail, escalate to Docker for heavy workl
 - Modify: `CLAUDE.md` — update with Phase 1 commands
 - Modify: `provider-map.ts` — register all new providers
 
-Wire `standard` profile: web fetch (blocklist mode), cron scheduler, proposal-review-commit skills, encrypted creds. Integration tests: taint budget enforcement end-to-end, scheduler pipeline, Slack message flow.
+Wire `standard` profile: web fetch (blocklist mode), cron scheduler, proposal-review-commit skills, encrypted creds, pi-agent-core runner with IPC streamFn. Integration tests: taint budget enforcement end-to-end, Agent tool loop with IPC transport, scheduler pipeline, Slack message flow.
 
 **Commit:** "feat: standard profile configuration + Phase 1 integration tests"
 
@@ -676,14 +738,14 @@ Wire `standard` profile: web fetch (blocklist mode), cron scheduler, proposal-re
 | 1.4 Encrypted Credentials | 80 | C |
 | 1.5 Expanded Scanner | 150 | C |
 | 1.6 Web Fetch + DNS Pinning | 100 | C |
-| 1.7 OpenAI LLM | 80 | C |
+| 1.7 Pi Agent Core + IPC Tools | 340 | C |
 | 1.8 Full Scheduler | 250 | D (needs 1.3) |
 | 1.9 Slack Channel | 100 | C |
-| 1.10 Completions Gateway | 200 | D (needs 1.7) |
+| 1.10 Completions Gateway | 200 | C |
 | 1.11 Git-Backed Skills | 500 | D (needs 1.5) |
 | 1.12 Linux Sandboxes | 280 | C |
 | 1.13 Integration + Profile | 300 | E (capstone) |
-| **Total** | **~2,630** | |
+| **Total** | **~2,890** | |
 
 ---
 
@@ -691,12 +753,26 @@ Wire `standard` profile: web fetch (blocklist mode), cron scheduler, proposal-re
 
 **Goal:** Full provider set — multi-channel (WhatsApp, Telegram, Discord), browser automation, memU knowledge graph, ML-based scanning, OS keychain, multi-LLM routing, Docker + gVisor sandbox, multi-agent delegation.
 
-### Task 2.1: Multi-LLM Model Router
+### Task 2.1: Pi Coding Agent Upgrade (Sessions + Compaction + Extensions)
 
 **Files:**
-- Create: `src/providers/llm-multi.ts` (~120 LOC)
+- Modify: `package.json` — add `@mariozechner/pi-coding-agent`
+- Modify: `src/container/agent-runner.ts` (~10 lines changed)
+- Create: `tests/container/agent-session.test.ts`
 
-Routes requests across Anthropic + OpenAI providers. Model-to-provider mapping in config. Fallback chains. Cost/latency tracking. `models()` aggregates from all sub-providers.
+Swap `new Agent(...)` from pi-agent-core for `createAgentSession(...)` from pi-coding-agent. This is a ~10-line change in `agent-runner.ts` — the `streamFn`, tools, IPC transport, and trust boundaries are **all unchanged**.
+
+**What this adds:**
+
+| Feature | What it does | Why we need it at Stage 2 |
+|---------|--------------|---------------------------|
+| `SessionManager.open()` | JSONL tree-structured persistence with branching | 24/7 assistant with heartbeats needs durable sessions |
+| Compaction extensions | Auto-summarize old messages when context fills up | Long-running sessions hit context limits within hours |
+| `ModelRegistry` + auth rotation | Multi-provider model resolution with failover | Stage 2 introduces `llm-multi` — graceful failover between providers |
+| Extension system | Lifecycle hooks: `before_stream`, `tool_call`, `tool_result` | Cleaner integration for taint markers, memory loading, scanner hooks |
+| `SettingsManager` | Typed config with file + override merging | Per-agent settings (compaction thresholds, retry policy) |
+
+**What does NOT change:** Container image, IPC transport, `streamFn` proxy pattern, tool definitions, host IPC proxy, trust boundaries.
 
 ---
 
@@ -792,7 +868,7 @@ Verify architectural invariants still hold: no network in containers, credential
 
 | Task | Est. LOC |
 |------|----------|
-| 2.1 Multi-LLM Router | 120 |
+| 2.1 Pi Coding Agent Upgrade | 80 |
 | 2.2 WhatsApp + Telegram + Discord | 240 |
 | 2.3 Web Search | 50 |
 | 2.4 Sandboxed Playwright | 250 |
@@ -811,7 +887,7 @@ Verify architectural invariants still hold: no network in containers, credential
 | Phase | Source LOC | Test LOC | Combined |
 |-------|-----------|----------|----------|
 | Phase 0 (Paranoid MVP) | ~2,470 | ~700 | ~3,170 |
-| Phase 1 (Standard) | ~2,630 | ~1,000 | ~3,630 |
+| Phase 1 (Standard) | ~2,890 | ~1,000 | ~3,890 |
 | Phase 2 (Power User) | ~1,810 | ~770 | ~2,580 |
 | **Total** | **~6,910** | **~2,470** | **~9,380** |
 

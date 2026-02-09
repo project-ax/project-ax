@@ -1,8 +1,34 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from './config.js';
+
+// ═══════════════════════════════════════════════════════
+// Load .env file (if present) before anything else
+// ═══════════════════════════════════════════════════════
+function loadDotEnv(): void {
+  const envPath = resolve('.env');
+  if (!existsSync(envPath)) return;
+  const lines = readFileSync(envPath, 'utf-8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    // Strip surrounding quotes
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    // Don't override existing env vars
+    if (process.env[key] === undefined) {
+      process.env[key] = val;
+    }
+  }
+}
+loadDotEnv();
 import { loadProviders } from './registry.js';
 import { MessageQueue } from './db.js';
 import { createRouter } from './router.js';
@@ -103,13 +129,15 @@ async function main(): Promise<void> {
       writeFileSync(join(workspace, 'message.txt'), queued.content);
 
       // Spawn sandbox — use tsx to run TypeScript directly
+      // Use direct path to tsx binary (not npx) to avoid network access in sandbox
+      const tsxBin = resolve('node_modules/.bin/tsx');
       const proc = await providers.sandbox.spawn({
         workspace,
         skills: skillsDir,
         ipcSocket: socketPath,
         timeoutSec: config.sandbox.timeout_sec,
         memoryMB: config.sandbox.memory_mb,
-        command: ['npx', 'tsx', resolve('src/container/agent-runner.ts'),
+        command: [tsxBin, resolve('src/container/agent-runner.ts'),
           '--ipc-socket', socketPath,
           '--workspace', workspace,
           '--skills', skillsDir,

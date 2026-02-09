@@ -19,9 +19,10 @@ data/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / AI
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 
