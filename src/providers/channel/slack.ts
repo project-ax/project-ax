@@ -79,8 +79,7 @@ export async function create(_config: Config): Promise<ChannelProvider> {
     if (!event.text || !event.user) return;
     if (event.user === botUserId) return;
 
-    // Strip the bot mention from the message text
-    const text = event.text.replace(/<@[A-Z0-9]+>/g, '').trim();
+    const text = event.text.trim();
     if (!text) return;
 
     if (messageHandler) {

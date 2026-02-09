@@ -31,12 +31,18 @@ const uuid = z.string().regex(
 
 // ── LLM ──────────────────────────────────────────────
 
+const contentBlock = z.union([
+  z.strictObject({ type: z.literal('text'), text: safeString(200_000) }),
+  z.strictObject({ type: z.literal('tool_use'), id: safeString(200), name: safeString(200), input: z.any() }),
+  z.strictObject({ type: z.literal('tool_result'), tool_use_id: safeString(200), content: safeString(200_000) }),
+]);
+
 export const LlmCallSchema = z.strictObject({
   action: z.literal('llm_call'),
   model: safeString(128).optional(),
   messages: z.array(z.strictObject({
     role: z.enum(['user', 'assistant', 'system']),
-    content: safeString(200_000),
+    content: z.union([safeString(200_000), z.array(contentBlock)]),
   })).min(1).max(200),
   tools: z.array(z.strictObject({
     name: safeString(100),

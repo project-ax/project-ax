@@ -49,7 +49,7 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
   return async (model: Model<any>, context: Context, options?: SimpleStreamOptions): Promise<AssistantMessageEventStream> => {
     const stream = createAssistantMessageEventStream();
 
-    // Convert pi-ai messages to Sureclaw's simpler format for IPC
+    // Convert pi-ai messages to Sureclaw's IPC format, preserving tool structure
     const messages = context.messages.map((m) => {
       if (m.role === 'user') {
         const content = typeof m.content === 'string'
@@ -58,18 +58,35 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
         return { role: 'user', content };
       }
       if (m.role === 'assistant') {
-        const content = m.content
-          .filter((c): c is TextContent => c.type === 'text')
-          .map((c) => c.text)
-          .join('');
-        return { role: 'assistant', content };
+        // Preserve tool_use blocks alongside text for Anthropic API compatibility
+        const blocks: Array<{ type: string; [k: string]: unknown }> = [];
+        for (const c of m.content) {
+          if (c.type === 'text') {
+            blocks.push({ type: 'text', text: c.text });
+          } else if (c.type === 'toolCall') {
+            blocks.push({
+              type: 'tool_use',
+              id: c.id,
+              name: c.name,
+              input: JSON.parse(c.args),
+            });
+          }
+        }
+        // If no tool calls, send as plain string for backward compat
+        if (blocks.every(b => b.type === 'text')) {
+          return { role: 'assistant', content: blocks.map(b => b.text).join('') };
+        }
+        return { role: 'assistant', content: blocks };
       }
       if (m.role === 'toolResult') {
-        const content = m.content
+        const text = m.content
           .filter((c): c is TextContent => c.type === 'text')
           .map((c) => c.text)
           .join('');
-        return { role: 'user', content: `Tool result for ${m.toolName} (id: ${m.toolCallId}):\n${content}` };
+        return {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: m.toolCallId, content: text }],
+        };
       }
       return { role: 'user', content: '' };
     });

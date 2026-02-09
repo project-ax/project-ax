@@ -156,4 +156,109 @@ describe('IPC Handler', () => {
     const result = JSON.parse(await handle(payload, ctx));
     expect(result.ok).toBe(false);
   });
+
+  test('forwards tools to LLM provider', async () => {
+    const receivedReq: any[] = [];
+    const registry = mockRegistry();
+    registry.llm = {
+      name: 'mock',
+      async *chat(req: any) {
+        receivedReq.push(req);
+        yield { type: 'text', content: 'ok' };
+        yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } };
+      },
+      async models() { return ['mock']; },
+    };
+    const handleWithTools = createIPCHandler(registry);
+
+    const payload = JSON.stringify({
+      action: 'llm_call',
+      messages: [{ role: 'user', content: 'list files' }],
+      tools: [
+        { name: 'bash', description: 'Run command', parameters: { type: 'object' } },
+        { name: 'read_file', description: 'Read file', parameters: { type: 'object' } },
+      ],
+    });
+    const result = JSON.parse(await handleWithTools(payload, ctx));
+    expect(result.ok).toBe(true);
+    expect(receivedReq[0].tools).toHaveLength(2);
+    expect(receivedReq[0].tools[0].name).toBe('bash');
+    expect(receivedReq[0].tools[1].name).toBe('read_file');
+  });
+
+  test('LLM provider returns tool_use chunks', async () => {
+    const registry = mockRegistry();
+    registry.llm = {
+      name: 'mock',
+      async *chat() {
+        yield { type: 'text', content: 'Let me run that.' };
+        yield { type: 'tool_use', toolCall: { id: 'call_1', name: 'bash', args: { command: 'ls' } } };
+        yield { type: 'done', usage: { inputTokens: 10, outputTokens: 5 } };
+      },
+      async models() { return ['mock']; },
+    };
+    const handleToolUse = createIPCHandler(registry);
+
+    const payload = JSON.stringify({
+      action: 'llm_call',
+      messages: [{ role: 'user', content: 'list files' }],
+      tools: [{ name: 'bash', description: 'Run command', parameters: {} }],
+    });
+    const result = JSON.parse(await handleToolUse(payload, ctx));
+    expect(result.ok).toBe(true);
+    expect(result.chunks.length).toBe(3);
+    expect(result.chunks[0]).toEqual({ type: 'text', content: 'Let me run that.' });
+    expect(result.chunks[1]).toEqual({
+      type: 'tool_use',
+      toolCall: { id: 'call_1', name: 'bash', args: { command: 'ls' } },
+    });
+    expect(result.chunks[2].type).toBe('done');
+  });
+
+  test('accepts structured content blocks in llm_call messages', async () => {
+    const receivedReq: any[] = [];
+    const registry = mockRegistry();
+    registry.llm = {
+      name: 'mock',
+      async *chat(req: any) {
+        receivedReq.push(req);
+        yield { type: 'text', content: 'Here are the files.' };
+        yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } };
+      },
+      async models() { return ['mock']; },
+    };
+    const handleStructured = createIPCHandler(registry);
+
+    // Simulate the second LLM call in a tool loop:
+    // assistant used tool_use, then user sends tool_result
+    const payload = JSON.stringify({
+      action: 'llm_call',
+      messages: [
+        { role: 'user', content: 'list files' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'I\'ll list them.' },
+            { type: 'tool_use', id: 'call_1', name: 'bash', input: { command: 'ls' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'call_1', content: 'file1.txt\nfile2.txt' },
+          ],
+        },
+      ],
+      tools: [{ name: 'bash', description: 'Run command', parameters: {} }],
+    });
+
+    const result = JSON.parse(await handleStructured(payload, ctx));
+    expect(result.ok).toBe(true);
+    // Verify structured messages were forwarded to the LLM provider
+    expect(receivedReq[0].messages).toHaveLength(3);
+    const assistantMsg = receivedReq[0].messages[1];
+    expect(Array.isArray(assistantMsg.content)).toBe(true);
+    const toolResultMsg = receivedReq[0].messages[2];
+    expect(Array.isArray(toolResultMsg.content)).toBe(true);
+  });
 });

@@ -65,6 +65,62 @@ describe('IPC Schema Validation (SC-SEC-001)', () => {
       const badRole = { ...valid, messages: [{ role: 'admin', content: 'hello' }] };
       expect(LlmCallSchema.safeParse(badRole).success).toBe(false);
     });
+
+    test('accepts structured content blocks in messages', () => {
+      const withBlocks = {
+        action: 'llm_call' as const,
+        messages: [
+          { role: 'user' as const, content: 'list files' },
+          {
+            role: 'assistant' as const,
+            content: [
+              { type: 'text', text: 'I\'ll list the files.' },
+              { type: 'tool_use', id: 'call_1', name: 'bash', input: { command: 'ls' } },
+            ],
+          },
+          {
+            role: 'user' as const,
+            content: [
+              { type: 'tool_result', tool_use_id: 'call_1', content: 'file1.txt\nfile2.txt' },
+            ],
+          },
+        ],
+      };
+      expect(LlmCallSchema.safeParse(withBlocks).success).toBe(true);
+    });
+
+    test('rejects null bytes in structured content text blocks', () => {
+      const withNull = {
+        action: 'llm_call' as const,
+        messages: [{
+          role: 'user' as const,
+          content: [{ type: 'text', text: 'hello\0world' }],
+        }],
+      };
+      expect(LlmCallSchema.safeParse(withNull).success).toBe(false);
+    });
+
+    test('rejects unknown content block types', () => {
+      const badBlock = {
+        action: 'llm_call' as const,
+        messages: [{
+          role: 'assistant' as const,
+          content: [{ type: 'evil', data: 'payload' }],
+        }],
+      };
+      expect(LlmCallSchema.safeParse(badBlock).success).toBe(false);
+    });
+
+    test('accepts tools array with name, description, and parameters', () => {
+      const withTools = {
+        ...valid,
+        tools: [
+          { name: 'bash', description: 'Run command', parameters: { type: 'object', properties: { command: { type: 'string' } } } },
+          { name: 'read_file', description: 'Read a file', parameters: { type: 'object' } },
+        ],
+      };
+      expect(LlmCallSchema.safeParse(withTools).success).toBe(true);
+    });
   });
 
   // ── Memory Write ──
