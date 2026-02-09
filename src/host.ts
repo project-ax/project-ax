@@ -2,15 +2,16 @@ import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { envPath as getEnvPath, dataDir, dataFile } from './paths.js';
 import { loadConfig } from './config.js';
 
 // ═══════════════════════════════════════════════════════
 // Load .env file (if present) before anything else
 // ═══════════════════════════════════════════════════════
 function loadDotEnv(): void {
-  const envPath = resolve('.env');
-  if (!existsSync(envPath)) return;
-  const lines = readFileSync(envPath, 'utf-8').split('\n');
+  const envPathResolved = getEnvPath();
+  if (!existsSync(envPathResolved)) return;
+  const lines = readFileSync(envPathResolved, 'utf-8').split('\n');
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -71,9 +72,9 @@ async function main(): Promise<void> {
   console.log('[host] Providers loaded');
 
   // Step 3: Initialize DB + Taint Budget + Router + IPC
-  mkdirSync('data', { recursive: true });
-  const db = new MessageQueue('data/messages.db');
-  const conversations = new ConversationStore('data/conversations.db');
+  mkdirSync(dataDir(), { recursive: true });
+  const db = new MessageQueue(dataFile('messages.db'));
+  const conversations = new ConversationStore(dataFile('conversations.db'));
   const taintBudget = new TaintBudget({
     threshold: thresholdForProfile(config.profile),
   });

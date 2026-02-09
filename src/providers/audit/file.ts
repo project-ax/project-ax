@@ -1,11 +1,10 @@
 import { appendFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { dataFile } from '../../paths.js';
 import type { AuditProvider, AuditEntry, AuditFilter, Config } from '../types.js';
 
-const DEFAULT_AUDIT_PATH = 'data/audit/audit.jsonl';
-
 export async function create(_config: Config): Promise<AuditProvider> {
-  const auditPath = DEFAULT_AUDIT_PATH;
+  const auditPath = dataFile('audit', 'audit.jsonl');
   mkdirSync(dirname(auditPath), { recursive: true });
 
   return {

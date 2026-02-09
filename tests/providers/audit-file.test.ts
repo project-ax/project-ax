@@ -1,28 +1,33 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { create } from '../../src/providers/audit/file.js';
-import { unlinkSync, existsSync, rmSync } from 'node:fs';
+import { unlinkSync, existsSync, rmSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { dataFile } from '../../src/paths.js';
 import type { Config } from '../../src/providers/types.js';
 
 const config = {} as Config;
-const AUDIT_PATH = 'data/audit/audit.jsonl';
-const AUDIT_DIR = 'data/audit';
 
 describe('audit-file provider', () => {
   let provider: Awaited<ReturnType<typeof create>>;
+  let testHome: string;
 
   beforeEach(async () => {
-    // Clean up before each test
-    try { unlinkSync(AUDIT_PATH); } catch {}
+    testHome = join(tmpdir(), `sc-test-${randomUUID()}`);
+    mkdirSync(testHome, { recursive: true });
+    process.env.SURECLAW_HOME = testHome;
     provider = await create(config);
   });
 
   afterEach(() => {
-    try { unlinkSync(AUDIT_PATH); } catch {}
+    try { rmSync(testHome, { recursive: true, force: true }); } catch {}
+    delete process.env.SURECLAW_HOME;
   });
 
   test('logs entries to JSONL file', async () => {
     await provider.log({ action: 'test_action', sessionId: 's1', result: 'success', durationMs: 10 });
-    expect(existsSync(AUDIT_PATH)).toBe(true);
+    expect(existsSync(dataFile('audit', 'audit.jsonl'))).toBe(true);
   });
 
   test('queries logged entries', async () => {
@@ -38,20 +43,21 @@ describe('audit-file provider', () => {
   });
 
   test('query returns empty array when no log file', async () => {
-    try { unlinkSync(AUDIT_PATH); } catch {}
+    try { unlinkSync(dataFile('audit', 'audit.jsonl')); } catch {}
     const freshProvider = await create(config);
     const entries = await freshProvider.query({});
     expect(entries).toEqual([]);
   });
 
   test('log succeeds even if data directory is removed after create', async () => {
+    const auditDir = dataFile('audit');
     // Simulate directory disappearing mid-session (e.g. test cleanup, manual rm)
-    rmSync(AUDIT_DIR, { recursive: true, force: true });
-    expect(existsSync(AUDIT_DIR)).toBe(false);
+    rmSync(auditDir, { recursive: true, force: true });
+    expect(existsSync(auditDir)).toBe(false);
 
     // Should NOT throw — log() must recreate the directory
     await provider.log({ action: 'after_rmdir', sessionId: 's1', result: 'success', durationMs: 1 });
-    expect(existsSync(AUDIT_PATH)).toBe(true);
+    expect(existsSync(dataFile('audit', 'audit.jsonl'))).toBe(true);
 
     const entries = await provider.query({ action: 'after_rmdir' });
     expect(entries).toHaveLength(1);

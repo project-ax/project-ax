@@ -1,11 +1,12 @@
 import { mkdirSync } from 'node:fs';
 import { openDatabase } from '../../utils/sqlite.js';
 import type { SQLiteDatabase } from '../../utils/sqlite.js';
+import { dataDir, dataFile } from '../../paths.js';
 import type { AuditProvider, AuditEntry, AuditFilter, Config } from '../types.js';
 
 export async function create(_config: Config): Promise<AuditProvider> {
-  mkdirSync('data', { recursive: true });
-  const db: SQLiteDatabase = openDatabase('data/audit.db');
+  mkdirSync(dataDir(), { recursive: true });
+  const db: SQLiteDatabase = openDatabase(dataFile('audit.db'));
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS audit_log (

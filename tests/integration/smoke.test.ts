@@ -10,14 +10,17 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
-import { rmSync } from 'node:fs';
+import { rmSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '../..');
 const TEST_CONFIG = resolve(import.meta.dirname, 'sureclaw-test.yaml');
 const SEATBELT_CONFIG = resolve(import.meta.dirname, 'sureclaw-test-seatbelt.yaml');
-const DATA_DIR = resolve(PROJECT_ROOT, 'data');
 const IS_BUN = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined';
 const IS_MACOS = process.platform === 'darwin';
+
+let smokeTestHome: string;
 
 function startHost(configPath: string = TEST_CONFIG): ChildProcess {
   const hostScript = resolve(PROJECT_ROOT, 'src/host.ts');
@@ -27,7 +30,7 @@ function startHost(configPath: string = TEST_CONFIG): ChildProcess {
   const cmd = IS_BUN ? 'bun' : 'npx';
   return spawn(cmd, args, {
     cwd: PROJECT_ROOT,
-    env: { ...process.env, NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, NODE_NO_WARNINGS: '1', SURECLAW_HOME: smokeTestHome },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 }
@@ -79,9 +82,9 @@ describe('Smoke Test', () => {
   let proc: ChildProcess | null = null;
 
   beforeEach(() => {
-    // Clean stale data directory to avoid SQLite WAL/SHM conflicts
-    // between different runtimes (bun:sqlite vs better-sqlite3)
-    try { rmSync(DATA_DIR, { recursive: true, force: true }); } catch {}
+    // Use an isolated temp dir for each test to avoid SQLite WAL/SHM conflicts
+    smokeTestHome = resolve(tmpdir(), `sc-smoke-${randomUUID()}`);
+    mkdirSync(smokeTestHome, { recursive: true });
   });
 
   afterEach(() => {
@@ -89,7 +92,7 @@ describe('Smoke Test', () => {
       proc.kill('SIGTERM');
     }
     proc = null;
-    try { rmSync(DATA_DIR, { recursive: true, force: true }); } catch {}
+    try { rmSync(smokeTestHome, { recursive: true, force: true }); } catch {}
   });
 
   test('host starts, accepts a message, and returns a response', async () => {
@@ -117,17 +120,19 @@ describe('Smoke Test', () => {
   }, 60_000);
 
   test('host fails fast when LLM provider requires missing API key', async () => {
-    // Start host with anthropic LLM (no API key set)
+    // Start host with anthropic LLM (no API key set) — use the root config which uses anthropic
     const hostScript = resolve(PROJECT_ROOT, 'src/host.ts');
+    const configFile = resolve(PROJECT_ROOT, 'sureclaw.yaml');
     const cmd = IS_BUN ? 'bun' : 'npx';
     const args = IS_BUN
-      ? ['run', hostScript]
-      : ['tsx', hostScript];
+      ? ['run', hostScript, '--config', configFile]
+      : ['tsx', hostScript, '--config', configFile];
     proc = spawn(cmd, args, {
       cwd: PROJECT_ROOT,
       env: {
         ...process.env,
         NODE_NO_WARNINGS: '1',
+        SURECLAW_HOME: smokeTestHome,
         ANTHROPIC_API_KEY: '', // explicitly unset
       },
       stdio: ['pipe', 'pipe', 'pipe'],

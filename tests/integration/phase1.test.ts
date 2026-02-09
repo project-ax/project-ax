@@ -429,8 +429,10 @@ describe('Standard Profile Config', () => {
     const { loadProviders } = await import('../../src/registry.js');
     const config = loadConfig(STANDARD_CONFIG);
 
-    // Ensure data dir exists for SQLite providers
-    mkdirSync(join(PROJECT_ROOT, 'data'), { recursive: true });
+    // Set SURECLAW_HOME to a temp dir so SQLite providers don't write to project root
+    const providerTestDir = join(tmpdir(), `sc-phase1-prov-${randomUUID()}`);
+    mkdirSync(providerTestDir, { recursive: true });
+    process.env.SURECLAW_HOME = providerTestDir;
 
     try {
       const providers = await loadProviders(config);
@@ -441,8 +443,8 @@ describe('Standard Profile Config', () => {
       expect(providers.memory).toBeDefined();
       expect(providers.audit).toBeDefined();
     } finally {
-      // Clean up data dir created by SQLite providers
-      try { rmSync(join(PROJECT_ROOT, 'data'), { recursive: true, force: true }); } catch {}
+      delete process.env.SURECLAW_HOME;
+      try { rmSync(providerTestDir, { recursive: true, force: true }); } catch {}
     }
   });
 });

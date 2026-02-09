@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { openDatabase } from '../../utils/sqlite.js';
 import type { SQLiteDatabase } from '../../utils/sqlite.js';
+import { dataDir, dataFile } from '../../paths.js';
 import type { MemoryProvider, MemoryEntry, MemoryQuery, Config } from '../types.js';
 
 export async function create(_config: Config): Promise<MemoryProvider> {
-  mkdirSync('data', { recursive: true });
-  const db: SQLiteDatabase = openDatabase('data/memory.db');
+  mkdirSync(dataDir(), { recursive: true });
+  const db: SQLiteDatabase = openDatabase(dataFile('memory.db'));
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS entries (

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { Config } from './providers/types.js';
+import { configPath as defaultConfigPath } from './paths.js';
 
 const ConfigSchema = z.strictObject({
   profile: z.enum(['paranoid', 'standard', 'power_user']),
@@ -34,10 +35,8 @@ const ConfigSchema = z.strictObject({
   }),
 });
 
-const DEFAULT_CONFIG_PATH = 'sureclaw.yaml';
-
 export function loadConfig(path?: string): Config {
-  const configPath = resolve(path ?? DEFAULT_CONFIG_PATH);
+  const configPath = resolve(path ?? defaultConfigPath());
   const raw = readFileSync(configPath, 'utf-8');
   const parsed = parseYaml(raw);
   return ConfigSchema.parse(parsed);

@@ -1,28 +1,27 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { create } from '../../src/providers/audit/sqlite.js';
 import { rmSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import type { AuditProvider, Config } from '../../src/providers/types.js';
 
 const config = {} as Config;
-const DB_PATH = 'data/audit.db';
-
-function cleanDb() {
-  try { rmSync(DB_PATH); } catch {}
-  try { rmSync(DB_PATH + '-wal'); } catch {}
-  try { rmSync(DB_PATH + '-shm'); } catch {}
-}
 
 describe('audit-sqlite', () => {
   let audit: AuditProvider;
+  let testHome: string;
 
   beforeEach(async () => {
-    cleanDb();
-    mkdirSync('data', { recursive: true });
+    testHome = join(tmpdir(), `sc-test-${randomUUID()}`);
+    mkdirSync(testHome, { recursive: true });
+    process.env.SURECLAW_HOME = testHome;
     audit = await create(config);
   });
 
   afterEach(() => {
-    cleanDb();
+    try { rmSync(testHome, { recursive: true, force: true }); } catch {}
+    delete process.env.SURECLAW_HOME;
   });
 
   test('logs and queries entries', async () => {

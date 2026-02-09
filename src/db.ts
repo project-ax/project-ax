@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { openDatabase } from './utils/sqlite.js';
 import type { SQLiteDatabase } from './utils/sqlite.js';
+import { dataFile } from './paths.js';
 
 // ═══════════════════════════════════════════════════════
 // Conversation Store
@@ -14,7 +15,7 @@ export interface ConversationTurn {
 export class ConversationStore {
   private db: SQLiteDatabase;
 
-  constructor(dbPath: string = 'data/conversations.db') {
+  constructor(dbPath: string = dataFile('conversations.db')) {
     this.db = openDatabase(dbPath);
     this.migrate();
   }
@@ -74,7 +75,7 @@ export interface QueuedMessage {
 export class MessageQueue {
   private db: SQLiteDatabase;
 
-  constructor(dbPath: string = 'data/messages.db') {
+  constructor(dbPath: string = dataFile('messages.db')) {
     this.db = openDatabase(dbPath);
     this.migrate();
   }

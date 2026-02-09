@@ -1,6 +1,7 @@
 import { randomBytes, pbkdf2Sync, createCipheriv, createDecipheriv } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { dataFile } from '../../paths.js';
 import type { CredentialProvider, Config } from '../types.js';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -10,8 +11,6 @@ const SALT_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 const PBKDF2_ITERATIONS = 100_000;
 const DIGEST = 'sha512';
-
-const DEFAULT_STORE_PATH = 'data/credentials.enc';
 
 interface EncryptedFile {
   salt: string;   // hex
@@ -54,7 +53,7 @@ function decrypt(file: EncryptedFile, passphrase: string): string {
 }
 
 export async function create(_config: Config): Promise<CredentialProvider> {
-  const storePath = process.env.SURECLAW_CREDS_STORE_PATH || DEFAULT_STORE_PATH;
+  const storePath = process.env.SURECLAW_CREDS_STORE_PATH || dataFile('credentials.enc');
   const passphrase = process.env.SURECLAW_CREDS_PASSPHRASE;
   if (!passphrase) {
     throw new Error(

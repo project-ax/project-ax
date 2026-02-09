@@ -1,21 +1,27 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { create } from '../../src/providers/memory/file.js';
-import { rmSync } from 'node:fs';
+import { rmSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import type { MemoryProvider, Config } from '../../src/providers/types.js';
 
 const config = {} as Config;
-const MEMORY_DIR = 'data/memory';
 
 describe('memory-file', () => {
   let memory: MemoryProvider;
+  let testHome: string;
 
   beforeEach(async () => {
-    try { rmSync(MEMORY_DIR, { recursive: true }); } catch {}
+    testHome = join(tmpdir(), `sc-test-${randomUUID()}`);
+    mkdirSync(testHome, { recursive: true });
+    process.env.SURECLAW_HOME = testHome;
     memory = await create(config);
   });
 
   afterEach(() => {
-    try { rmSync(MEMORY_DIR, { recursive: true }); } catch {}
+    try { rmSync(testHome, { recursive: true, force: true }); } catch {}
+    delete process.env.SURECLAW_HOME;
   });
 
   test('writes and reads an entry', async () => {
