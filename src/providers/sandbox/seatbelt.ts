@@ -1,16 +1,29 @@
 import { spawn, execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import type { SandboxProvider, SandboxConfig, SandboxProcess, Config } from './types.js';
+import { resolve, dirname } from 'node:path';
+import type { SandboxProvider, SandboxConfig, SandboxProcess, Config } from '../types.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   const policyPath = resolve('policies/agent.sb');
+  const projectDir = resolve('.');
+
+  // Resolve the Node.js install root (handles nvm, fnm, volta, etc.)
+  // e.g. ~/.nvm/versions/node/v24.12.0/bin/node → ~/.nvm/versions/node/v24.12.0
+  const nodeDir = dirname(dirname(process.execPath));
 
   return {
     async spawn(config: SandboxConfig): Promise<SandboxProcess> {
       const [cmd, ...args] = config.command;
 
-      // sandbox-exec wraps the command with the seatbelt profile
-      const child = spawn('sandbox-exec', ['-f', policyPath, cmd, ...args], {
+      // sandbox-exec with -D parameter substitution for dynamic paths
+      const child = spawn('sandbox-exec', [
+        '-f', policyPath,
+        '-D', `WORKSPACE=${config.workspace}`,
+        '-D', `SKILLS=${config.skills}`,
+        '-D', `IPC_SOCKET=${config.ipcSocket}`,
+        '-D', `PROJECT_DIR=${projectDir}`,
+        '-D', `NODE_DIR=${nodeDir}`,
+        cmd, ...args,
+      ], {
         cwd: config.workspace,
         env: {
           // Minimal env — no credentials leak into the sandbox

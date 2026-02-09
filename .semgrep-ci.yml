@@ -1,0 +1,13 @@
+rules: []
+# The CI Semgrep job uses both this file and .semgrep.yml.
+# This file adds registry rulesets that are too slow for pre-commit
+# but appropriate for CI (~30s).
+#
+# Registry rulesets are specified via --config flags in ci.yml:
+#   semgrep --config .semgrep.yml --config .semgrep-ci.yml --error src/
+#
+# To add registry rulesets, use the Semgrep CLI directly in ci.yml:
+#   semgrep --config .semgrep.yml --config p/security-audit --config p/nodejs --config p/typescript --error src/
+#
+# This file exists as a placeholder for project-specific CI-only rules.
+# Add rules here that should only run in CI (too slow or noisy for local dev).

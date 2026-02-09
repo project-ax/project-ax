@@ -1,0 +1,85 @@
+rules:
+  # ── SC-SEC-002: No dynamic imports from variables ──
+  # Provider loading must go through the static allowlist in provider-map.ts.
+  # The only allowed dynamic import is in registry.ts (uses resolveProviderPath).
+  - id: no-dynamic-import-from-variable
+    patterns:
+      - pattern: import($VAR)
+      - pattern-not: import("...")
+    paths:
+      exclude:
+        - '**/src/registry.ts'
+    message: >
+      Dynamic import with a variable argument. Provider loading must use the
+      static allowlist in provider-map.ts (SC-SEC-002). Only registry.ts may
+      use dynamic import() with resolveProviderPath().
+    languages: [typescript, javascript]
+    severity: ERROR
+
+  # ── SC-SEC-004: No raw path.join in providers ──
+  # File-based providers must use safePath() for all path construction.
+  - id: no-raw-path-join-in-providers
+    patterns:
+      - pattern-either:
+          - pattern: path.join(...)
+          - pattern: join(...)
+      - pattern-not-inside: |
+          function safePath(...) { ... }
+    paths:
+      include:
+        - '**/src/providers/'
+      exclude:
+        - '**/src/providers/sandbox/'
+    message: >
+      Raw path.join() in a provider. Use safePath() from src/utils/safe-path.ts
+      for all path construction in providers (SC-SEC-004).
+    languages: [typescript, javascript]
+    severity: WARNING
+
+  # ── No eval or Function constructor ──
+  - id: no-eval-or-function-constructor
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+    message: >
+      eval() and Function() are forbidden. They allow arbitrary code execution
+      and bypass all security boundaries.
+    languages: [typescript, javascript]
+    severity: ERROR
+
+  # ── No process.env in container code ──
+  # Container code runs in a sandbox. Environment variables with credentials
+  # must not leak into the container — all config comes through IPC.
+  # Exception: agent-runner.ts reads bootstrap env vars (paths, not secrets)
+  # set by the host's sandbox provider.
+  - id: no-process-env-in-container
+    pattern: process.env
+    paths:
+      include:
+        - '**/src/container/'
+      exclude:
+        - '**/src/container/agent-runner.ts'
+    message: >
+      Container code must not read process.env. All configuration and
+      credentials must come through IPC from the trusted host process.
+    languages: [typescript, javascript]
+    severity: ERROR
+
+  # ── No unvalidated JSON.parse ──
+  # JSON.parse should be wrapped in try/catch or the input should be
+  # validated with a schema (Zod, TypeBox, etc.) after parsing.
+  - id: no-unvalidated-json-parse
+    patterns:
+      - pattern: JSON.parse(...)
+      - pattern-not-inside: |
+          try {
+            ...
+          } catch($E) {
+            ...
+          }
+    message: >
+      JSON.parse() without error handling. Consider wrapping in try/catch
+      or validating the parsed result with a schema (Zod, TypeBox).
+    languages: [typescript, javascript]
+    severity: WARNING

@@ -1,22 +1,57 @@
-;; policies/agent.sb
+;; policies/agent.sb — Seatbelt sandbox for agent containers
+;; Parameters: WORKSPACE, SKILLS, IPC_SOCKET, PROJECT_DIR, NODE_DIR
 (version 1)
 (deny default)
 
-;; Allow reading workspace and skills
-(allow file-read* (subpath "/workspace"))
-(allow file-read* (subpath "/skills"))
-(allow file-write* (subpath "/workspace"))
+;; ── DENY all IP network FIRST (TCP/UDP — no internet access) ──
+;; Specific unix socket allows below override this for local IPC only.
+(deny network-outbound (remote ip))
+(deny network-outbound (remote tcp))
+(deny network-bind (remote ip))
+(deny network-bind (remote tcp))
+
+;; ── Agent data (read-write workspace, read-only skills) ──
+(allow file-read* (subpath (param "WORKSPACE")))
+(allow file-write* (subpath (param "WORKSPACE")))
+(allow file-read* (subpath (param "SKILLS")))
+
+;; ── IPC socket (the ONLY communication channel to host) ──
+(allow file-read* file-write* (literal (param "IPC_SOCKET")))
+(allow network-outbound (remote unix-socket (literal (param "IPC_SOCKET"))))
+
+;; ── Unix sockets for tsx/node internal IPC ──
+(allow network-bind (local unix-socket))
+(allow network-outbound (local unix-socket))
+(allow network* (local unix-socket))
+
+;; ── Project directory (node_modules, src — read-only) ──
+(allow file-read* (subpath (param "PROJECT_DIR")))
+
+;; ── Node.js runtime (version manager path, e.g. nvm/fnm/volta) ──
+(allow file-read* (subpath (param "NODE_DIR")))
+
+;; ── OS paths required by Node.js ──
+(allow file-read* (literal "/"))
+(allow file-read* (subpath "/usr"))
+(allow file-read* (subpath "/opt"))
+(allow file-read* (subpath "/dev"))
+(allow file-read* (subpath "/System/Library/OpenSSL"))
+(allow file-read* (subpath "/private/etc"))
+(allow file-read* (subpath "/etc"))
+(allow file-read-metadata)
+
+;; ── Temp directories (Node.js needs these for V8 compilation cache, etc.) ──
 (allow file-read* (subpath "/tmp"))
 (allow file-write* (subpath "/tmp"))
+(allow file-read* (subpath "/private/tmp"))
+(allow file-write* (subpath "/private/tmp"))
+(allow file-read* (subpath "/private/var/folders"))
+(allow file-write* (subpath "/private/var/folders"))
+(allow file-read* (subpath "/var/folders"))
+(allow file-write* (subpath "/var/folders"))
 
-;; Allow IPC socket
-(allow file-read* file-write* (literal "/ipc/proxy.sock"))
-(allow network-outbound (to unix-socket "/ipc/proxy.sock"))
-
-;; Allow Node.js runtime
-(allow file-read* (subpath "/usr/local"))
-(allow file-read* (subpath "/opt/homebrew"))
+;; ── Process execution (required for Node.js, npx, tsx) ──
 (allow process-exec)
-
-;; DENY all network
-(deny network*)
+(allow process-fork)
+(allow sysctl-read)
+(allow mach-lookup)

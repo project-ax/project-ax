@@ -1,15 +1,19 @@
 import { createInterface, type Interface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
-import type { ChannelProvider, InboundMessage, OutboundMessage, Config } from './types.js';
+import type { ChannelProvider, InboundMessage, OutboundMessage, Config } from '../types.js';
 
 export async function create(_config: Config): Promise<ChannelProvider> {
   let rl: Interface | null = null;
   let messageHandler: ((msg: InboundMessage) => void) | null = null;
+  // Stable session ID for the lifetime of this CLI process
+  let sessionId: string = '';
 
   return {
     name: 'cli',
 
     async connect(): Promise<void> {
+      sessionId = randomUUID();
+
       rl = createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -22,7 +26,7 @@ export async function create(_config: Config): Promise<ChannelProvider> {
 
         if (messageHandler) {
           messageHandler({
-            id: randomUUID(),
+            id: sessionId,
             channel: 'cli',
             sender: 'user',
             content,

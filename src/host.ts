@@ -1,12 +1,38 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
 import { loadConfig } from './config.js';
+
+// ═══════════════════════════════════════════════════════
+// Load .env file (if present) before anything else
+// ═══════════════════════════════════════════════════════
+function loadDotEnv(): void {
+  const envPath = resolve('.env');
+  if (!existsSync(envPath)) return;
+  const lines = readFileSync(envPath, 'utf-8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    // Strip surrounding quotes
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    // Don't override existing env vars
+    if (process.env[key] === undefined) {
+      process.env[key] = val;
+    }
+  }
+}
+loadDotEnv();
 import { loadProviders } from './registry.js';
-import { MessageQueue } from './db.js';
+import { MessageQueue, ConversationStore } from './db.js';
 import { createRouter } from './router.js';
 import { createIPCHandler, createIPCServer } from './ipc.js';
+import { TaintBudget, thresholdForProfile } from './taint-budget.js';
 import type { InboundMessage } from './providers/types.js';
 
 // ═══════════════════════════════════════════════════════
@@ -43,11 +69,15 @@ async function main(): Promise<void> {
   const providers = await loadProviders(config);
   console.log('[host] Providers loaded');
 
-  // Step 3: Initialize DB + Router + IPC
+  // Step 3: Initialize DB + Taint Budget + Router + IPC
   mkdirSync('data', { recursive: true });
   const db = new MessageQueue('data/messages.db');
-  const router = createRouter(providers, db);
-  const handleIPC = createIPCHandler(providers);
+  const conversations = new ConversationStore('data/conversations.db');
+  const taintBudget = new TaintBudget({
+    threshold: thresholdForProfile(config.profile),
+  });
+  const router = createRouter(providers, db, { taintBudget });
+  const handleIPC = createIPCHandler(providers, { taintBudget });
 
   // Step 4: IPC socket server
   const socketDir = mkdtempSync(join(tmpdir(), 'sureclaw-'));
@@ -98,22 +128,28 @@ async function main(): Promise<void> {
       writeFileSync(join(workspace, 'CONTEXT.md'), `# Session: ${queued.session_id}\n`);
       writeFileSync(join(workspace, 'message.txt'), queued.content);
 
-      // Spawn sandbox
+      // Load conversation history for this session
+      const history = conversations.getHistory(queued.session_id);
+
+      // Spawn sandbox — use tsx to run TypeScript directly
+      // Use direct path to tsx binary (not npx) to avoid network access in sandbox
+      const tsxBin = resolve('node_modules/.bin/tsx');
       const proc = await providers.sandbox.spawn({
         workspace,
         skills: skillsDir,
         ipcSocket: socketPath,
         timeoutSec: config.sandbox.timeout_sec,
         memoryMB: config.sandbox.memory_mb,
-        command: ['node', resolve('dist/container/agent-runner.js'),
+        command: [tsxBin, resolve('src/container/agent-runner.ts'),
           '--ipc-socket', socketPath,
           '--workspace', workspace,
           '--skills', skillsDir,
         ],
       });
 
-      // Pipe message content to agent's stdin
-      proc.stdin.write(queued.content);
+      // Pipe conversation history + current message as JSON to agent's stdin
+      const stdinPayload = JSON.stringify({ history, message: queued.content });
+      proc.stdin.write(stdinPayload);
       proc.stdin.end();
 
       // Collect stdout
@@ -148,6 +184,10 @@ async function main(): Promise<void> {
         console.error('[host] SECURITY: Canary token leaked — response redacted');
       }
 
+      // Store conversation turns (user message + agent response)
+      conversations.addTurn(queued.session_id, 'user', queued.content);
+      conversations.addTurn(queued.session_id, 'assistant', outbound.content);
+
       // Send response back through the originating channel
       for (const ch of providers.channels) {
         if (ch.name === queued.channel) {
@@ -164,23 +204,15 @@ async function main(): Promise<void> {
     } finally {
       // Clean up workspace
       if (workspace) {
-        try { rmSync(workspace, { recursive: true, force: true }); } catch {}
+        try { rmSync(workspace, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
       }
     }
   }
 
-  // Step 8: Connect channels
-  for (const channel of providers.channels) {
-    channel.onMessage(handleMessage);
-    await channel.connect();
-    console.log(`[host] Channel connected: ${channel.name}`);
-  }
-
-  // Step 9: Start scheduler
+  // Step 8: Start scheduler (before channels so it's ready)
   await providers.scheduler.start(handleMessage);
-  console.log('[host] Scheduler started');
 
-  // Step 10: Graceful shutdown
+  // Step 9: Graceful shutdown
   let shuttingDown = false;
 
   async function shutdown(signal: string): Promise<void> {
@@ -196,9 +228,10 @@ async function main(): Promise<void> {
 
     ipcServer.close();
     db.close();
+    conversations.close();
 
     // Clean up socket
-    try { rmSync(socketDir, { recursive: true, force: true }); } catch {}
+    try { rmSync(socketDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 
     console.log('[host] Shutdown complete');
     process.exit(0);
@@ -207,7 +240,13 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  console.log('[host] SureClaw is running. Type a message to begin.');
+  // Step 10: Print ready message, THEN connect channels (so prompt appears last)
+  console.log('[host] SureClaw is running.');
+
+  for (const channel of providers.channels) {
+    channel.onMessage(handleMessage);
+    await channel.connect();
+  }
 }
 
 main().catch((err) => {

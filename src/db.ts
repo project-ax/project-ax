@@ -1,5 +1,64 @@
-import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { openDatabase } from './utils/sqlite.js';
+import type { SQLiteDatabase } from './utils/sqlite.js';
+
+// ═══════════════════════════════════════════════════════
+// Conversation Store
+// ═══════════════════════════════════════════════════════
+
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export class ConversationStore {
+  private db: SQLiteDatabase;
+
+  constructor(dbPath: string = 'data/conversations.db') {
+    this.db = openDatabase(dbPath);
+    this.migrate();
+  }
+
+  private migrate(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS conversation_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_history(session_id)
+    `);
+  }
+
+  addTurn(sessionId: string, role: 'user' | 'assistant', content: string): void {
+    this.db.prepare(`
+      INSERT INTO conversation_history (session_id, role, content) VALUES (?, ?, ?)
+    `).run(sessionId, role, content);
+  }
+
+  getHistory(sessionId: string): ConversationTurn[] {
+    return this.db.prepare(`
+      SELECT role, content FROM conversation_history
+      WHERE session_id = ? ORDER BY id ASC
+    `).all(sessionId) as ConversationTurn[];
+  }
+
+  clearSession(sessionId: string): void {
+    this.db.prepare(`DELETE FROM conversation_history WHERE session_id = ?`).run(sessionId);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// Message Queue
+// ═══════════════════════════════════════════════════════
 
 export interface QueuedMessage {
   id: string;
@@ -13,12 +72,10 @@ export interface QueuedMessage {
 }
 
 export class MessageQueue {
-  private db: Database.Database;
+  private db: SQLiteDatabase;
 
   constructor(dbPath: string = 'data/messages.db') {
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
+    this.db = openDatabase(dbPath);
     this.migrate();
   }
 

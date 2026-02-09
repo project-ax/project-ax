@@ -1,0 +1,26 @@
+[extend]
+# Extend the default gitleaks rules
+useDefault = true
+
+# Custom rules for sureclaw-specific patterns
+[[rules]]
+id = "hardcoded-api-key-assignment"
+description = "Hardcoded API key assignment in source code"
+regex = '''(?i)(api[_-]?key|apikey)\s*[:=]\s*['"][a-zA-Z0-9_\-]{20,}['"]'''
+tags = ["key", "api"]
+severity = "ERROR"
+
+[[rules]]
+id = "hardcoded-passphrase"
+description = "Hardcoded passphrase or password assignment"
+regex = '''(?i)(passphrase|password|passwd|secret)\s*[:=]\s*['"][^'"]{8,}['"]'''
+tags = ["password", "credential"]
+severity = "ERROR"
+
+# Allowlist paths that contain test fixtures or documentation examples
+[allowlist]
+paths = [
+  '''tests/''',
+  '''docs/plans/''',
+  '''\.md$''',
+]

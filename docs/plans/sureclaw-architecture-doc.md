@@ -54,7 +54,11 @@
        │  (nsjail/   │ │            │ │            │
        │   Docker)   │ │            │ │            │
        │             │ │            │ │            │
+       │ pi-agent-   │ │            │ │            │
+       │  core Agent │ │            │ │            │
        │ agent-runner│ │            │ │            │
+       │ local-tools │ │            │ │            │
+       │ ipc-tools   │ │            │ │            │
        │ ipc-client  │ │            │ │            │
        │             │ │            │ │            │
        │ Mounts:     │ │            │ │            │
@@ -90,6 +94,15 @@ export interface MemoryProvider {
   read(id: string): Promise<MemoryEntry | null>;
   delete(id: string): Promise<void>;
   list(scope: string, limit?: number): Promise<MemoryEntry[]>;
+
+  // Optional: conversation-level memorization (e.g. memU knowledge graph).
+  // Host calls this after each exchange. Providers that support it extract
+  // knowledge from the conversation automatically. For these providers,
+  // write() and delete() may be no-ops since memorize() is the single
+  // source of truth — the agent's tool calls (including memory_write)
+  // are visible in the conversation transcript that memorize() processes.
+  memorize?(conversation: ConversationTurn[]): Promise<void>;
+
   onProactiveHint?(handler: (hint: ProactiveHint) => void): void;
 }
 
@@ -189,6 +202,7 @@ export interface ProactiveHint {
 // src/registry.ts
 
 import type * as P from './providers/types';
+import { PROVIDER_MAP } from './provider-map.js';
 
 export interface ProviderRegistry {
   llm: P.LLMProvider;
@@ -223,9 +237,10 @@ export async function loadProviders(config: Config): Promise<ProviderRegistry> {
 }
 
 async function loadProvider(kind: string, name: string, config: Config) {
-  // Each provider category is its own subdirectory
-  // e.g., 'llm' + 'anthropic' → import('./providers/llm/anthropic')
-  const mod = await import(`./providers/${kind}/${name}`);
+  // Static allowlist lookup — no dynamic path construction (SC-SEC-002)
+  const path = PROVIDER_MAP[kind]?.[name];
+  if (!path) throw new Error(`Unknown provider: ${kind}.${name}`);
+  const mod = await import(path);
   return mod.create(config);
 }
 ```
@@ -304,11 +319,14 @@ sureclaw/
 │       ├── memory/                    # ── Memory Providers ───────────
 │       │   ├── file.ts               # Markdown files + grep (~100) [Stage 0]
 │       │   ├── sqlite.ts             # SQLite + FTS5 (~150) [Stage 1]
-│       │   └── memu.ts              # memU integration + proactive bridge (~200) [Stage 5]
+│       │   └── memu.ts              # memU knowledge graph (~200) [Stage 5]
+│       │                            #   memorize() extracts knowledge from conversations
+│       │                            #   write()/delete() are no-ops (memorize is source of truth)
+│       │                            #   query()/read()/list() read from knowledge graph
 │       │
 │       ├── scanner/                   # ── Scanner Providers ──────────
 │       │   ├── basic.ts              # Regex + canary tokens (~60) [Stage 0]
-│       │   ├── patterns.ts           # Expanded pattern library (~150) [Stage 3]
+│       │   ├── patterns.ts           # Expanded pattern library (~150) [Stage 1]
 │       │   └── promptfoo.ts          # ML-based detection (~200) [Stage 5]
 │       │
 │       ├── channel/                   # ── Channel Providers ──────────
@@ -328,7 +346,7 @@ sureclaw/
 │       │
 │       ├── credentials/               # ── Credential Providers ──────
 │       │   ├── env.ts                # Read from process.env (~30) [Stage 0]
-│       │   ├── encrypted.ts          # AES-256 encrypted file (~80) [Stage 1]
+│       │   ├── encrypted.ts          # AES-256-GCM encrypted file (~80) [Stage 1]
 │       │   └── keychain.ts           # OS keychain integration (~100) [Stage 5]
 │       │
 │       ├── skills/                    # ── Skill Store Providers ─────
@@ -352,8 +370,11 @@ sureclaw/
 │
 ├── container/                         # Runs inside sandbox
 │   ├── Dockerfile                     # Minimal image (~30)
-│   ├── agent-runner.ts                # Model-agnostic agent loop (~250)
-│   └── ipc-client.ts                 # IPC client for container (~100)
+│   ├── agent-runner.ts                # Pi agent-core Agent wrapper + IPC streaming (~200)
+│   ├── ipc-client.ts                 # IPC client for container (~100)
+│   ├── ipc-transport.ts              # streamFn adapter: IPC → pi-agent-core Agent (~60)
+│   ├── local-tools.ts                # Tools that execute in sandbox (bash, read, write, edit) (~150)
+│   └── ipc-tools.ts                  # Tools that route through IPC to host (memory, skills, web, audit) (~120)
 │
 ├── policies/                          # Sandbox policies
 │   ├── agent.kafel                    # nsjail seccomp-bpf policy
@@ -380,14 +401,14 @@ sureclaw/
 
 ### 5.1 Provider Loading Convention
 
-Each provider subdirectory contains one file per implementation. The file exports a `create(config: Config)` function that returns the provider instance.
+Each provider category is a subdirectory under `src/providers/`. Each file exports a `create(config: Config)` function. A static allowlist in `src/provider-map.ts` maps config names to file paths — no dynamic path construction (SC-SEC-002).
 
 ```typescript
 // Example: src/providers/llm/anthropic.ts
-import type { LLMProvider, Config } from '../types';
+import type { LLMProvider } from '../types.js';
+import type { Config } from '../../config.js';
 
-export async function create(config: Config): Promise<LLMProvider> {
-  const apiKey = await config.registry.credentials.get('anthropic');
+export function create(config: Config): LLMProvider {
   return {
     name: 'anthropic',
     async *chat(req) { /* ... */ },
@@ -396,7 +417,17 @@ export async function create(config: Config): Promise<LLMProvider> {
 }
 ```
 
-The registry resolves providers by path: `providers/${kind}/${name}`. So config `llm: anthropic` loads `src/providers/llm/anthropic.ts`.
+```typescript
+// src/provider-map.ts — Static allowlist (no dynamic imports from config values)
+export const PROVIDER_MAP: Record<string, Record<string, string>> = {
+  llm:         { anthropic: './providers/llm/anthropic.js', /* ... */ },
+  memory:      { file: './providers/memory/file.js', sqlite: './providers/memory/sqlite.js', /* ... */ },
+  scanner:     { basic: './providers/scanner/basic.js', /* ... */ },
+  // ...
+};
+```
+
+The registry resolves providers via `PROVIDER_MAP[kind][name]`. Config `llm: anthropic` maps to `./providers/llm/anthropic.js`.
 
 ---
 
@@ -409,7 +440,8 @@ Main entry point. Responsibilities:
 - Load providers via registry
 - Start channels (call `connect()` on each)
 - Start scheduler
-- Main message loop: channel message → router → sandbox → response → channel
+- **Conversation history**: maintain per-session history in `ConversationStore` (SQLite). On each message: load prior turns, pass full history + current message as JSON to agent stdin, store user + assistant turns after response.
+- Main message loop: channel message → router → load history → sandbox → response → store turn → channel
 - Graceful shutdown
 
 ### 6.2 router.ts (~150 LOC)
@@ -446,9 +478,21 @@ skill_propose     → SkillStoreProvider.propose()
 oauth_call        → CredentialProvider.get() + scoped HTTP call
 ```
 
-### 6.4 db.ts (~80 LOC)
+### 6.4 db.ts (~120 LOC)
 
-SQLite message queue (same pattern as NanoClaw). Stores pending messages, dequeued by the main loop. Ensures no message loss if the agent crashes mid-response.
+Two SQLite stores:
+
+**MessageQueue**: Task queue for pending messages. Stores pending messages, dequeued by the main loop. Ensures no message loss if the agent crashes mid-response.
+
+**ConversationStore**: Per-session conversation history. Stores user/assistant message pairs keyed by `session_id`. The host loads the full history before spawning each agent invocation and passes it as JSON via stdin. After the agent responds, both the user message and assistant response are appended. This enables multi-turn conversations even though each agent invocation is a fresh process.
+
+```typescript
+// Schema: conversation_history(id, session_id, role, content, created_at)
+const store = new ConversationStore('data/conversations.db');
+store.addTurn(sessionId, 'user', userMessage);
+store.addTurn(sessionId, 'assistant', agentResponse);
+const history = store.getHistory(sessionId); // [{role, content}, ...]
+```
 
 ### 6.5 completions.ts (~200 LOC) [Stage 2]
 
@@ -462,29 +506,67 @@ OpenAI-compatible `/v1/chat/completions` endpoint.
 
 ## 7. Container Components
 
-### 7.1 agent-runner.ts (~250 LOC)
+### 7.1 agent-runner.ts (~200 LOC)
 
-The model-agnostic agent loop that runs inside the sandbox:
+Uses `Agent` from `@mariozechner/pi-agent-core` with a custom `streamFn` that routes all LLM calls through IPC to the host (keeping API keys out of the container). See `docs/plans/pi-package-strategy.md` for the staged adoption rationale.
 
+**Conversation history**: The agent runner receives the full conversation history via stdin as JSON: `{"history": [{role, content}, ...], "message": "current message"}`. Prior turns are converted to pi-ai messages and pre-populated in the Agent's `initialState.messages`. This gives the LLM full conversation context even though each agent invocation is a fresh process.
+
+```typescript
+import { Agent } from '@mariozechner/pi-agent-core';
+
+// Parse stdin — host sends JSON with history + current message
+const input = JSON.parse(stdinData);
+const historyMessages = convertHistoryToPiMessages(input.history);
+
+const agent = new Agent({
+  initialState: {
+    systemPrompt, model,
+    tools: [...localTools, ...ipcTools],
+    messages: historyMessages,  // prior conversation turns
+  },
+  streamFn: (model, messages, options) => ipc.stream('llm_call', { model, messages, options }),
+});
+
+// Process current user message — Agent includes history in LLM call automatically
+await agent.prompt(input.message);
 ```
-1. Read /workspace/CONTEXT.md for personality/memory
-2. Read /skills/*.md for available skills
-3. Receive message via stdin or IPC
-4. Build prompt (system + context + skills + taint-tagged content + user message)
-5. Call LLM via IPC (ipc.call({ action: 'llm_chat', ... }))
-6. If LLM requests tool use → call tool via IPC → feed result back to LLM
-7. Return final response via stdout or IPC
-```
+
+**Key design decisions:**
+- **`streamFn` override**: All LLM calls route through IPC → host injects API key → forwards to provider. The container never sees credentials.
+- **Tools split into two categories**: `local-tools.ts` (execute directly in sandbox) and `ipc-tools.ts` (route through IPC to host-side providers).
+- **Host-managed conversation history** at Stage 0–1. Host stores user/assistant text pairs in SQLite, passes full history to each agent invocation. Persistent JSONL sessions via `pi-coding-agent` at Stage 2+.
+- **TypeBox schemas** for tool parameter validation (pi-agent-core convention). IPC schemas remain Zod.
 
 ### 7.2 ipc-client.ts (~100 LOC)
 
 Thin client that connects to the host's Unix socket and exposes typed methods:
 
 ```typescript
-const llmResponse = await ipc.call({ action: 'llm_chat', messages: [...] });
+const llmResponse = await ipc.call({ action: 'llm_call', messages: [...] });
 const memory = await ipc.call({ action: 'memory_query', query: 'user preferences' });
 const page = await ipc.call({ action: 'web_fetch', url: 'https://...' });
 ```
+
+### 7.3 ipc-transport.ts (~60 LOC)
+
+Adapter that implements pi-agent-core's `streamFn` interface by forwarding LLM calls through IPC. Converts between pi-ai's streaming format and the IPC protocol's batch/streaming response.
+
+### 7.4 local-tools.ts (~150 LOC)
+
+Tools that execute directly inside the sandbox filesystem, defined as pi-agent-core `AgentTool` objects with TypeBox parameter schemas:
+- **bash**: Execute shell commands (subject to sandbox restrictions)
+- **read**: Read files from `/workspace`
+- **write**: Write files to `/workspace`
+- **edit**: String-replace edits on workspace files
+
+### 7.5 ipc-tools.ts (~120 LOC)
+
+Tools that route through IPC to host-side providers, also defined as `AgentTool` objects:
+- **memory_read/write/query**: Memory provider operations
+- **skill_read/list**: Skill store access
+- **web_fetch/search**: Proxied web access (DNS-pinned, taint-tagged)
+- **audit_log**: Explicit audit entries
 
 ---
 
@@ -493,28 +575,36 @@ const page = await ipc.call({ action: 'web_fetch', url: 'https://...' });
 ```
 1. User sends "summarize my inbox" via WhatsApp
 2. channel-whatsapp.ts receives message, calls router
+   - Channel provides a STABLE session ID (per-sender or per-conversation)
 3. Router:
-   a. Assigns session ID
+   a. Uses channel-provided session ID (not a random UUID per message)
    b. Injects canary token into system prompt
    c. Passes message through scanner (input scan)
    d. If external content involved: wraps in taint tags
-4. Host spawns sandbox (nsjail by default):
+4. Host loads conversation history for this session from ConversationStore
+5. Host spawns sandbox (nsjail by default):
    a. Bind-mount: /workspace/{session}, /skills (ro), /ipc/proxy.sock
    b. No network, no env vars, no host filesystem
-5. agent-runner.ts inside sandbox:
-   a. Reads context and skills
-   b. Builds prompt
-   c. Calls LLM via IPC → host injects API key → forwards to Anthropic
-   d. LLM says "I need to read emails" → agent calls IPC: oauth_call(gmail.readonly)
-   e. Host: validates scope, injects OAuth token, fetches emails, taint-tags content
-   f. Agent receives taint-tagged email content
-   g. LLM generates summary
-   h. Agent returns response via IPC
-6. Host receives response:
+   c. Pipes JSON to stdin: {"history": [...prior turns...], "message": "current message"}
+6. agent-runner.ts inside sandbox (pi-agent-core Agent loop):
+   a. Parses JSON stdin, converts history to pi-ai messages
+   b. Reads context and skills, instantiates pi Agent with local + IPC tools
+   c. Pre-populates Agent with conversation history
+   d. Agent.prompt(currentMessage) starts the agent loop (history included in LLM call)
+   e. Agent calls streamFn → IPC transport → host injects API key → forwards to LLM provider
+   f. LLM requests tool use → Agent dispatches to local-tools (bash/read/write/edit in sandbox)
+      or ipc-tools (memory/web/skills routed through IPC to host providers)
+   g. Host-side tools taint-tag external content before returning through IPC
+   h. Agent feeds tool results back to LLM, repeats until done
+   i. Agent returns final response via stdout
+7. Host receives response:
    a. Scanner checks output (canary leak, PII, unexpected tool calls)
-   b. If clean: deliver to WhatsApp
-   c. Log everything to audit provider
-7. Sandbox is destroyed
+   b. If clean: store user + assistant turns in ConversationStore
+   c. If memory provider supports memorize(): call memorize(conversation)
+      to extract long-term knowledge from the exchange (e.g. memU knowledge graph)
+   d. Deliver to WhatsApp
+   e. Log everything to audit provider
+8. Sandbox is destroyed
 ```
 
 ---
@@ -596,6 +686,8 @@ seccomp_string: "ALLOW {
 
 **Goal:** End-to-end loop — you type a message, agent runs in a sandbox, you get a response.
 
+**Dependencies:** `@mariozechner/pi-agent-core`, `@mariozechner/pi-ai`, `@sinclair/typebox`
+
 **Config:**
 ```yaml
 providers:
@@ -635,18 +727,25 @@ providers:
 16. src/router.ts                             (150) — Taint-aware routing
 17. src/ipc.ts                                (200) — IPC proxy
 18. src/host.ts                               (200) — Main loop
-19. container/agent-runner.ts                 (250) — Agent loop
+19. container/agent-runner.ts                 (200) — Pi Agent wrapper + IPC streaming
 20. container/ipc-client.ts                   (100) — IPC client
-21. container/Dockerfile                      (30)  — Container image
+21. container/ipc-transport.ts               (60)  — streamFn adapter
+22. container/local-tools.ts                  (150) — Sandbox-local tools (bash, read, write, edit)
+23. container/ipc-tools.ts                    (120) — IPC-routed tools (memory, skills, web, audit)
+24. container/Dockerfile                      (30)  — Container image
 ```
 
-### Stage 1: Real Messaging + Web (~600 LOC)
+### Stage 1: Real Messaging + Web + Pi Agent (~600 LOC)
 
 Add: `channel/whatsapp.ts`, `web/fetch.ts`, `credentials/encrypted.ts`, `memory/sqlite.ts`, `audit/sqlite.ts`, `scheduler/cron.ts`
 
-### Stage 2: Multi-Model + Search + API (~450 LOC)
+Pi agent container components: `ipc-transport.ts`, `local-tools.ts`, `ipc-tools.ts`, rewritten `agent-runner.ts` using pi-agent-core's `Agent` class with `streamFn` override for IPC-routed LLM calls. See `docs/plans/pi-package-strategy.md`.
+
+### Stage 2: Multi-Model + Sessions + Compaction (~450 LOC)
 
 Add: `llm/openai.ts`, `llm/multi.ts`, `web/search.ts`, `completions.ts`
+
+**Pi upgrade:** Swap `Agent` (pi-agent-core) → `AgentSession` via `createAgentSession` (pi-coding-agent). ~10-line change in `agent-runner.ts`. Gains: persistent JSONL sessions with tree branching, auto-compaction, model failover with auth rotation, full extension system for lifecycle hooks. See `docs/plans/pi-package-strategy.md` Stage 2+ section.
 
 ### Stage 3: Advanced Security + Skills (~650 LOC)
 

@@ -19,11 +19,18 @@ data/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / AI
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
+
+# Worktrees
+.worktrees/
+
+# Lint cache
+.eslintcache
 
 # Logs / crashes
 *.log

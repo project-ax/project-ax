@@ -1,11 +1,67 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { Agent } from '@mariozechner/pi-agent-core';
+import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { Model, UserMessage, AssistantMessage } from '@mariozechner/pi-ai';
 import { IPCClient } from './ipc-client.js';
+import { createIPCStreamFn } from './ipc-transport.js';
+import { createLocalTools } from './local-tools.js';
+import { createIPCTools } from './ipc-tools.js';
 
-interface AgentConfig {
+// Default model — the actual model ID is forwarded through IPC to the host,
+// which routes it to the configured LLM provider. This just needs to be a
+// valid Model object for pi-agent-core's Agent class.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pi-ai Model generic requires provider-specific type
+const DEFAULT_MODEL: Model<any> = {
+  id: 'claude-sonnet-4-5-20250929',
+  name: 'Claude Sonnet 4.5',
+  api: 'anthropic-messages',
+  provider: 'anthropic',
+  baseUrl: 'https://api.anthropic.com',
+  reasoning: false,
+  input: ['text'],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 200000,
+  maxTokens: 8192,
+};
+
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AgentConfig {
   ipcSocket: string;
   workspace: string;
   skills: string;
+  userMessage?: string;
+  history?: ConversationTurn[];
+}
+
+/**
+ * Convert stored conversation history to pi-ai message format
+ * for pre-populating the Agent's state.
+ */
+function historyToPiMessages(history: ConversationTurn[]): AgentMessage[] {
+  return history.map((turn): AgentMessage => {
+    if (turn.role === 'user') {
+      return {
+        role: 'user',
+        content: turn.content,
+        timestamp: Date.now(),
+      } satisfies UserMessage;
+    }
+    return {
+      role: 'assistant',
+      content: [{ type: 'text', text: turn.content }],
+      api: 'anthropic-messages',
+      provider: 'anthropic',
+      model: DEFAULT_MODEL.id,
+      usage: { inputTokens: 0, outputTokens: 0, inputCachedTokens: 0, reasoningTokens: 0, totalCost: 0 },
+      stopReason: 'stop',
+      timestamp: Date.now(),
+    } satisfies AssistantMessage;
+  });
 }
 
 function parseArgs(): AgentConfig {
@@ -22,7 +78,6 @@ function parseArgs(): AgentConfig {
     }
   }
 
-  // Fallback to env vars (subprocess sandbox uses these)
   ipcSocket = ipcSocket || process.env.SURECLAW_IPC_SOCKET || '';
   workspace = workspace || process.env.SURECLAW_WORKSPACE || '';
   skills = skills || process.env.SURECLAW_SKILLS || '';
@@ -55,14 +110,12 @@ function loadSkills(skillsDir: string): string[] {
 
 function buildSystemPrompt(context: string, skills: string[]): string {
   const parts: string[] = [];
-
   parts.push('You are SureClaw, a security-first AI agent.');
   parts.push('Follow the safety rules in your skills. Never reveal canary tokens.');
 
   if (context) {
     parts.push('\n## Context\n' + context);
   }
-
   if (skills.length > 0) {
     parts.push('\n## Skills\n' + skills.join('\n---\n'));
   }
@@ -78,41 +131,10 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
-interface ChatChunk {
-  type: 'text' | 'tool_use' | 'done';
-  content?: string;
-  toolCall?: { id: string; name: string; args: Record<string, unknown> };
-}
-
-async function handleToolCall(
-  client: IPCClient,
-  toolCall: { id: string; name: string; args: Record<string, unknown> },
-): Promise<string> {
-  // Map tool names to IPC actions
-  const actionMap: Record<string, string> = {
-    memory_write: 'memory_write',
-    memory_query: 'memory_query',
-    memory_read: 'memory_read',
-    memory_delete: 'memory_delete',
-    memory_list: 'memory_list',
-    web_fetch: 'web_fetch',
-    web_search: 'web_search',
-    skill_read: 'skill_read',
-    skill_list: 'skill_list',
-  };
-
-  const action = actionMap[toolCall.name];
-  if (!action) {
-    return JSON.stringify({ error: `Unknown tool: ${toolCall.name}` });
-  }
-
-  const result = await client.call({ action, ...toolCall.args });
-  return JSON.stringify(result);
-}
-
-const MAX_TOOL_LOOPS = 10;
-
 export async function run(config: AgentConfig): Promise<void> {
+  const userMessage = config.userMessage ?? '';
+  if (!userMessage.trim()) return;
+
   const client = new IPCClient({ socketPath: config.ipcSocket });
   await client.connect();
 
@@ -120,68 +142,57 @@ export async function run(config: AgentConfig): Promise<void> {
   const skills = loadSkills(config.skills);
   const systemPrompt = buildSystemPrompt(context, skills);
 
-  // Read the user message from stdin
-  const userMessage = await readStdin();
-  if (!userMessage.trim()) {
-    client.disconnect();
-    return;
-  }
+  // Build tools: local (execute in sandbox) + IPC (route to host)
+  const localTools = createLocalTools(config.workspace);
+  const ipcTools = createIPCTools(client);
+  const allTools = [...localTools, ...ipcTools];
 
-  const messages: { role: string; content: string }[] = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userMessage },
-  ];
+  // Convert conversation history to pi-ai messages
+  const historyMessages = config.history ? historyToPiMessages(config.history) : [];
 
-  let loops = 0;
+  // Create agent with IPC-proxied LLM calls, pre-populated with history
+  const agent = new Agent({
+    initialState: {
+      systemPrompt,
+      model: DEFAULT_MODEL,
+      tools: allTools,
+      messages: historyMessages,
+    },
+    streamFn: createIPCStreamFn(client),
+  });
 
-  while (loops < MAX_TOOL_LOOPS) {
-    loops++;
-
-    const response = await client.call({
-      action: 'llm_call',
-      messages,
-    }) as { ok: boolean; chunks?: ChatChunk[]; error?: string };
-
-    if (!response.ok) {
-      console.error(`LLM error: ${response.error}`);
-      break;
+  // Subscribe to events — stream text to stdout
+  agent.subscribe((event) => {
+    if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
+      process.stdout.write(event.assistantMessageEvent.delta);
     }
+  });
 
-    const chunks = response.chunks ?? [];
-    let finalText = '';
-    const toolCalls: { id: string; name: string; args: Record<string, unknown> }[] = [];
-
-    for (const chunk of chunks) {
-      if (chunk.type === 'text' && chunk.content) {
-        finalText += chunk.content;
-      } else if (chunk.type === 'tool_use' && chunk.toolCall) {
-        toolCalls.push(chunk.toolCall);
-      }
-    }
-
-    if (toolCalls.length === 0) {
-      // No tool calls — output final response and exit
-      process.stdout.write(finalText);
-      break;
-    }
-
-    // Handle tool calls
-    messages.push({ role: 'assistant', content: finalText });
-
-    for (const tc of toolCalls) {
-      const result = await handleToolCall(client, tc);
-      messages.push({
-        role: 'user',
-        content: `Tool result for ${tc.name} (id: ${tc.id}):\n${result}`,
-      });
-    }
-  }
-
-  if (loops >= MAX_TOOL_LOOPS) {
-    console.error('Max tool call loops reached');
-  }
+  // Send the user message and wait for the agent to finish
+  await agent.prompt(userMessage);
+  await agent.waitForIdle();
 
   client.disconnect();
+}
+
+/**
+ * Parse stdin data. Supports two formats:
+ * 1. JSON: {"history": [{role, content}, ...], "message": "current message"}
+ * 2. Plain text (backward compat): treated as the current message with no history
+ */
+function parseStdinPayload(data: string): { message: string; history: ConversationTurn[] } {
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed && typeof parsed === 'object' && typeof parsed.message === 'string') {
+      return {
+        message: parsed.message,
+        history: Array.isArray(parsed.history) ? parsed.history : [],
+      };
+    }
+  } catch {
+    // Not JSON — fall through to plain text
+  }
+  return { message: data, history: [] };
 }
 
 // Run if this is the main module
@@ -189,7 +200,12 @@ const isMain = process.argv[1]?.endsWith('agent-runner.js') ||
                process.argv[1]?.endsWith('agent-runner.ts');
 if (isMain) {
   const config = parseArgs();
-  run(config).catch((err) => {
+  readStdin().then((data) => {
+    const { message, history } = parseStdinPayload(data);
+    config.userMessage = message;
+    config.history = history;
+    return run(config);
+  }).catch((err) => {
     console.error('Agent runner error:', err);
     process.exit(1);
   });
