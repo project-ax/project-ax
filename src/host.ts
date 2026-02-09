@@ -1,34 +1,12 @@
-import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { envPath as getEnvPath, configPath as getConfigPath, sureclawHome, dataDir, dataFile } from './paths.js';
+import { configPath as getConfigPath, sureclawHome, dataDir, dataFile } from './paths.js';
 import { loadConfig } from './config.js';
+import { loadDotEnv } from './dotenv.js';
 
-// ═══════════════════════════════════════════════════════
 // Load .env file (if present) before anything else
-// ═══════════════════════════════════════════════════════
-function loadDotEnv(): void {
-  const envPathResolved = getEnvPath();
-  if (!existsSync(envPathResolved)) return;
-  const lines = readFileSync(envPathResolved, 'utf-8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    let val = trimmed.slice(eqIdx + 1).trim();
-    // Strip surrounding quotes
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    // Don't override existing env vars
-    if (process.env[key] === undefined) {
-      process.env[key] = val;
-    }
-  }
-}
 loadDotEnv();
 import { loadProviders } from './registry.js';
 import { MessageQueue, ConversationStore } from './db.js';
