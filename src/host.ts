@@ -126,8 +126,15 @@ async function main(): Promise<void> {
       const skillsDir = resolve('skills');
 
       // Write the message content to workspace for the agent
+      // Strip canary token from workspace files — the agent can read these with
+      // its tools, and outputting the canary would trigger a false positive.
+      // The canary remains in the stdin payload for LLM-level leak detection.
+      const canary = sessionCanaries.get(queued.session_id) ?? '';
+      const fileContent = canary
+        ? queued.content.replace(`\n<!-- canary:${canary} -->`, '')
+        : queued.content;
       writeFileSync(join(workspace, 'CONTEXT.md'), `# Session: ${queued.session_id}\n`);
-      writeFileSync(join(workspace, 'message.txt'), queued.content);
+      writeFileSync(join(workspace, 'message.txt'), fileContent);
 
       // Load conversation history for this session
       const history = conversations.getHistory(queued.session_id);
