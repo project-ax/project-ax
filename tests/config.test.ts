@@ -21,4 +21,38 @@ describe('Config parser', () => {
     const config = loadConfig(resolve(import.meta.dirname, '../sureclaw.yaml'));
     expect(['paranoid', 'standard', 'power_user']).toContain(config.profile);
   });
+
+  test('accepts config with optional skillScreener', async () => {
+    const { writeFileSync, rmSync } = await import('node:fs');
+    const tmpPath = resolve(import.meta.dirname, '../sureclaw-test-screener.yaml');
+    writeFileSync(tmpPath, `
+profile: standard
+providers:
+  llm: anthropic
+  memory: file
+  scanner: basic
+  channels: [cli]
+  web: none
+  browser: none
+  credentials: env
+  skills: readonly
+  audit: file
+  sandbox: subprocess
+  scheduler: none
+  skillScreener: static
+sandbox:
+  timeout_sec: 120
+  memory_mb: 512
+scheduler:
+  active_hours: { start: "07:00", end: "23:00", timezone: "UTC" }
+  max_token_budget: 4096
+  heartbeat_interval_min: 30
+`);
+    try {
+      const config = loadConfig(tmpPath);
+      expect(config.providers.skillScreener).toBe('static');
+    } finally {
+      rmSync(tmpPath);
+    }
+  });
 });

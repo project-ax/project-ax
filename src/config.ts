@@ -19,6 +19,7 @@ const ConfigSchema = z.strictObject({
     audit: z.string(),
     sandbox: z.string(),
     scheduler: z.string(),
+    skillScreener: z.string().optional(),
   }),
   sandbox: z.strictObject({
     timeout_sec: z.number().int().min(1).max(3600),

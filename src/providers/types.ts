@@ -308,6 +308,15 @@ export interface SchedulerProvider {
   listPendingHints?(): ProactiveHint[];
 }
 
+export interface ScreeningVerdict {
+  allowed: boolean;
+  reasons: string[];
+}
+
+export interface SkillScreenerProvider {
+  screen(content: string, declaredPermissions?: string[]): Promise<ScreeningVerdict>;
+}
+
 // ═══════════════════════════════════════════════════════
 // Config + Registry
 // ═══════════════════════════════════════════════════════
@@ -326,6 +335,7 @@ export interface Config {
     audit: string;
     sandbox: string;
     scheduler: string;
+    skillScreener?: string;
   };
   sandbox: {
     timeout_sec: number;
@@ -356,4 +366,5 @@ export interface ProviderRegistry {
   audit: AuditProvider;
   sandbox: SandboxProvider;
   scheduler: SchedulerProvider;
+  skillScreener?: SkillScreenerProvider;
 }

@@ -18,6 +18,9 @@ export async function loadProviders(config: Config): Promise<ProviderRegistry> {
     audit:       await loadProvider('audit', config.providers.audit, config),
     sandbox:     await loadProvider('sandbox', config.providers.sandbox, config),
     scheduler:   await loadProvider('scheduler', config.providers.scheduler, config),
+    skillScreener: config.providers.skillScreener
+      ? await loadProvider('screener', config.providers.skillScreener, config)
+      : undefined,
   };
 }
 
