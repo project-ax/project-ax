@@ -29,6 +29,7 @@
     "@mariozechner/pi-ai": "^0.52.9",
     "@mariozechner/pi-coding-agent": "^0.52.9",
     "@sinclair/typebox": "^0.34.48",
+    "@tavily/core": "^0.7.1",
     "better-sqlite3": "^12.6.2",
     "isomorphic-git": "^1.36.3",
     "yaml": "^2.8.2",

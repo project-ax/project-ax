@@ -65,10 +65,12 @@ export async function create(_config: Config): Promise<BrowserProvider> {
   try {
     pw = await import('playwright');
   } catch {
-    throw new Error(
-      'Browser provider requires playwright.\n' +
-      'Install with: npx playwright install chromium',
+    console.error(
+      '[browser] Browser automation disabled — playwright is not installed.\n' +
+      '  Install with: npx playwright install chromium',
     );
+    const disabled = (await import('./none.js')).create(_config);
+    return disabled;
   }
 
   let browser: any = null;

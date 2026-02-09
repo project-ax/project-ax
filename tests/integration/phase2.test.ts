@@ -40,7 +40,7 @@ function powerUserConfig(): Config {
     profile: 'yolo',
     providers: {
       llm: 'mock', memory: 'file', scanner: 'promptfoo',
-      channels: ['cli'], web: 'brave', browser: 'container',
+      channels: ['cli'], web: 'tavily', browser: 'container',
       credentials: 'keychain', skills: 'git', audit: 'sqlite',
       sandbox: 'docker', scheduler: 'full',
     },
@@ -172,7 +172,6 @@ describe('Phase 2 Provider Map', () => {
     expect(PROVIDER_MAP.memory).toHaveProperty('memu');
     expect(PROVIDER_MAP.scanner).toHaveProperty('promptfoo');
     expect(PROVIDER_MAP.channel).toHaveProperty('slack');
-    expect(PROVIDER_MAP.web).toHaveProperty('brave');
     expect(PROVIDER_MAP.web).toHaveProperty('tavily');
     expect(PROVIDER_MAP.browser).toHaveProperty('container');
     expect(PROVIDER_MAP.credentials).toHaveProperty('keychain');

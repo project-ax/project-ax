@@ -152,7 +152,7 @@ export async function create(_config: Config, opts?: WebFetchOptions): Promise<W
     },
 
     async search() {
-      throw new Error('Web search not implemented — use the brave or tavily provider');
+      throw new Error('Web search not implemented — use the tavily provider');
     },
   };
 }

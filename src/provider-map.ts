@@ -36,7 +36,6 @@ export const PROVIDER_MAP: Readonly<Record<string, Readonly<Record<string, strin
   web: {
     none:   './providers/web/none.js',
     fetch:  './providers/web/fetch.js',
-    brave:  './providers/web/brave.js',
     tavily: './providers/web/tavily.js',
   },
   browser: {

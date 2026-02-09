@@ -403,8 +403,8 @@ export const PROVIDER_CHOICES = {
   channels: ['cli', 'slack', 'whatsapp', 'telegram', 'discord'],
 } as const;
 
-export const ASCII_CRAB = `
-   🦀  Welcome to AX!
+export const ASCII_WELCOME = `
+   Welcome to Project AX!
 
    The security-first personal AI agent.
    Let's get you set up.
@@ -974,7 +974,7 @@ import {
   PROFILE_NAMES,
   PROFILE_DESCRIPTIONS,
   PROVIDER_CHOICES,
-  ASCII_CRAB,
+  ASCII_WELCOME,
   RECONFIGURE_HEADER,
 } from './prompts.js';
 import { runOnboarding, loadExistingConfig } from './wizard.js';
@@ -1020,7 +1020,7 @@ export async function runConfigure(outputDir: string): Promise<void> {
   const isReconfigure = existing !== null;
   const defaults = buildInquirerDefaults(existing);
 
-  console.log(isReconfigure ? RECONFIGURE_HEADER : ASCII_CRAB);
+  console.log(isReconfigure ? RECONFIGURE_HEADER : ASCII_WELCOME);
 
   // 1. Profile selection
   const profile = await select({

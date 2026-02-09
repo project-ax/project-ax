@@ -39,9 +39,13 @@ describe('creds-encrypted', () => {
     }
   });
 
-  test('throws without passphrase env var', async () => {
+  test('falls back to env provider without passphrase', async () => {
     delete process.env.AX_CREDS_PASSPHRASE;
-    await expect(create(config)).rejects.toThrow('AX_CREDS_PASSPHRASE');
+    process.env.TEST_CRED = 'from-env';
+    const fallback = await create(config);
+    // Should return a working env-based provider, not throw
+    expect(await fallback.get('TEST_CRED')).toBe('from-env');
+    delete process.env.TEST_CRED;
   });
 
   test('set and get a credential', async () => {

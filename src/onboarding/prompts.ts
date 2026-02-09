@@ -79,7 +79,7 @@ export const PROFILE_DISPLAY_NAMES: Record<ProfileName, string> = {
 export const PROFILE_DESCRIPTIONS: Record<ProfileName, string> = {
   paranoid: 'Maximum security, minimal features — no web, no browser, read-only skills',
   balanced: 'Balanced security and features — web fetch, git skills, SQLite storage (recommended)',
-  yolo: 'Maximum features — browser automation, encrypted credentials, extended timeouts [EXTREMELY DANGEROUS!!!]',
+  yolo: 'Maximum features — browser automation, encrypted credentials, extended timeouts (be careful!)',
 };
 
 /** Available provider choices per category, derived from the provider map. */
@@ -97,8 +97,8 @@ export const PROVIDER_CHOICES = {
   channels: ['cli', 'slack', 'whatsapp', 'telegram', 'discord'],
 } as const;
 
-export const ASCII_CRAB = `
-   🦀  Welcome to AX!
+export const ASCII_WELCOME = `
+   Welcome to Project AX!
 
    The security-first personal AI agent.
    Let's get you set up.

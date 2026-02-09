@@ -56,10 +56,12 @@ export async function create(_config: Config): Promise<CredentialProvider> {
   const storePath = process.env.AX_CREDS_STORE_PATH || dataFile('credentials.enc');
   const passphrase = process.env.AX_CREDS_PASSPHRASE;
   if (!passphrase) {
-    throw new Error(
-      'AX_CREDS_PASSPHRASE environment variable is required for encrypted credentials.\n' +
-      'Set it with: export AX_CREDS_PASSPHRASE=your-secret-passphrase',
+    console.error(
+      '[credentials] Encrypted credential store disabled — AX_CREDS_PASSPHRASE not set.\n' +
+      '  Falling back to environment variables for credentials.\n' +
+      '  Set it with: export AX_CREDS_PASSPHRASE=your-secret-passphrase',
     );
+    return (await import('./env.js')).create(_config);
   }
 
   // Cache the derived key in memory for the session

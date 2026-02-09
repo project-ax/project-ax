@@ -21,6 +21,9 @@ export interface OnboardingAnswers {
   channels: string[];
   skipSkills?: boolean;
   installSkills?: string[];
+  credsPassphrase?: string;
+  webProvider?: string;
+  webSearchApiKey?: string;
 }
 
 export interface OnboardingOptions {
@@ -45,7 +48,7 @@ export async function runOnboarding(opts: OnboardingOptions): Promise<void> {
     memory: defaults.memory,
     scanner: defaults.scanner,
     channels: answers.channels,
-    web: defaults.web,
+    web: answers.webProvider || defaults.web,
     browser: defaults.browser,
     credentials: defaults.credentials,
     skills: defaults.skills,
@@ -81,8 +84,14 @@ export async function runOnboarding(opts: OnboardingOptions): Promise<void> {
   const yamlContent = yamlStringify(config, { indent: 2, lineWidth: 120 });
   writeFileSync(join(outputDir, 'ax.yaml'), yamlContent, 'utf-8');
 
-  // Write .env with API key
-  const envContent = `# AX API Keys\nANTHROPIC_API_KEY=${answers.apiKey}\n`;
+  // Write .env with API key and optional credentials passphrase
+  let envContent = `# AX API Keys\nANTHROPIC_API_KEY=${answers.apiKey.trim()}\n`;
+  if (answers.credsPassphrase) {
+    envContent += `\n# Encrypted credential store passphrase\nAX_CREDS_PASSPHRASE=${answers.credsPassphrase.trim()}\n`;
+  }
+  if (answers.webSearchApiKey) {
+    envContent += `\n# Web search API key\nTAVILY_API_KEY=${answers.webSearchApiKey.trim()}\n`;
+  }
   writeFileSync(join(outputDir, '.env'), envContent, 'utf-8');
 
   // Write ClawHub skill install queue if requested

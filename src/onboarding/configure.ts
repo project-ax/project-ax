@@ -10,8 +10,9 @@ import {
   PROFILE_NAMES,
   PROFILE_DISPLAY_NAMES,
   PROFILE_DESCRIPTIONS,
+  PROFILE_DEFAULTS,
   PROVIDER_CHOICES,
-  ASCII_CRAB,
+  ASCII_WELCOME,
   RECONFIGURE_HEADER,
 } from './prompts.js';
 import type { ProfileName } from './prompts.js';
@@ -58,7 +59,7 @@ export async function runConfigure(outputDir: string): Promise<void> {
   const isReconfigure = existing !== null;
   const defaults = buildInquirerDefaults(existing);
 
-  console.log(isReconfigure ? RECONFIGURE_HEADER : ASCII_CRAB);
+  console.log(isReconfigure ? RECONFIGURE_HEADER : ASCII_WELCOME);
 
   // 1. Profile selection
   const profile = await select({
@@ -85,6 +86,57 @@ export async function runConfigure(outputDir: string): Promise<void> {
 
   if (!apiKey) {
     console.log('\nWarning: No API key provided. You can set it later in ~/.ax/.env\n');
+  }
+
+  // 2b. Credentials passphrase (only for profiles that use encrypted credentials)
+  let credsPassphrase: string | undefined;
+  if (PROFILE_DEFAULTS[profile].credentials === 'encrypted' && !process.env.AX_CREDS_PASSPHRASE) {
+    let matched = false;
+    while (!matched) {
+      const pass1 = await password({
+        message: 'Credentials passphrase',
+        mask: '*',
+      });
+      if (!pass1.trim()) {
+        console.log('  Passphrase cannot be empty. Try again.\n');
+        continue;
+      }
+      const pass2 = await password({
+        message: 'Confirm passphrase',
+        mask: '*',
+      });
+      if (pass1 !== pass2) {
+        console.log('  Passphrases do not match. Try again.\n');
+        continue;
+      }
+      credsPassphrase = pass1;
+      matched = true;
+    }
+  }
+
+  // 2c. Web search provider (non-paranoid profiles)
+  let webProvider: string | undefined;
+  let webSearchApiKey: string | undefined;
+  if (profile !== 'paranoid') {
+    webProvider = await select({
+      message: 'Web search provider',
+      choices: [
+        { name: 'Tavily Search', value: 'tavily' },
+        { name: 'None', value: 'fetch' },
+      ],
+      default: 'tavily',
+    });
+
+    if (webProvider === 'tavily') {
+      webSearchApiKey = await password({
+        message: 'Tavily API key',
+        mask: '*',
+      });
+      if (!webSearchApiKey?.trim()) {
+        webSearchApiKey = undefined;
+        console.log('\n  Warning: No Tavily API key provided. Set TAVILY_API_KEY in ~/.ax/.env later.\n');
+      }
+    }
   }
 
   // 3. Channel selection
@@ -123,7 +175,7 @@ export async function runConfigure(outputDir: string): Promise<void> {
   // 5. Generate config
   await runOnboarding({
     outputDir,
-    answers: { profile, apiKey, channels, skipSkills, installSkills },
+    answers: { profile, apiKey, channels, skipSkills, installSkills, credsPassphrase, webProvider, webSearchApiKey },
   });
 
   console.log(`\n  Config written to ${outputDir}/ax.yaml`);

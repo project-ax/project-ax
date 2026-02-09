@@ -14,25 +14,18 @@ describe('browser-container', () => {
     }
   });
 
-  test('throws when playwright is not available', async () => {
-    // playwright is not installed in test env — dynamic import will fail
-    // We can only test this if playwright isn't installed
-    // Since we can't control module resolution, we test the error message pattern
-    try {
-      const { create } = await import('../../src/providers/browser/container.js');
-      const provider = await create(config);
-      // If playwright IS installed, verify the provider works
-      expect(provider).toBeDefined();
-      expect(typeof provider.launch).toBe('function');
-      expect(typeof provider.navigate).toBe('function');
-      expect(typeof provider.snapshot).toBe('function');
-      expect(typeof provider.click).toBe('function');
-      expect(typeof provider.type).toBe('function');
-      expect(typeof provider.screenshot).toBe('function');
-      expect(typeof provider.close).toBe('function');
-    } catch (err: unknown) {
-      expect((err as Error).message).toContain('playwright');
-    }
+  test('returns a valid provider even when playwright is not available', async () => {
+    const { create } = await import('../../src/providers/browser/container.js');
+    const provider = await create(config);
+    // Whether or not playwright is installed, create() should succeed
+    expect(provider).toBeDefined();
+    expect(typeof provider.launch).toBe('function');
+    expect(typeof provider.navigate).toBe('function');
+    expect(typeof provider.snapshot).toBe('function');
+    expect(typeof provider.click).toBe('function');
+    expect(typeof provider.type).toBe('function');
+    expect(typeof provider.screenshot).toBe('function');
+    expect(typeof provider.close).toBe('function');
   });
 
   test('domain allowlist parsing from env var', async () => {
@@ -54,7 +47,7 @@ describe('browser-container', () => {
       await provider.close(session.id);
     } catch (err: unknown) {
       // playwright not installed — skip this test
-      if ((err as Error).message.includes('playwright')) {
+      if ((err as Error).message.includes('Provider disabled')) {
         expect(true).toBe(true); // pass
       } else {
         throw err;
@@ -80,7 +73,7 @@ describe('browser-container', () => {
 
       await provider.close(session.id);
     } catch (err: unknown) {
-      if ((err as Error).message.includes('playwright')) {
+      if ((err as Error).message.includes('Provider disabled')) {
         expect(true).toBe(true);
       } else {
         throw err;
@@ -95,7 +88,7 @@ describe('browser-container', () => {
       // Should not throw
       await provider.close('non-existent-session-id');
     } catch (err: unknown) {
-      if ((err as Error).message.includes('playwright')) {
+      if ((err as Error).message.includes('Provider disabled')) {
         expect(true).toBe(true);
       } else {
         throw err;
@@ -120,7 +113,7 @@ describe('browser-container', () => {
         provider.click('fake-session', 0),
       ).rejects.toThrow('session not found');
     } catch (err: unknown) {
-      if ((err as Error).message.includes('playwright')) {
+      if ((err as Error).message.includes('Provider disabled')) {
         expect(true).toBe(true);
       } else {
         throw err;
@@ -146,7 +139,7 @@ describe('browser-container', () => {
 
       await provider.close(session.id);
     } catch (err: unknown) {
-      if ((err as Error).message.includes('playwright')) {
+      if ((err as Error).message.includes('Provider disabled')) {
         expect(true).toBe(true);
       } else {
         throw err;
@@ -176,7 +169,7 @@ describe('browser-container', () => {
 
       await provider.close(session.id);
     } catch (err: unknown) {
-      if ((err as Error).message.includes('playwright')) {
+      if ((err as Error).message.includes('Provider disabled')) {
         expect(true).toBe(true);
       } else {
         throw err;
