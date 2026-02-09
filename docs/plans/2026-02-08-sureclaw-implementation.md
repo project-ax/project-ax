@@ -39,16 +39,16 @@
 - [x] Task 1.12: Phase 1 Integration Tests + Profile Config
 
 ### Phase 2: Power User
-- [ ] Task 2.1: Pi Coding Agent Upgrade (Sessions + Compaction + Extensions)
-- [ ] Task 2.2: Slack Channel
-- [ ] Task 2.3: Web Search API
-- [ ] Task 2.4: Sandboxed Playwright Browser
-- [ ] Task 2.5: memU Memory Integration
-- [ ] Task 2.6: Promptfoo ML Scanner
-- [ ] Task 2.7: OS Keychain Credentials
-- [ ] Task 2.8: Docker + gVisor Sandbox
-- [ ] Task 2.9: Multi-Agent Delegation
-- [ ] Task 2.10: Power User Profile + Integration Tests
+- [x] Task 2.1: Pi Coding Agent Upgrade (Sessions + Compaction + Extensions)
+- [x] Task 2.2: Slack Channel
+- [x] Task 2.3: Web Search API
+- [x] Task 2.4: Sandboxed Playwright Browser
+- [x] Task 2.5: memU Memory Integration
+- [x] Task 2.6: Promptfoo ML Scanner
+- [x] Task 2.7: OS Keychain Credentials
+- [x] Task 2.8: Docker + gVisor Sandbox
+- [x] Task 2.9: Multi-Agent Delegation
+- [x] Task 2.10: Power User Profile + Integration Tests
 
 ### Notes
 - All packages updated to latest versions (zod 4.x, vitest 4.x, etc.)
