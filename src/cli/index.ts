@@ -1,4 +1,12 @@
 // src/cli/index.ts
+import { existsSync } from 'node:fs';
+import { configPath as getConfigPath, axHome } from '../paths.js';
+import { loadDotEnv } from '../dotenv.js';
+
+// ═══════════════════════════════════════════════════════
+// Command Router (also used by tests)
+// ═══════════════════════════════════════════════════════
+
 export interface CommandHandlers {
   serve?: () => Promise<void>;
   chat?: () => Promise<void>;
@@ -63,4 +71,101 @@ Examples:
   ax send "what is the capital of France"
   echo "summarize this" | ax send --stdin
   `);
+}
+
+// ═══════════════════════════════════════════════════════
+// Main Entry Point
+// ═══════════════════════════════════════════════════════
+
+export async function main(): Promise<void> {
+  loadDotEnv();
+
+  const rawArgs = process.argv.slice(2);
+
+  // Extract command: first arg that matches a known command.
+  // Flags like --config before the command should not be treated as commands.
+  const knownCommands = new Set(['serve', 'chat', 'send', 'configure', 'help']);
+  let command: string;
+  let restArgs: string[];
+
+  if (rawArgs.length > 0 && knownCommands.has(rawArgs[0])) {
+    command = rawArgs[0];
+    restArgs = rawArgs.slice(1);
+  } else {
+    command = 'serve';
+    restArgs = rawArgs;
+  }
+
+  // routeCommand expects the command as args[0]
+  await routeCommand([command, ...restArgs], {
+    serve: async () => {
+      await runServe(restArgs);
+    },
+    chat: async () => {
+      const { runChat } = await import('./chat.js');
+      await runChat(restArgs);
+    },
+    send: async (sendArgs) => {
+      const { runSend } = await import('./send.js');
+      await runSend(sendArgs);
+    },
+    configure: async () => {
+      const { runConfigure } = await import('../onboarding/configure.js');
+      await runConfigure(axHome());
+    },
+    help: async () => {
+      showHelp();
+    },
+  });
+}
+
+async function runServe(args: string[]): Promise<void> {
+  let configPath: string | undefined;
+  let daemon = false;
+  let socketPath: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--config' || args[i] === '-c') {
+      configPath = args[++i];
+    } else if (args[i] === '--daemon') {
+      daemon = true;
+    } else if (args[i] === '--socket') {
+      socketPath = args[++i];
+    }
+  }
+
+  // First-run detection
+  const resolvedConfigPath = configPath ?? getConfigPath();
+  if (!existsSync(resolvedConfigPath)) {
+    console.log('[server] No ax.yaml found — running first-time setup...\n');
+    const { runConfigure } = await import('../onboarding/configure.js');
+    await runConfigure(axHome());
+    loadDotEnv();
+    console.log('[server] Setup complete! Starting AX...\n');
+  }
+
+  // Load config and create server
+  const { loadConfig } = await import('../config.js');
+  const { createServer } = await import('../server.js');
+
+  console.log('[server] Loading config...');
+  const config = loadConfig(configPath);
+  console.log(`[server] Profile: ${config.profile}`);
+
+  const server = await createServer(config, { socketPath, daemon });
+  await server.start();
+
+  if (daemon) {
+    console.log('[server] Running in daemon mode');
+    process.disconnect?.();
+  }
+}
+
+// Run if called directly
+const scriptUrl = `file://${process.argv[1]}`;
+if (import.meta.url === scriptUrl) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
 }
