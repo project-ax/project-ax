@@ -362,4 +362,90 @@ describe('Onboarding Wizard', () => {
     const config = parseYaml(readFileSync(join(dir, 'ax.yaml'), 'utf-8'));
     expect(config.providers.channels).toEqual([]);
   });
+
+  // ── OAuth tokens ──
+
+  test('writes OAuth tokens to .env when oauthToken is set', async () => {
+    const dir = setup();
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        apiKey: '',
+        oauthToken: 'sk-ant-oat01-test-token',
+        oauthRefreshToken: 'sk-ant-ort01-test-refresh',
+        oauthExpiresAt: 1739184000,
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const envContent = readFileSync(join(dir, '.env'), 'utf-8');
+    expect(envContent).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-test-token');
+    expect(envContent).toContain('AX_OAUTH_REFRESH_TOKEN=sk-ant-ort01-test-refresh');
+    expect(envContent).toContain('AX_OAUTH_EXPIRES_AT=1739184000');
+    // Should NOT contain ANTHROPIC_API_KEY when OAuth is used
+    expect(envContent).not.toContain('ANTHROPIC_API_KEY');
+  });
+
+  test('writes ANTHROPIC_API_KEY when no OAuth token', async () => {
+    const dir = setup();
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        apiKey: 'sk-ant-api03-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const envContent = readFileSync(join(dir, '.env'), 'utf-8');
+    expect(envContent).toContain('ANTHROPIC_API_KEY=sk-ant-api03-test');
+    expect(envContent).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
+  });
+
+  test('loadExistingConfig reads OAuth tokens from .env', async () => {
+    const { loadExistingConfig } = await import('../../src/onboarding/wizard.js');
+    const dir = setup();
+
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        apiKey: '',
+        oauthToken: 'sk-ant-oat01-saved',
+        oauthRefreshToken: 'sk-ant-ort01-saved',
+        oauthExpiresAt: 1739200000,
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const existing = loadExistingConfig(dir);
+    expect(existing).not.toBeNull();
+    expect(existing!.authMethod).toBe('oauth');
+    expect(existing!.oauthToken).toBe('sk-ant-oat01-saved');
+    expect(existing!.oauthRefreshToken).toBe('sk-ant-ort01-saved');
+    expect(existing!.oauthExpiresAt).toBe(1739200000);
+  });
+
+  test('loadExistingConfig detects api-key auth method when no OAuth token', async () => {
+    const { loadExistingConfig } = await import('../../src/onboarding/wizard.js');
+    const dir = setup();
+
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        apiKey: 'sk-ant-api03-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const existing = loadExistingConfig(dir);
+    expect(existing!.authMethod).toBe('api-key');
+    expect(existing!.oauthToken).toBeUndefined();
+  });
 });

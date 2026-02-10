@@ -102,6 +102,21 @@ export const PROFILE_DESCRIPTIONS: Record<ProfileName, string> = {
   yolo: 'Maximum features — browser automation, encrypted credentials, extended timeouts (be careful!)',
 };
 
+// ── Auth Method ──
+
+export const AUTH_METHODS = ['api-key', 'oauth'] as const;
+export type AuthMethod = (typeof AUTH_METHODS)[number];
+
+export const AUTH_METHOD_DISPLAY_NAMES: Record<AuthMethod, string> = {
+  'api-key': 'API Key',
+  'oauth': 'Claude Max (OAuth)',
+};
+
+export const AUTH_METHOD_DESCRIPTIONS: Record<AuthMethod, string> = {
+  'api-key': 'Authenticate with an Anthropic API key',
+  'oauth': 'Authenticate with your Claude Max subscription via browser',
+};
+
 /** Available provider choices per category, derived from the provider map. */
 export const PROVIDER_CHOICES = {
   llm: ['anthropic'],

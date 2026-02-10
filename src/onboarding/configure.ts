@@ -14,19 +14,24 @@ import {
   AGENT_TYPES,
   AGENT_DISPLAY_NAMES,
   AGENT_DESCRIPTIONS,
+  AUTH_METHODS,
+  AUTH_METHOD_DISPLAY_NAMES,
+  AUTH_METHOD_DESCRIPTIONS,
   PROVIDER_CHOICES,
   ASCII_WELCOME,
   RECONFIGURE_HEADER,
 } from './prompts.js';
-import type { ProfileName, AgentType } from './prompts.js';
+import type { ProfileName, AgentType, AuthMethod } from './prompts.js';
 import { runOnboarding, loadExistingConfig } from './wizard.js';
 import type { OnboardingAnswers } from './wizard.js';
 
 export interface InquirerDefaults {
   profile?: ProfileName;
   agent?: AgentType;
+  authMethod?: AuthMethod;
   apiKey?: string;
   apiKeyMasked?: string;
+  oauthToken?: string;
   channels?: string[];
   credsPassphrase?: string;
   webSearchApiKey?: string;
@@ -44,14 +49,16 @@ function maskKey(key: string | undefined): string | undefined {
 
 export function buildInquirerDefaults(existing: OnboardingAnswers | null): InquirerDefaults {
   if (!existing) {
-    return { profile: undefined, agent: undefined, apiKey: undefined, apiKeyMasked: undefined, channels: undefined };
+    return { profile: undefined, agent: undefined, authMethod: undefined, apiKey: undefined, apiKeyMasked: undefined, channels: undefined };
   }
 
   return {
     profile: existing.profile,
     agent: existing.agent,
+    authMethod: existing.authMethod,
     apiKey: existing.apiKey,
     apiKeyMasked: maskKey(existing.apiKey),
+    oauthToken: existing.oauthToken,
     channels: existing.channels,
     credsPassphrase: existing.credsPassphrase,
     webSearchApiKey: existing.webSearchApiKey,
@@ -91,21 +98,45 @@ export async function runConfigure(outputDir: string): Promise<void> {
     default: defaults.agent ?? PROFILE_DEFAULTS[profile].agent,
   }) as AgentType;
 
-  // 2. API key
-  const apiKeyMessage = defaults.apiKeyMasked
-    ? `Anthropic API key (current: ${defaults.apiKeyMasked})`
-    : 'Anthropic API key';
+  // 2. Auth method selection
+  const authMethod = await select({
+    message: 'Authentication method',
+    choices: AUTH_METHODS.map((method) => ({
+      name: `${AUTH_METHOD_DISPLAY_NAMES[method]}  —  ${AUTH_METHOD_DESCRIPTIONS[method]}`,
+      value: method,
+    })),
+    default: defaults.authMethod ?? 'api-key',
+  }) as AuthMethod;
 
-  const apiKeyInput = await password({
-    message: apiKeyMessage,
-    mask: '*',
-  });
+  let apiKey = '';
+  let oauthToken: string | undefined;
+  let oauthRefreshToken: string | undefined;
+  let oauthExpiresAt: number | undefined;
 
-  // If user pressed Enter without typing, keep existing key
-  const apiKey = apiKeyInput.trim() || defaults.apiKey || '';
+  if (authMethod === 'oauth') {
+    // OAuth flow — open browser for Claude Max authorization
+    const { runOAuthFlow } = await import('../oauth.js');
+    const tokens = await runOAuthFlow();
+    oauthToken = tokens.access_token;
+    oauthRefreshToken = tokens.refresh_token;
+    oauthExpiresAt = tokens.expires_at;
+  } else {
+    // API key prompt (unchanged)
+    const apiKeyMessage = defaults.apiKeyMasked
+      ? `Anthropic API key (current: ${defaults.apiKeyMasked})`
+      : 'Anthropic API key';
 
-  if (!apiKey) {
-    console.log('\nWarning: No API key provided. You can set it later in ~/.ax/.env\n');
+    const apiKeyInput = await password({
+      message: apiKeyMessage,
+      mask: '*',
+    });
+
+    // If user pressed Enter without typing, keep existing key
+    apiKey = apiKeyInput.trim() || defaults.apiKey || '';
+
+    if (!apiKey) {
+      console.log('\nWarning: No API key provided. You can set it later in ~/.ax/.env\n');
+    }
   }
 
   // 2b. Credentials passphrase (only for profiles that use encrypted credentials)
@@ -208,11 +239,16 @@ export async function runConfigure(outputDir: string): Promise<void> {
   // 5. Generate config
   await runOnboarding({
     outputDir,
-    answers: { profile, agent, apiKey, channels, skipSkills, installSkills, credsPassphrase, webProvider, webSearchApiKey },
+    answers: {
+      profile, agent, authMethod, apiKey,
+      oauthToken, oauthRefreshToken, oauthExpiresAt,
+      channels, skipSkills, installSkills,
+      credsPassphrase, webProvider, webSearchApiKey,
+    },
   });
 
   console.log(`\n  Config written to ${outputDir}/ax.yaml`);
-  console.log(`  API key written to ${outputDir}/.env`);
+  console.log(`  ${authMethod === 'oauth' ? 'OAuth tokens' : 'API key'} written to ${outputDir}/.env`);
 
   if (!skipSkills && installSkills.length > 0) {
     console.log(`  Skill install queue: ${installSkills.join(', ')}`);

@@ -18,7 +18,11 @@ import type { ProfileName, AgentType } from './prompts.js';
 export interface OnboardingAnswers {
   profile: ProfileName;
   agent?: AgentType;
+  authMethod?: 'api-key' | 'oauth';
   apiKey: string;
+  oauthToken?: string;
+  oauthRefreshToken?: string;
+  oauthExpiresAt?: number;
   channels: string[];
   skipSkills?: boolean;
   installSkills?: string[];
@@ -86,8 +90,13 @@ export async function runOnboarding(opts: OnboardingOptions): Promise<void> {
   const yamlContent = yamlStringify(config, { indent: 2, lineWidth: 120 });
   writeFileSync(join(outputDir, 'ax.yaml'), yamlContent, 'utf-8');
 
-  // Write .env with API key and optional credentials passphrase
-  let envContent = `# AX API Keys\nANTHROPIC_API_KEY=${answers.apiKey.trim()}\n`;
+  // Write .env — OAuth tokens or API key (they're separate auth methods)
+  let envContent = '# AX Configuration\n';
+  if (answers.oauthToken) {
+    envContent += `\n# Claude Max OAuth tokens\nCLAUDE_CODE_OAUTH_TOKEN=${answers.oauthToken}\nAX_OAUTH_REFRESH_TOKEN=${answers.oauthRefreshToken || ''}\nAX_OAUTH_EXPIRES_AT=${answers.oauthExpiresAt || ''}\n`;
+  } else {
+    envContent += `ANTHROPIC_API_KEY=${answers.apiKey.trim()}\n`;
+  }
   if (answers.credsPassphrase) {
     envContent += `\n# Encrypted credential store passphrase\nAX_CREDS_PASSPHRASE=${answers.credsPassphrase.trim()}\n`;
   }
@@ -120,6 +129,10 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
     let apiKey = '';
     let credsPassphrase: string | undefined;
     let webSearchApiKey: string | undefined;
+    let oauthToken: string | undefined;
+    let oauthRefreshToken: string | undefined;
+    let oauthExpiresAt: number | undefined;
+    let authMethod: 'api-key' | 'oauth' | undefined;
     const envFilePath = join(dir, '.env');
     if (existsSync(envFilePath)) {
       const envContent = readFileSync(envFilePath, 'utf-8');
@@ -129,12 +142,23 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
       if (passphraseMatch) credsPassphrase = passphraseMatch[1].trim();
       const tavilyMatch = envContent.match(/^TAVILY_API_KEY=(.+)$/m);
       if (tavilyMatch) webSearchApiKey = tavilyMatch[1].trim();
+      const oauthTokenMatch = envContent.match(/^CLAUDE_CODE_OAUTH_TOKEN=(.+)$/m);
+      if (oauthTokenMatch) oauthToken = oauthTokenMatch[1].trim();
+      const oauthRefreshMatch = envContent.match(/^AX_OAUTH_REFRESH_TOKEN=(.+)$/m);
+      if (oauthRefreshMatch) oauthRefreshToken = oauthRefreshMatch[1].trim();
+      const oauthExpiresMatch = envContent.match(/^AX_OAUTH_EXPIRES_AT=(.+)$/m);
+      if (oauthExpiresMatch) oauthExpiresAt = parseInt(oauthExpiresMatch[1].trim(), 10);
+      authMethod = oauthToken ? 'oauth' : 'api-key';
     }
 
     return {
       profile: parsed.profile ?? 'balanced',
       agent: parsed.agent,
+      authMethod,
       apiKey,
+      oauthToken,
+      oauthRefreshToken,
+      oauthExpiresAt,
       channels: (parsed.providers?.channels ?? []).filter((c: string) => c !== 'cli'),
       skipSkills: true,
       credsPassphrase,
