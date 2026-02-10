@@ -1,6 +1,8 @@
 // src/cli/chat.ts
 import { createInterface, type Interface } from 'node:readline';
+import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
+import { axHome } from '../paths.js';
 
 // ═══════════════════════════════════════════════════════
 // Types
@@ -24,7 +26,7 @@ interface Message {
 // ═══════════════════════════════════════════════════════
 
 export function createChatClient(opts: ChatClientOptions = {}) {
-  const socketPath = opts.socketPath ?? '';
+  const socketPath = opts.socketPath ?? join(axHome(), 'ax.sock');
   const stream = opts.noStream !== true;
   const stdin = opts.stdin ?? process.stdin;
   const stdout = opts.stdout ?? process.stdout;

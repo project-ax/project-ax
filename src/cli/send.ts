@@ -1,5 +1,7 @@
 // src/cli/send.ts
+import { join } from 'node:path';
 import type { Writable } from 'node:stream';
+import { axHome } from '../paths.js';
 
 // ═══════════════════════════════════════════════════════
 // Types
@@ -21,7 +23,7 @@ export interface SendClientOptions {
 // ═══════════════════════════════════════════════════════
 
 export function createSendClient(opts: SendClientOptions) {
-  const socketPath = opts.socketPath ?? '';
+  const socketPath = opts.socketPath ?? join(axHome(), 'ax.sock');
   const stream = opts.noStream !== true && !opts.json;
   const stdout = opts.stdout ?? process.stdout;
   const fetchFn = opts.fetch ?? fetch;
