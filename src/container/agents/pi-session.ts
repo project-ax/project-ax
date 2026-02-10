@@ -23,6 +23,7 @@ import {
   createAgentSession,
   codingTools,
   SessionManager,
+  AuthStorage,
 } from '@mariozechner/pi-coding-agent';
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import { Type } from '@sinclair/typebox';
@@ -374,12 +375,20 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   // Create IPC tool definitions for pi-coding-agent
   const ipcToolDefs = createIPCToolDefinitions(client);
 
+  // Create auth storage with a dummy key for the 'ax' IPC provider.
+  // Without this, both AgentSession.prompt() and the Agent loop throw
+  // "No API key found for ax" because the model registry doesn't know
+  // about our IPC provider. The host handles real auth — no keys in sandbox.
+  const authStorage = new AuthStorage(join(config.workspace, 'auth.json'));
+  authStorage.setRuntimeApiKey(IPC_MODEL.provider, 'ax-ipc');
+
   // Create session with in-memory manager (no persistence in sandbox)
   const { session } = await createAgentSession({
     model: IPC_MODEL,
     tools: codingTools,
     customTools: ipcToolDefs,
     cwd: config.workspace,
+    authStorage,
     sessionManager: SessionManager.inMemory(config.workspace),
   });
 

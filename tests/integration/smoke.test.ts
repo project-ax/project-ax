@@ -18,6 +18,7 @@ import { request as httpRequest } from 'node:http';
 const PROJECT_ROOT = resolve(import.meta.dirname, '../..');
 const TEST_CONFIG = resolve(import.meta.dirname, 'ax-test.yaml');
 const SEATBELT_CONFIG = resolve(import.meta.dirname, 'ax-test-seatbelt.yaml');
+const PI_CODING_AGENT_CONFIG = resolve(import.meta.dirname, 'ax-test-pi-coding-agent.yaml');
 const IS_BUN = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined';
 const IS_MACOS = process.platform === 'darwin';
 
@@ -318,6 +319,27 @@ describe('Smoke Test', () => {
 
     const stderr = output.stderr.join('');
     expect(stderr).not.toContain('Canary leak detected');
+  }, 60_000);
+
+  test('pi-coding-agent: starts, accepts a message, and returns a response', async () => {
+    proc = startServer(PI_CODING_AGENT_CONFIG);
+    const output = collectOutput(proc);
+
+    await waitForReady(proc, output);
+
+    // Verify socket file exists
+    expect(existsSync(socketPath)).toBe(true);
+
+    // Send a message via HTTP
+    const res = await sendMessage(socketPath, 'hello');
+
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data.object).toBe('chat.completion');
+    expect(data.choices[0].message.role).toBe('assistant');
+    // Must not be "Agent processing failed"
+    expect(data.choices[0].message.content).not.toContain('Agent processing failed');
+    expect(data.choices[0].message.content.trim().length).toBeGreaterThan(0);
   }, 60_000);
 
   test.skipIf(!IS_MACOS)('seatbelt sandbox: agent runs inside sandbox-exec', async () => {
