@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { LLMProvider, ChatRequest, ChatChunk, Config, ContentBlock } from '../types.js';
+import { debug } from '../../logger.js';
+
+const SRC = 'host:anthropic';
 
 /** Convert a Message.content (string or ContentBlock[]) to Anthropic API format. */
 function toAnthropicContent(
@@ -43,9 +46,19 @@ export async function create(_config: Config): Promise<LLMProvider> {
         .map(m => typeof m.content === 'string' ? m.content : '')
         .join('\n\n');
 
+      const maxTokens = req.maxTokens ?? 4096;
+      debug(SRC, 'chat_start', {
+        model: req.model,
+        maxTokens,
+        toolCount: tools?.length ?? 0,
+        toolNames: tools?.map(t => t.name),
+        messageCount: nonSystemMessages.length,
+        hasSystem: !!systemText,
+      });
+
       const stream = client.messages.stream({
         model: req.model || 'claude-sonnet-4-20250514',
-        max_tokens: req.maxTokens ?? 4096,
+        max_tokens: maxTokens,
         system: systemText || undefined,
         messages: nonSystemMessages.map(m => ({
           role: m.role as 'user' | 'assistant',
@@ -54,16 +67,27 @@ export async function create(_config: Config): Promise<LLMProvider> {
         ...(tools?.length ? { tools } : {}),
       });
 
+      let chunkCount = 0;
+      let toolUseCount = 0;
       for await (const event of stream) {
         if (event.type === 'content_block_delta') {
           const delta = event.delta;
           if ('text' in delta) {
+            chunkCount++;
             yield { type: 'text', content: delta.text };
           }
         } else if (event.type === 'content_block_stop') {
           const finalMsg = await stream.finalMessage();
           const block = finalMsg.content[event.index];
+          debug(SRC, 'content_block_stop', {
+            index: event.index,
+            blockType: block?.type,
+            stopReason: finalMsg.stop_reason,
+            contentBlockCount: finalMsg.content.length,
+          });
           if (block?.type === 'tool_use') {
+            toolUseCount++;
+            debug(SRC, 'tool_use_yield', { toolName: block.name, toolId: block.id });
             yield {
               type: 'tool_use',
               toolCall: {
@@ -77,6 +101,15 @@ export async function create(_config: Config): Promise<LLMProvider> {
       }
 
       const finalMessage = await stream.finalMessage();
+      debug(SRC, 'chat_done', {
+        stopReason: finalMessage.stop_reason,
+        contentBlockCount: finalMessage.content.length,
+        contentBlockTypes: finalMessage.content.map(b => b.type),
+        textChunks: chunkCount,
+        toolUseChunks: toolUseCount,
+        inputTokens: finalMessage.usage.input_tokens,
+        outputTokens: finalMessage.usage.output_tokens,
+      });
       yield {
         type: 'done',
         usage: {

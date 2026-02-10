@@ -33,7 +33,14 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
   const handlers: Record<string, (req: any, ctx: IPCContext) => Promise<any>> = {
 
     llm_call: async (req) => {
-      const chunks = [];
+      debug(SRC, 'llm_call_params', {
+        model: req.model,
+        maxTokens: req.maxTokens,
+        toolCount: req.tools?.length ?? 0,
+        toolNames: req.tools?.map((t: { name: string }) => t.name),
+        messageCount: req.messages?.length ?? 0,
+      });
+      const chunks: unknown[] = [];
       for await (const chunk of providers.llm.chat({
         model: req.model ?? 'claude-sonnet-4-20250514',
         messages: req.messages,
@@ -42,6 +49,14 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       })) {
         chunks.push(chunk);
       }
+      const chunkTypes = chunks.map((c: any) => c.type);
+      const toolUseChunks = chunks.filter((c: any) => c.type === 'tool_use');
+      debug(SRC, 'llm_call_result', {
+        chunkCount: chunks.length,
+        chunkTypes,
+        toolUseCount: toolUseChunks.length,
+        toolNames: toolUseChunks.map((c: any) => c.toolCall?.name),
+      });
       return { chunks };
     },
 

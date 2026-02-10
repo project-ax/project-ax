@@ -326,6 +326,7 @@ export type AgentType = 'pi-agent-core' | 'pi-coding-agent' | 'claude-code';
 
 export interface Config {
   agent?: AgentType;
+  max_tokens?: number;
   profile: ProfileName;
   providers: {
     llm: string;

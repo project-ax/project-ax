@@ -123,13 +123,14 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
           ? [{ role: 'system', content: context.systemPrompt }, ...messages]
           : messages;
 
-        debug(SRC, 'ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0 });
+        const maxTokens = options?.maxTokens ?? model?.maxTokens;
+        debug(SRC, 'ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0, maxTokens });
         const response = await client.call({
           action: 'llm_call',
           model: model?.id,
           messages: allMessages,
           tools,
-          maxTokens: options?.maxTokens,
+          maxTokens,
         }, LLM_CALL_TIMEOUT_MS) as IPCResponse;
 
         if (!response.ok) {

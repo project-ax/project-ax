@@ -317,11 +317,13 @@ export async function createServer(
         proxyCleanup = proxy.stop;
       }
 
+      const maxTokens = config.max_tokens ?? 8192;
       const spawnCommand = [tsxBin, resolve('src/container/agent-runner.ts'),
         '--agent', agentType,
         '--ipc-socket', ipcSocketPath,
         '--workspace', workspace,
         '--skills', skillsDir,
+        '--max-tokens', String(maxTokens),
         ...(proxySocketPath ? ['--proxy-socket', proxySocketPath] : []),
       ];
 

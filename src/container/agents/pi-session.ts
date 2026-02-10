@@ -39,18 +39,20 @@ const LLM_CALL_TIMEOUT_MS = parseInt(process.env.AX_LLM_TIMEOUT_MS ?? '', 10) ||
 
 // ── IPC model definition ────────────────────────────────────────────
 
-const IPC_MODEL: Model<any> = {
-  id: 'claude-sonnet-4-5-20250929',
-  name: 'Claude Sonnet 4.5 (via IPC)',
-  api: 'ax-ipc',
-  provider: 'ax',
-  baseUrl: 'http://localhost',
-  reasoning: false,
-  input: ['text'],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 200000,
-  maxTokens: 8192,
-};
+function createIPCModel(maxTokens?: number): Model<any> {
+  return {
+    id: 'claude-sonnet-4-5-20250929',
+    name: 'Claude Sonnet 4.5 (via IPC)',
+    api: 'ax-ipc',
+    provider: 'ax',
+    baseUrl: 'http://localhost',
+    reasoning: false,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200000,
+    maxTokens: maxTokens ?? 8192,
+  };
+}
 
 // ── IPC response types ──────────────────────────────────────────────
 
@@ -126,13 +128,14 @@ function createIPCStreamFunction(client: IPCClient) {
           ? [{ role: 'system', content: context.systemPrompt }, ...messages]
           : messages;
 
-        debug(SRC, 'ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0 });
+        const maxTokens = options?.maxTokens ?? model?.maxTokens;
+        debug(SRC, 'ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0, maxTokens });
         const response = await client.call({
           action: 'llm_call',
           model: model?.id,
           messages: allMessages,
           tools,
-          maxTokens: options?.maxTokens,
+          maxTokens,
         }, LLM_CALL_TIMEOUT_MS) as unknown as IPCResponse;
 
         if (!response.ok) {
@@ -387,10 +390,13 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
     return;
   }
 
+  const ipcModel = createIPCModel(config.maxTokens);
+
   debug(SRC, 'session_start', {
     workspace: config.workspace,
     messageLength: userMessage.length,
     messagePreview: truncate(userMessage, 200),
+    maxTokens: ipcModel.maxTokens,
   });
 
   const client = new IPCClient({ socketPath: config.ipcSocket });
@@ -427,12 +433,12 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   // "No API key found for ax" because the model registry doesn't know
   // about our IPC provider. The host handles real auth — no keys in sandbox.
   const authStorage = new AuthStorage(join(config.workspace, 'auth.json'));
-  authStorage.setRuntimeApiKey(IPC_MODEL.provider, 'ax-ipc');
+  authStorage.setRuntimeApiKey(ipcModel.provider, 'ax-ipc');
 
   // Create session with in-memory manager (no persistence in sandbox)
   debug(SRC, 'creating_agent_session');
   const { session } = await createAgentSession({
-    model: IPC_MODEL,
+    model: ipcModel,
     tools: codingTools,
     customTools: ipcToolDefs,
     cwd: config.workspace,

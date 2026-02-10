@@ -15,18 +15,23 @@ const SRC = 'container:agent-runner';
 // Default model — the actual model ID is forwarded through IPC to the host,
 // which routes it to the configured LLM provider. This just needs to be a
 // valid Model object for pi-agent-core's Agent class.
-const DEFAULT_MODEL: Model<any> = {
-  id: 'claude-sonnet-4-5-20250929',
-  name: 'Claude Sonnet 4.5',
-  api: 'anthropic-messages',
-  provider: 'anthropic',
-  baseUrl: 'https://api.anthropic.com',
-  reasoning: false,
-  input: ['text'],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 200000,
-  maxTokens: 8192,
-};
+const DEFAULT_MODEL_ID = 'claude-sonnet-4-5-20250929';
+const DEFAULT_CONTEXT_WINDOW = 200000;
+
+function createDefaultModel(maxTokens?: number): Model<any> {
+  return {
+    id: DEFAULT_MODEL_ID,
+    name: 'Claude Sonnet 4.5',
+    api: 'anthropic-messages',
+    provider: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    reasoning: false,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxTokens: maxTokens ?? 8192,
+  };
+}
 
 // Compaction thresholds
 const COMPACTION_THRESHOLD = 0.75; // Trigger at 75% of context window
@@ -45,6 +50,7 @@ export interface AgentConfig {
   workspace: string;
   skills: string;
   proxySocket?: string;
+  maxTokens?: number;
   userMessage?: string;
   history?: ConversationTurn[];
 }
@@ -67,7 +73,7 @@ function historyToPiMessages(history: ConversationTurn[]): AgentMessage[] {
       content: [{ type: 'text', text: turn.content }],
       api: 'anthropic-messages',
       provider: 'anthropic',
-      model: DEFAULT_MODEL.id,
+      model: DEFAULT_MODEL_ID,
       usage: { inputTokens: 0, outputTokens: 0, inputCachedTokens: 0, reasoningTokens: 0, totalCost: 0 },
       stopReason: 'stop',
       timestamp: Date.now(),
@@ -93,7 +99,7 @@ function estimateHistoryTokens(messages: AgentMessage[]): number {
 export async function compactHistory(
   history: ConversationTurn[],
   client: IPCClient,
-  contextWindow: number = DEFAULT_MODEL.contextWindow,
+  contextWindow: number = DEFAULT_CONTEXT_WINDOW,
 ): Promise<ConversationTurn[]> {
   if (history.length <= KEEP_RECENT_TURNS) return history;
 
@@ -122,7 +128,7 @@ export async function compactHistory(
   // Use IPC to call the LLM for summarization
   const response = await client.call({
     action: 'llm_call',
-    model: DEFAULT_MODEL.id,
+    model: DEFAULT_MODEL_ID,
     messages: [
       { role: 'system', content: 'You are a conversation summarizer. Be concise and preserve important details.' },
       { role: 'user', content: summaryPrompt },
@@ -156,6 +162,7 @@ function parseArgs(): AgentConfig {
   let workspace = '';
   let skills = '';
   let proxySocket = '';
+  let maxTokens = 0;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -164,6 +171,7 @@ function parseArgs(): AgentConfig {
       case '--workspace': workspace = args[++i]; break;
       case '--skills': skills = args[++i]; break;
       case '--proxy-socket': proxySocket = args[++i]; break;
+      case '--max-tokens': maxTokens = parseInt(args[++i], 10) || 0; break;
     }
   }
 
@@ -176,7 +184,7 @@ function parseArgs(): AgentConfig {
     process.exit(1);
   }
 
-  return { agent, ipcSocket, workspace, skills, proxySocket: proxySocket || undefined };
+  return { agent, ipcSocket, workspace, skills, proxySocket: proxySocket || undefined, maxTokens: maxTokens || undefined };
 }
 
 function loadContext(workspace: string): string {
@@ -260,16 +268,19 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   // Convert (possibly compacted) history to pi-ai messages
   const historyMessages = historyToPiMessages(history);
 
+  const model = createDefaultModel(config.maxTokens);
+
   debug(SRC, 'pi_core_agent_create', {
     historyMessages: historyMessages.length,
-    model: DEFAULT_MODEL.id,
+    model: model.id,
+    maxTokens: model.maxTokens,
   });
 
   // Create agent with IPC-proxied LLM calls, pre-populated with history
   const agent = new Agent({
     initialState: {
       systemPrompt,
-      model: DEFAULT_MODEL,
+      model,
       tools: allTools,
       messages: historyMessages,
     },

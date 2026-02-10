@@ -25,6 +25,7 @@ const ConfigSchema = z.strictObject({
     scheduler: z.string(),
     skillScreener: z.string().optional(),
   }),
+  max_tokens: z.number().int().min(256).max(200_000).optional().default(8192),
   sandbox: z.strictObject({
     timeout_sec: z.number().int().min(1).max(3600),
     memory_mb: z.number().int().min(64).max(8192),
