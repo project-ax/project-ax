@@ -15,9 +15,9 @@
 (allow file-write* (subpath (param "WORKSPACE")))
 (allow file-read* (subpath (param "SKILLS")))
 
-;; ── IPC socket (the ONLY communication channel to host) ──
-(allow file-read* file-write* (literal (param "IPC_SOCKET")))
-(allow network-outbound (remote unix-socket (literal (param "IPC_SOCKET"))))
+;; ── IPC + proxy sockets (communication channels to host) ──
+(allow file-read* file-write* (subpath (param "IPC_SOCKET_DIR")))
+(allow network-outbound (remote unix-socket (subpath (param "IPC_SOCKET_DIR"))))
 
 ;; ── Unix sockets for tsx/node internal IPC ──
 (allow network-bind (local unix-socket))

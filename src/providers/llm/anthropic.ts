@@ -23,14 +23,13 @@ export async function create(config: Config): Promise<LLMProvider> {
   const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  // claude-code agent with OAuth bypasses this provider entirely —
-  // the anthropic-proxy forwards requests directly to Anthropic.
-  // Return a stub so the server can start without an API key.
-  if (!apiKey && oauthToken && config.agent === 'claude-code') {
+  // When using OAuth, all agents route LLM calls through the credential-injecting
+  // proxy. This host-side provider is unused. Return a stub so the server can start.
+  if (!apiKey && oauthToken) {
     return {
       name: 'anthropic',
       async *chat(): AsyncIterable<ChatChunk> {
-        throw new Error('LLM provider not available — claude-code uses OAuth proxy');
+        throw new Error('LLM calls route through credential-injecting proxy');
       },
       async models() { return []; },
     };
