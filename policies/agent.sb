@@ -21,7 +21,9 @@
 
 ;; ── Localhost TCP for TCP-to-Unix-socket bridge (Agent SDK) ──
 ;; The bridge binds 127.0.0.1:PORT; Claude Code CLI connects via ANTHROPIC_BASE_URL.
+;; All three are required: bind (create socket), inbound (accept), outbound (connect).
 (allow network-bind (local ip "localhost:*"))
+(allow network-inbound (local ip "localhost:*"))
 (allow network-outbound (remote ip "localhost:*"))
 
 ;; ── Unix sockets for tsx/node internal IPC ──
