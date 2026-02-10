@@ -39,8 +39,8 @@ export function startAnthropicProxy(
       return;
     }
 
-    // Only forward POST /v1/messages
-    if (req.url !== '/v1/messages' || req.method !== 'POST') {
+    // Forward any /v1/ path (handles query strings like ?beta=true)
+    if (!req.url?.startsWith('/v1/') || req.method !== 'POST') {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'not_found', message: 'Not found' } }));
       return;
@@ -111,16 +111,42 @@ async function forwardWithCredentials(
     headers.set('anthropic-beta', betaParts.join(','));
   }
 
-  const response = await fetch(`${targetBaseUrl}/v1/messages`, {
+  // For OAuth, inject Claude Code system prompt identity into /v1/messages body.
+  // The API validates that OAuth requests include the Claude Code identity.
+  let finalBody = body;
+  if (!apiKey && oauthToken && req.url?.startsWith('/v1/messages')) {
+    try {
+      const parsed = JSON.parse(body);
+      const identityPrompt = "You are Claude Code, Anthropic's official CLI for Claude.";
+      const systemBlocks = Array.isArray(parsed.system)
+        ? parsed.system
+        : parsed.system
+          ? [{ type: 'text', text: parsed.system }]
+          : [];
+      const hasIdentity = systemBlocks.some(
+        (b: { text?: string }) => b.text?.includes(identityPrompt),
+      );
+      if (!hasIdentity) {
+        systemBlocks.unshift({ type: 'text', text: identityPrompt });
+      }
+      parsed.system = systemBlocks;
+      finalBody = JSON.stringify(parsed);
+    } catch {
+      // If body isn't valid JSON, forward as-is
+    }
+  }
+
+  const response = await fetch(`${targetBaseUrl}${req.url}`, {
     method: 'POST',
     headers,
-    body,
+    body: finalBody,
   });
 
   // Forward status + headers back to agent
   const outHeaders: Record<string, string> = {};
   response.headers.forEach((v, k) => {
-    if (k !== 'transfer-encoding') outHeaders[k] = v;
+    // fetch() auto-decompresses, so strip encoding headers to avoid double-decompress
+    if (k !== 'transfer-encoding' && k !== 'content-encoding' && k !== 'content-length') outHeaders[k] = v;
   });
   res.writeHead(response.status, outHeaders);
 

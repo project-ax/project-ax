@@ -33,6 +33,7 @@
     "@mariozechner/pi-agent-core": "^0.52.9",
     "@mariozechner/pi-ai": "^0.52.9",
     "@mariozechner/pi-coding-agent": "^0.52.9",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@sinclair/typebox": "^0.34.48",
     "@tavily/core": "^0.7.1",
     "better-sqlite3": "^12.6.2",

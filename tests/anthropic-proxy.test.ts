@@ -156,7 +156,23 @@ describe('Credential-Injecting Proxy', () => {
     expect(text).toContain('message_stop');
   });
 
-  test('returns 404 for non-messages endpoints', async () => {
+  test('returns 404 for non-/v1/ endpoints', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    const proxySocketPath = join(tmpDir, 'proxy.sock');
+    proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${nextPort++}`);
+    await new Promise<void>((r) => proxyResult.server.on('listening', r));
+
+    const { Agent } = await import('undici');
+    const dispatcher = new Agent({ connect: { socketPath: proxySocketPath } });
+    const response = await fetch('http://localhost/health', {
+      method: 'POST',
+      dispatcher,
+    } as RequestInit);
+
+    expect(response.status).toBe(404);
+  });
+
+  test('returns 404 for GET requests (only POST allowed)', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
     const proxySocketPath = join(tmpDir, 'proxy.sock');
     proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${nextPort++}`);
@@ -169,6 +185,110 @@ describe('Credential-Injecting Proxy', () => {
     } as RequestInit);
 
     expect(response.status).toBe(404);
+  });
+
+  test('forwards /v1/messages?beta=true (query string)', async () => {
+    let receivedUrl = '';
+    const port = await startMockApi((req, _body, res) => {
+      receivedUrl = req.url ?? '';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        id: 'msg_1', type: 'message', role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        model: 'claude-sonnet-4-5-20250929', stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }));
+    });
+
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    const proxySocketPath = join(tmpDir, 'proxy.sock');
+    proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${port}`);
+    await new Promise<void>((r) => proxyResult.server.on('listening', r));
+
+    const { Agent } = await import('undici');
+    const dispatcher = new Agent({ connect: { socketPath: proxySocketPath } });
+    const response = await fetch('http://localhost/v1/messages?beta=true', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929', max_tokens: 100,
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+      dispatcher,
+    } as RequestInit);
+
+    expect(response.status).toBe(200);
+    expect(receivedUrl).toBe('/v1/messages?beta=true');
+  });
+
+  test('forwards full URL path to target (not hardcoded)', async () => {
+    let receivedUrl = '';
+    const port = await startMockApi((req, _body, res) => {
+      receivedUrl = req.url ?? '';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        id: 'msg_1', type: 'message', role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        model: 'claude-sonnet-4-5-20250929', stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }));
+    });
+
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    const proxySocketPath = join(tmpDir, 'proxy.sock');
+    proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${port}`);
+    await new Promise<void>((r) => proxyResult.server.on('listening', r));
+
+    const { Agent } = await import('undici');
+    const dispatcher = new Agent({ connect: { socketPath: proxySocketPath } });
+    const response = await fetch('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929', max_tokens: 100,
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+      dispatcher,
+    } as RequestInit);
+
+    expect(response.status).toBe(200);
+    // Must forward the actual URL, not a hardcoded path
+    expect(receivedUrl).toBe('/v1/messages');
+  });
+
+  test('injects Claude Code identity into OAuth request body', async () => {
+    let receivedBody = '';
+    const port = await startMockApi((_req, body, res) => {
+      receivedBody = body;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        id: 'msg_1', type: 'message', role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        model: 'claude-sonnet-4-5-20250929', stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }));
+    });
+
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat01-token';
+    const proxySocketPath = join(tmpDir, 'proxy.sock');
+    proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${port}`);
+    await new Promise<void>((r) => proxyResult.server.on('listening', r));
+
+    const { Agent } = await import('undici');
+    const dispatcher = new Agent({ connect: { socketPath: proxySocketPath } });
+    await fetch('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929', max_tokens: 100,
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+      dispatcher,
+    } as RequestInit);
+
+    const parsed = JSON.parse(receivedBody);
+    expect(Array.isArray(parsed.system)).toBe(true);
+    expect(parsed.system[0].text).toContain("You are Claude Code");
   });
 
   test('API key takes precedence over OAuth token', async () => {

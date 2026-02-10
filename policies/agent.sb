@@ -1,5 +1,5 @@
 ;; policies/agent.sb — Seatbelt sandbox for agent containers
-;; Parameters: WORKSPACE, SKILLS, IPC_SOCKET, PROJECT_DIR, NODE_DIR
+;; Parameters: WORKSPACE, SKILLS, IPC_SOCKET_DIR, PROJECT_DIR, NODE_DIR
 (version 1)
 (deny default)
 
@@ -18,6 +18,11 @@
 ;; ── IPC + proxy sockets (communication channels to host) ──
 (allow file-read* file-write* (subpath (param "IPC_SOCKET_DIR")))
 (allow network-outbound (remote unix-socket (subpath (param "IPC_SOCKET_DIR"))))
+
+;; ── Localhost TCP for TCP-to-Unix-socket bridge (Agent SDK) ──
+;; The bridge binds 127.0.0.1:PORT; Claude Code CLI connects via ANTHROPIC_BASE_URL.
+(allow network-bind (local ip "localhost:*"))
+(allow network-outbound (remote ip "localhost:*"))
 
 ;; ── Unix sockets for tsx/node internal IPC ──
 (allow network-bind (local unix-socket))
