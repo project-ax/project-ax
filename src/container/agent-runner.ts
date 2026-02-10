@@ -2,7 +2,21 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import type { Model, UserMessage, AssistantMessage } from '@mariozechner/pi-ai';
+import {
+  createAssistantMessageEventStream,
+} from '@mariozechner/pi-ai';
+import type {
+  Model,
+  UserMessage,
+  AssistantMessage,
+  AssistantMessageEventStream,
+  Context,
+  SimpleStreamOptions,
+  TextContent,
+  ToolCall,
+} from '@mariozechner/pi-ai';
+import type Anthropic from '@anthropic-ai/sdk';
+import type { MessageParam, Tool as AnthropicTool } from '@anthropic-ai/sdk/resources/messages';
 import { estimateTokens } from '@mariozechner/pi-coding-agent';
 import { IPCClient } from './ipc-client.js';
 import { createIPCStreamFn } from './ipc-transport.js';
@@ -223,6 +237,217 @@ function buildSystemPrompt(context: string, skills: string[]): string {
   return parts.join('\n');
 }
 
+// ── Proxy-based StreamFn (Anthropic SDK via Unix socket) ─────────────
+
+async function createSocketFetch(socketPath: string): Promise<typeof globalThis.fetch> {
+  const { Agent: UndiciAgent } = await import('undici');
+  const dispatcher = new UndiciAgent({ connect: { socketPath } });
+  return ((input: string | URL | Request, init?: RequestInit) =>
+    fetch(input, { ...init, dispatcher } as RequestInit)) as typeof globalThis.fetch;
+}
+
+function makeProxyErrorMessage(errorText: string): AssistantMessage {
+  return {
+    role: 'assistant',
+    content: [{ type: 'text', text: errorText }],
+    api: 'anthropic-messages',
+    provider: 'anthropic',
+    model: 'unknown',
+    usage: { inputTokens: 0, outputTokens: 0, inputCachedTokens: 0, reasoningTokens: 0, totalCost: 0 },
+    stopReason: 'stop',
+    errorMessage: errorText,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Create a StreamFn that routes LLM calls through the credential-injecting
+ * proxy via the Anthropic SDK. The proxy injects real API credentials — the
+ * container never sees them.
+ *
+ * This is an async StreamFn (returns Promise<AssistantMessageEventStream>),
+ * which pi-agent-core's Agent class supports.
+ */
+function createProxyStreamFn(proxySocket: string) {
+  // Eagerly create the Anthropic client so all calls reuse it.
+  let anthropicPromise: Promise<Anthropic> | null = null;
+
+  function getClient(): Promise<Anthropic> {
+    if (!anthropicPromise) {
+      anthropicPromise = (async () => {
+        const [socketFetch, { default: AnthropicSDK }] = await Promise.all([
+          createSocketFetch(proxySocket),
+          import('@anthropic-ai/sdk'),
+        ]);
+        return new AnthropicSDK({
+          apiKey: 'ax-proxy',  // Proxy injects real credentials
+          baseURL: 'http://localhost',  // SDK adds /v1/messages — don't include /v1
+          fetch: socketFetch,
+        });
+      })();
+    }
+    return anthropicPromise;
+  }
+
+  return async (model: Model<any>, context: Context, options?: SimpleStreamOptions): Promise<AssistantMessageEventStream> => {
+    const stream = createAssistantMessageEventStream();
+
+    const msgCount = context.messages.length;
+    const toolCount = context.tools?.length ?? 0;
+    debug(SRC, 'proxy_stream_start', {
+      model: model?.id,
+      messageCount: msgCount,
+      toolCount,
+      hasSystemPrompt: !!context.systemPrompt,
+    });
+
+    // Convert pi-ai messages to Anthropic SDK MessageParam[] format.
+    const messages: MessageParam[] = context.messages.map((m) => {
+      if (m.role === 'user') {
+        const content = typeof m.content === 'string'
+          ? m.content
+          : m.content.filter((c): c is TextContent => c.type === 'text').map(c => c.text).join('');
+        return { role: 'user' as const, content: content || '.' };
+      }
+      if (m.role === 'assistant') {
+        const blocks: Anthropic.Messages.ContentBlockParam[] = [];
+        for (const c of m.content) {
+          if (c.type === 'text') {
+            blocks.push({ type: 'text', text: c.text });
+          } else if (c.type === 'toolCall') {
+            blocks.push({ type: 'tool_use', id: c.id, name: c.name, input: c.arguments });
+          }
+        }
+        if (blocks.length === 0) {
+          return { role: 'assistant' as const, content: '.' };
+        }
+        if (blocks.length > 0 && blocks.every(b => b.type === 'text')) {
+          const text = blocks.map(b => (b as Anthropic.Messages.TextBlockParam).text).join('');
+          return { role: 'assistant' as const, content: text || '.' };
+        }
+        return { role: 'assistant' as const, content: blocks };
+      }
+      if (m.role === 'toolResult') {
+        const text = m.content
+          .filter((c): c is TextContent => c.type === 'text')
+          .map(c => c.text)
+          .join('');
+        return {
+          role: 'user' as const,
+          content: [{
+            type: 'tool_result' as const,
+            tool_use_id: m.toolCallId,
+            content: text || '[no output]',
+          }],
+        };
+      }
+      return { role: 'user' as const, content: '.' };
+    });
+
+    // Convert pi-ai tools to Anthropic SDK Tool[] format.
+    const tools: AnthropicTool[] | undefined = context.tools?.map(t => ({
+      name: t.name,
+      description: t.description ?? '',
+      input_schema: (t.parameters ?? { type: 'object', properties: {} }) as AnthropicTool['input_schema'],
+    }));
+
+    const maxTokens = options?.maxTokens ?? model?.maxTokens ?? 8192;
+
+    (async () => {
+      try {
+        const anthropic = await getClient();
+
+        debug(SRC, 'proxy_call', { messageCount: messages.length, toolCount: tools?.length ?? 0, maxTokens });
+
+        // Use .stream() for SSE streaming, then extract from finalMessage.
+        const sdkStream = anthropic.messages.stream({
+          model: model?.id ?? DEFAULT_MODEL_ID,
+          max_tokens: maxTokens,
+          system: context.systemPrompt || undefined,
+          messages,
+          tools: tools && tools.length > 0 ? tools : undefined,
+        });
+
+        const finalMessage = await sdkStream.finalMessage();
+
+        // Build pi-ai AssistantMessage from the final response.
+        const contentArr: (TextContent | ToolCall)[] = [];
+        const toolCalls: ToolCall[] = [];
+        const textParts: string[] = [];
+
+        for (const block of finalMessage.content) {
+          if (block.type === 'text') {
+            textParts.push(block.text);
+          } else if (block.type === 'tool_use') {
+            toolCalls.push({
+              type: 'toolCall',
+              id: block.id,
+              name: block.name,
+              arguments: block.input as Record<string, unknown>,
+            });
+          }
+        }
+
+        const fullText = textParts.join('');
+        if (fullText) contentArr.push({ type: 'text', text: fullText });
+        contentArr.push(...toolCalls);
+
+        const stopReason = finalMessage.stop_reason === 'tool_use' ? 'toolUse' : 'stop';
+        const usage = {
+          inputTokens: finalMessage.usage?.input_tokens ?? 0,
+          outputTokens: finalMessage.usage?.output_tokens ?? 0,
+          inputCachedTokens: (finalMessage.usage as Record<string, number>)?.cache_read_input_tokens ?? 0,
+          reasoningTokens: 0,
+          totalCost: 0,
+        };
+
+        const msg: AssistantMessage = {
+          role: 'assistant',
+          content: contentArr,
+          api: model.api,
+          provider: model.provider,
+          model: model.id,
+          usage,
+          stopReason,
+          timestamp: Date.now(),
+        };
+
+        // Emit pi-ai events
+        stream.push({ type: 'start', partial: msg });
+
+        if (fullText) {
+          stream.push({ type: 'text_start', contentIndex: 0, partial: msg });
+          stream.push({ type: 'text_delta', contentIndex: 0, delta: fullText, partial: msg });
+          stream.push({ type: 'text_end', contentIndex: 0, content: fullText, partial: msg });
+        }
+
+        for (let i = 0; i < toolCalls.length; i++) {
+          const idx = fullText ? i + 1 : i;
+          stream.push({ type: 'toolcall_start', contentIndex: idx, partial: msg });
+          stream.push({ type: 'toolcall_delta', contentIndex: idx, delta: JSON.stringify(toolCalls[i].arguments), partial: msg });
+          stream.push({ type: 'toolcall_end', contentIndex: idx, toolCall: toolCalls[i], partial: msg });
+        }
+
+        debug(SRC, 'proxy_stream_done', {
+          stopReason,
+          textLength: fullText.length,
+          toolCallCount: toolCalls.length,
+          toolNames: toolCalls.map(t => t.name),
+          usage,
+        });
+        stream.push({ type: 'done', reason: stopReason as 'stop' | 'toolUse', message: msg });
+      } catch (err: unknown) {
+        debug(SRC, 'proxy_stream_error', { error: (err as Error).message, stack: (err as Error).stack });
+        const errMsg = makeProxyErrorMessage((err as Error).message);
+        stream.push({ type: 'start', partial: errMsg });
+        stream.push({ type: 'error', reason: 'error', error: errMsg });
+      }
+    })();
+
+    return stream;
+  };
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
@@ -238,11 +463,20 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
     return;
   }
 
+  // Decide LLM transport: proxy (direct Anthropic SDK) or IPC fallback
+  const useProxy = !!config.proxySocket;
+
   debug(SRC, 'pi_core_start', {
     workspace: config.workspace,
     messageLength: userMessage.length,
     historyTurns: config.history?.length ?? 0,
+    llmTransport: useProxy ? 'proxy' : 'ipc',
+    proxySocket: config.proxySocket,
   });
+
+  if (!useProxy) {
+    debug(SRC, 'proxy_unavailable', { reason: 'config.proxySocket not set, falling back to IPC for LLM calls' });
+  }
 
   const client = new IPCClient({ socketPath: config.ipcSocket });
   await client.connect();
@@ -273,13 +507,19 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
 
   const model = createDefaultModel(config.maxTokens);
 
+  // Select stream function: proxy (Anthropic SDK via Unix socket) or IPC
+  const streamFn = useProxy
+    ? createProxyStreamFn(config.proxySocket!)
+    : createIPCStreamFn(client);
+
   debug(SRC, 'pi_core_agent_create', {
     historyMessages: historyMessages.length,
     model: model.id,
     maxTokens: model.maxTokens,
+    llmTransport: useProxy ? 'proxy' : 'ipc',
   });
 
-  // Create agent with IPC-proxied LLM calls, pre-populated with history
+  // Create agent with selected LLM transport, pre-populated with history
   const agent = new Agent({
     initialState: {
       systemPrompt,
@@ -287,7 +527,7 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
       tools: allTools,
       messages: historyMessages,
     },
-    streamFn: createIPCStreamFn(client),
+    streamFn,
   });
 
   // Subscribe to events — stream text to stdout, log all events for debugging
