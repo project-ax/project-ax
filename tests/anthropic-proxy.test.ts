@@ -112,6 +112,14 @@ describe('Credential-Injecting Proxy', () => {
     expect(receivedHeaders['authorization']).toBe('Bearer sk-ant-oat01-token-xyz');
     // Must NOT have x-api-key
     expect(receivedHeaders['x-api-key']).toBeUndefined();
+    // Must include Claude Code identity headers for OAuth
+    expect(receivedHeaders['anthropic-dangerous-direct-browser-access']).toBe('true');
+    expect(receivedHeaders['x-app']).toBe('cli');
+    expect(receivedHeaders['user-agent']).toContain('claude-cli/');
+    // Must include OAuth beta flags
+    const beta = receivedHeaders['anthropic-beta'] as string;
+    expect(beta).toContain('claude-code-20250219');
+    expect(beta).toContain('oauth-2025-04-20');
   });
 
   test('streams SSE responses through', async () => {

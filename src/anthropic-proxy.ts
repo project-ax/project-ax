@@ -98,6 +98,17 @@ async function forwardWithCredentials(
   } else if (oauthToken) {
     headers.set('authorization', `Bearer ${oauthToken}`);
     headers.delete('x-api-key');
+    // OAuth tokens require Claude Code identity headers.
+    // Without these, the API returns 401 "OAuth authentication is currently not supported."
+    headers.set('anthropic-dangerous-direct-browser-access', 'true');
+    headers.set('x-app', 'cli');
+    headers.set('user-agent', 'claude-cli/2.1.38 (external, cli)');
+    // Merge oauth beta flag into existing anthropic-beta header
+    const existingBeta = headers.get('anthropic-beta') ?? '';
+    const betaParts = existingBeta ? existingBeta.split(',').map(s => s.trim()) : [];
+    if (!betaParts.includes('claude-code-20250219')) betaParts.push('claude-code-20250219');
+    if (!betaParts.includes('oauth-2025-04-20')) betaParts.push('oauth-2025-04-20');
+    headers.set('anthropic-beta', betaParts.join(','));
   }
 
   const response = await fetch(`${targetBaseUrl}/v1/messages`, {
