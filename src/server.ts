@@ -22,6 +22,9 @@ import { createIPCHandler, createIPCServer } from './ipc.js';
 import { TaintBudget, thresholdForProfile } from './taint-budget.js';
 import { createLogger, type Logger } from './logger.js';
 import { startAnthropicProxy } from './anthropic-proxy.js';
+import { debug, truncate } from './logger.js';
+
+const SRC = 'host:server';
 
 // =====================================================
 // Types
@@ -247,6 +250,13 @@ export async function createServer(
     clientMessages: { role: string; content: string }[] = [],
   ): Promise<{ responseContent: string; finishReason: 'stop' | 'content_filter' }> {
     const sessionId = randomUUID();
+    debug(SRC, 'completion_start', {
+      requestId,
+      sessionId,
+      contentLength: content.length,
+      contentPreview: truncate(content, 200),
+      historyTurns: clientMessages.length,
+    });
 
     const inbound: InboundMessage = {
       id: sessionId,
@@ -260,6 +270,7 @@ export async function createServer(
     const result = await router.processInbound(inbound);
 
     if (!result.queued) {
+      debug(SRC, 'inbound_blocked', { requestId, reason: result.scanResult.reason });
       logger.scan_inbound('blocked', result.scanResult.reason ?? 'scan failed');
       return {
         responseContent: `Request blocked: ${result.scanResult.reason ?? 'security scan failed'}`,
@@ -269,10 +280,12 @@ export async function createServer(
 
     logger.scan_inbound('clean');
     sessionCanaries.set(result.sessionId, result.canaryToken);
+    debug(SRC, 'inbound_clean', { requestId, messageId: result.messageId });
 
     // Dequeue the specific message we just enqueued (by ID, not FIFO)
     const queued = result.messageId ? db.dequeueById(result.messageId) : db.dequeue();
     if (!queued) {
+      debug(SRC, 'dequeue_failed', { requestId, messageId: result.messageId });
       return { responseContent: 'Internal error: message not queued', finishReason: 'stop' };
     }
 
@@ -312,6 +325,15 @@ export async function createServer(
         ...(proxySocketPath ? ['--proxy-socket', proxySocketPath] : []),
       ];
 
+      debug(SRC, 'agent_spawn', {
+        requestId,
+        agentType,
+        workspace,
+        command: spawnCommand.join(' '),
+        timeoutSec: config.sandbox.timeout_sec,
+        memoryMB: config.sandbox.memory_mb,
+      });
+
       const proc = await providers.sandbox.spawn({
         workspace,
         skills: skillsDir,
@@ -325,6 +347,7 @@ export async function createServer(
 
       // Send raw user message to agent (not the taint-tagged queued.content)
       const stdinPayload = JSON.stringify({ history, message: content });
+      debug(SRC, 'stdin_write', { requestId, payloadBytes: stdinPayload.length });
       proc.stdin.write(stdinPayload);
       proc.stdin.end();
 
@@ -341,6 +364,16 @@ export async function createServer(
       }
 
       const exitCode = await proc.exitCode;
+
+      debug(SRC, 'agent_exit', {
+        requestId,
+        exitCode,
+        stdoutLength: response.length,
+        stderrLength: stderr.length,
+        stdoutPreview: truncate(response, 500),
+        stderrPreview: stderr ? truncate(stderr, 1000) : undefined,
+      });
+
       if (stderr) {
         logger.warn('Agent stderr', { stderr: stderr.slice(0, 500) });
       }
@@ -348,15 +381,18 @@ export async function createServer(
       logger.agent_complete(requestId, 0, exitCode);
 
       if (exitCode !== 0) {
+        debug(SRC, 'agent_failed', { requestId, exitCode, stderr: truncate(stderr, 1000) });
         db.fail(queued.id);
         return { responseContent: 'Agent processing failed', finishReason: 'stop' };
       }
 
       // Process outbound
       const canaryToken = sessionCanaries.get(queued.session_id) ?? '';
+      debug(SRC, 'outbound_start', { requestId, responseLength: response.length, hasCanary: canaryToken.length > 0 });
       const outbound = await router.processOutbound(response, queued.session_id, canaryToken);
 
       if (outbound.canaryLeaked) {
+        debug(SRC, 'canary_leaked', { requestId, sessionId: queued.session_id });
         logger.warn('Canary leak detected -- response redacted', { session_id: queued.session_id });
       }
 
@@ -377,9 +413,20 @@ export async function createServer(
       sessionCanaries.delete(queued.session_id);
 
       const finishReason = outbound.scanResult.verdict === 'BLOCK' ? 'content_filter' as const : 'stop' as const;
+      debug(SRC, 'completion_done', {
+        requestId,
+        finishReason,
+        responseLength: outbound.content.length,
+        scanVerdict: outbound.scanResult.verdict,
+      });
       return { responseContent: outbound.content, finishReason };
 
     } catch (err) {
+      debug(SRC, 'completion_error', {
+        requestId,
+        error: (err as Error).message,
+        stack: (err as Error).stack,
+      });
       logger.error('Processing error', { error: (err as Error).message });
       db.fail(queued.id);
       return { responseContent: 'Internal processing error', finishReason: 'stop' };

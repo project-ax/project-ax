@@ -8,6 +8,9 @@ import { IPCClient } from './ipc-client.js';
 import { createIPCStreamFn } from './ipc-transport.js';
 import { createLocalTools } from './local-tools.js';
 import { createIPCTools } from './ipc-tools.js';
+import { debug, truncate } from '../logger.js';
+
+const SRC = 'container:agent-runner';
 
 // Default model — the actual model ID is forwarded through IPC to the host,
 // which routes it to the configured LLM provider. This just needs to be a
@@ -219,7 +222,16 @@ async function readStdin(): Promise<string> {
 
 export async function runPiCore(config: AgentConfig): Promise<void> {
   const userMessage = config.userMessage ?? '';
-  if (!userMessage.trim()) return;
+  if (!userMessage.trim()) {
+    debug(SRC, 'pi_core_skip_empty');
+    return;
+  }
+
+  debug(SRC, 'pi_core_start', {
+    workspace: config.workspace,
+    messageLength: userMessage.length,
+    historyTurns: config.history?.length ?? 0,
+  });
 
   const client = new IPCClient({ socketPath: config.ipcSocket });
   await client.connect();
@@ -233,6 +245,13 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   const ipcTools = createIPCTools(client);
   const allTools = [...localTools, ...ipcTools];
 
+  debug(SRC, 'pi_core_tools', {
+    localToolCount: localTools.length,
+    ipcToolCount: ipcTools.length,
+    toolNames: allTools.map(t => t.name),
+    systemPromptLength: systemPrompt.length,
+  });
+
   // Compact history if it's too long for the context window
   const history = config.history
     ? await compactHistory(config.history, client)
@@ -240,6 +259,11 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
 
   // Convert (possibly compacted) history to pi-ai messages
   const historyMessages = historyToPiMessages(history);
+
+  debug(SRC, 'pi_core_agent_create', {
+    historyMessages: historyMessages.length,
+    model: DEFAULT_MODEL.id,
+  });
 
   // Create agent with IPC-proxied LLM calls, pre-populated with history
   const agent = new Agent({
@@ -252,24 +276,40 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
     streamFn: createIPCStreamFn(client),
   });
 
-  // Subscribe to events — stream text to stdout
+  // Subscribe to events — stream text to stdout, log all events for debugging
   let hasOutput = false;
+  let eventCount = 0;
   agent.subscribe((event) => {
+    eventCount++;
     if (event.type === 'message_update') {
-      if (event.assistantMessageEvent.type === 'text_start' && hasOutput) {
+      const ame = event.assistantMessageEvent;
+      debug(SRC, 'agent_event', { type: ame.type, eventCount });
+
+      if (ame.type === 'text_start' && hasOutput) {
         process.stdout.write('\n\n');
       }
-      if (event.assistantMessageEvent.type === 'text_delta') {
-        process.stdout.write(event.assistantMessageEvent.delta);
+      if (ame.type === 'text_delta') {
+        process.stdout.write(ame.delta);
         hasOutput = true;
+      }
+      if (ame.type === 'toolcall_end') {
+        debug(SRC, 'tool_call', { toolName: ame.toolCall.name, toolId: ame.toolCall.id });
+      }
+      if (ame.type === 'error') {
+        debug(SRC, 'agent_error_event', { error: String(ame.error) });
+      }
+      if (ame.type === 'done') {
+        debug(SRC, 'agent_done_event', { reason: ame.reason });
       }
     }
   });
 
   // Send the user message and wait for the agent to finish
+  debug(SRC, 'pi_core_prompt', { messagePreview: truncate(userMessage, 200) });
   await agent.prompt(userMessage);
   await agent.waitForIdle();
 
+  debug(SRC, 'pi_core_complete', { eventCount, hasOutput });
   client.disconnect();
 }
 
@@ -298,6 +338,7 @@ function parseStdinPayload(data: string): { message: string; history: Conversati
  */
 export async function run(config: AgentConfig): Promise<void> {
   const agent = config.agent ?? 'pi-agent-core';
+  debug(SRC, 'dispatch', { agent, workspace: config.workspace, ipcSocket: config.ipcSocket });
   switch (agent) {
     case 'pi-agent-core':
       return runPiCore(config);
@@ -310,6 +351,7 @@ export async function run(config: AgentConfig): Promise<void> {
       return runClaudeCode(config);
     }
     default:
+      debug(SRC, 'unknown_agent', { agent });
       console.error(`Unknown agent type: ${agent}`);
       process.exit(1);
   }
@@ -320,12 +362,19 @@ const isMain = process.argv[1]?.endsWith('agent-runner.js') ||
                process.argv[1]?.endsWith('agent-runner.ts');
 if (isMain) {
   const config = parseArgs();
+  debug(SRC, 'main_start', { agent: config.agent, workspace: config.workspace });
   readStdin().then((data) => {
     const { message, history } = parseStdinPayload(data);
+    debug(SRC, 'stdin_parsed', {
+      messageLength: message.length,
+      historyTurns: history.length,
+      messagePreview: truncate(message, 200),
+    });
     config.userMessage = message;
     config.history = history;
     return run(config);
   }).catch((err) => {
+    debug(SRC, 'main_error', { error: (err as Error).message, stack: (err as Error).stack });
     console.error('Agent runner error:', err);
     process.exit(1);
   });

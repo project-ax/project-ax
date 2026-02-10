@@ -1,6 +1,9 @@
 // src/logger.ts
 import { type Writable } from 'node:stream';
 import { styleText } from 'node:util';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 // ═══════════════════════════════════════════════════════
 // Types
@@ -192,4 +195,57 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
       });
     },
   };
+}
+
+// ═══════════════════════════════════════════════════════
+// File-based Debug Logger
+// ═══════════════════════════════════════════════════════
+//
+// Writes JSONL entries to ~/.ax/data/debug.log (or $AX_HOME/data/debug.log).
+// Each line is a self-contained JSON object with timestamp, source, event, and details.
+// Designed to NEVER crash the application — all errors are silently swallowed.
+
+let resolvedLogPath: string | null = null;
+
+function getLogPath(): string {
+  if (!resolvedLogPath) {
+    const home = process.env.AX_HOME || join(homedir(), '.ax');
+    const dir = join(home, 'data');
+    try { mkdirSync(dir, { recursive: true }); } catch { /* best-effort */ }
+    resolvedLogPath = join(dir, 'ax.log');
+  }
+  return resolvedLogPath;
+}
+
+/**
+ * Append a debug log entry to the debug log file. Safe to call from any context — never throws.
+ *
+ * @param source  Component identifier (e.g. 'host:ipc', 'container:ipc-client')
+ * @param event   Event name (e.g. 'call_start', 'validation_failed')
+ * @param details Optional key-value details to include in the log entry
+ */
+export function debug(source: string, event: string, details?: Record<string, unknown>): void {
+  try {
+    const entry: Record<string, unknown> = {
+      ts: new Date().toISOString(),
+      pid: process.pid,
+      src: source,
+      event,
+    };
+    if (details) {
+      for (const [k, v] of Object.entries(details)) {
+        entry[k] = v;
+      }
+    }
+    appendFileSync(getLogPath(), JSON.stringify(entry) + '\n');
+  } catch {
+    // Debug logging must never crash the application
+  }
+}
+
+/**
+ * Truncate a string for logging (avoids massive payloads in debug log).
+ */
+export function truncate(s: string, maxLen = 500): string {
+  return s.length > maxLen ? s.slice(0, maxLen) + `...[${s.length} total]` : s;
 }

@@ -29,6 +29,9 @@ import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import { Type } from '@sinclair/typebox';
 import { IPCClient } from '../ipc-client.js';
 import type { AgentConfig } from '../agent-runner.js';
+import { debug, truncate } from '../../logger.js';
+
+const SRC = 'container:pi-session';
 
 // ── IPC model definition ────────────────────────────────────────────
 
@@ -65,6 +68,15 @@ interface IPCResponse {
 function createIPCStreamFunction(client: IPCClient) {
   return (model: Model<any>, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream => {
     const stream = createAssistantMessageEventStream();
+
+    const msgCount = context.messages.length;
+    const toolCount = context.tools?.length ?? 0;
+    debug(SRC, 'stream_start', {
+      model: model?.id,
+      messageCount: msgCount,
+      toolCount,
+      hasSystemPrompt: !!context.systemPrompt,
+    });
 
     // Convert pi-ai messages to IPC format
     const messages = context.messages.map((m) => {
@@ -110,6 +122,7 @@ function createIPCStreamFunction(client: IPCClient) {
           ? [{ role: 'system', content: context.systemPrompt }, ...messages]
           : messages;
 
+        debug(SRC, 'ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0 });
         const response = await client.call({
           action: 'llm_call',
           model: model?.id,
@@ -119,6 +132,7 @@ function createIPCStreamFunction(client: IPCClient) {
         }) as unknown as IPCResponse;
 
         if (!response.ok) {
+          debug(SRC, 'ipc_error', { error: response.error });
           const errMsg = makeErrorMessage(response.error ?? 'LLM call failed');
           stream.push({ type: 'start', partial: errMsg });
           stream.push({ type: 'error', reason: 'error', error: errMsg });
@@ -126,6 +140,7 @@ function createIPCStreamFunction(client: IPCClient) {
         }
 
         const chunks = response.chunks ?? [];
+        debug(SRC, 'ipc_response', { chunkCount: chunks.length, chunkTypes: chunks.map(c => c.type) });
         const textParts: string[] = [];
         const toolCalls: ToolCall[] = [];
         let usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -182,8 +197,16 @@ function createIPCStreamFunction(client: IPCClient) {
           stream.push({ type: 'toolcall_end', contentIndex: idx, toolCall: toolCalls[i], partial: msg });
         }
 
+        debug(SRC, 'stream_done', {
+          stopReason,
+          textLength: fullText.length,
+          toolCallCount: toolCalls.length,
+          toolNames: toolCalls.map(t => t.name),
+          usage,
+        });
         stream.push({ type: 'done', reason: stopReason as 'stop' | 'toolUse', message: msg });
       } catch (err: unknown) {
+        debug(SRC, 'stream_error', { error: (err as Error).message, stack: (err as Error).stack });
         const errMsg = makeErrorMessage((err as Error).message);
         stream.push({ type: 'start', partial: errMsg });
         stream.push({ type: 'error', reason: 'error', error: errMsg });
@@ -217,9 +240,11 @@ function text(t: string) {
 function createIPCToolDefinitions(client: IPCClient): ToolDefinition[] {
   async function ipcCall(action: string, params: Record<string, unknown> = {}) {
     try {
+      debug(SRC, 'tool_ipc_call', { action });
       const result = await client.call({ action, ...params });
       return text(JSON.stringify(result));
     } catch (err: unknown) {
+      debug(SRC, 'tool_ipc_error', { action, error: (err as Error).message });
       return text(`Error: ${(err as Error).message}`);
     }
   }
@@ -353,7 +378,16 @@ function buildSystemPrompt(context: string, skills: string[]): string {
 
 export async function runPiSession(config: AgentConfig): Promise<void> {
   const userMessage = config.userMessage ?? '';
-  if (!userMessage.trim()) return;
+  if (!userMessage.trim()) {
+    debug(SRC, 'skip_empty');
+    return;
+  }
+
+  debug(SRC, 'session_start', {
+    workspace: config.workspace,
+    messageLength: userMessage.length,
+    messagePreview: truncate(userMessage, 200),
+  });
 
   const client = new IPCClient({ socketPath: config.ipcSocket });
   await client.connect();
@@ -366,6 +400,7 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
     stream: ipcStreamFn,
     streamSimple: ipcStreamFn,
   });
+  debug(SRC, 'provider_registered', { api: 'ax-ipc' });
 
   // Build system prompt
   const context = loadContext(config.workspace);
@@ -375,6 +410,14 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   // Create IPC tool definitions for pi-coding-agent
   const ipcToolDefs = createIPCToolDefinitions(client);
 
+  debug(SRC, 'session_config', {
+    systemPromptLength: systemPrompt.length,
+    codingToolCount: codingTools.length,
+    ipcToolCount: ipcToolDefs.length,
+    codingToolNames: codingTools.map(t => t.name),
+    ipcToolNames: ipcToolDefs.map(t => t.name),
+  });
+
   // Create auth storage with a dummy key for the 'ax' IPC provider.
   // Without this, both AgentSession.prompt() and the Agent loop throw
   // "No API key found for ax" because the model registry doesn't know
@@ -383,6 +426,7 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   authStorage.setRuntimeApiKey(IPC_MODEL.provider, 'ax-ipc');
 
   // Create session with in-memory manager (no persistence in sandbox)
+  debug(SRC, 'creating_agent_session');
   const { session } = await createAgentSession({
     model: IPC_MODEL,
     tools: codingTools,
@@ -391,28 +435,45 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
     authStorage,
     sessionManager: SessionManager.inMemory(config.workspace),
   });
+  debug(SRC, 'agent_session_created');
 
   // Override system prompt
   session.agent.state.systemPrompt = systemPrompt;
 
-  // Subscribe to events — stream text to stdout
+  // Subscribe to events — stream text to stdout, log ALL events for debugging
   let hasOutput = false;
+  let eventCount = 0;
   session.subscribe((event) => {
+    eventCount++;
     if (event.type === 'message_update') {
-      if (event.assistantMessageEvent.type === 'text_start' && hasOutput) {
+      const ame = event.assistantMessageEvent;
+      debug(SRC, 'agent_event', { type: ame.type, eventCount });
+
+      if (ame.type === 'text_start' && hasOutput) {
         process.stdout.write('\n\n');
       }
-      if (event.assistantMessageEvent.type === 'text_delta') {
-        process.stdout.write(event.assistantMessageEvent.delta);
+      if (ame.type === 'text_delta') {
+        process.stdout.write(ame.delta);
         hasOutput = true;
+      }
+      if (ame.type === 'toolcall_end') {
+        debug(SRC, 'tool_call_event', { toolName: ame.toolCall.name, toolId: ame.toolCall.id });
+      }
+      if (ame.type === 'error') {
+        debug(SRC, 'agent_error_event', { error: String(ame.error) });
+      }
+      if (ame.type === 'done') {
+        debug(SRC, 'agent_done_event', { reason: ame.reason });
       }
     }
   });
 
   // Send message and wait
+  debug(SRC, 'prompt_start', { messagePreview: truncate(userMessage, 200) });
   await session.prompt(userMessage);
   await session.agent.waitForIdle();
 
+  debug(SRC, 'session_complete', { eventCount, hasOutput });
   session.dispose();
   client.disconnect();
 }
