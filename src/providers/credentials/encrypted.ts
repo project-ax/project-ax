@@ -2,7 +2,8 @@ import { randomBytes, pbkdf2Sync, createCipheriv, createDecipheriv } from 'node:
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { dataFile } from '../../paths.js';
-import type { CredentialProvider, Config } from '../types.js';
+import type { CredentialProvider } from './types.js';
+import type { Config } from '../../types.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32;

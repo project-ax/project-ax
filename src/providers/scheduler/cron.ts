@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type {
-  SchedulerProvider,
-  InboundMessage,
-  CronJobDef,
-  Config,
-} from '../types.js';
+import type { SchedulerProvider, CronJobDef } from './types.js';
+import type { InboundMessage } from '../channel/types.js';
+import type { Config } from '../../types.js';
 
 interface ActiveHours {
   start: number; // minutes from midnight

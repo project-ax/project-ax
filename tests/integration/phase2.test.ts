@@ -13,19 +13,16 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 
-import { createIPCHandler, type IPCContext } from '../../src/ipc.js';
-import { createRouter } from '../../src/router.js';
+import { createIPCHandler, type IPCContext } from '../../src/host/ipc-server.js';
+import { createRouter } from '../../src/host/router.js';
 import { MessageQueue } from '../../src/db.js';
-import { TaintBudget, thresholdForProfile } from '../../src/taint-budget.js';
-import type {
-  ProviderRegistry,
-  Config,
-  ScanResult,
-  InboundMessage,
-  ChatChunk,
-  AuditEntry,
-  ConversationTurn,
-} from '../../src/providers/types.js';
+import { TaintBudget, thresholdForProfile } from '../../src/host/taint-budget.js';
+import type { ProviderRegistry, Config } from '../../src/types.js';
+import type { ScanResult } from '../../src/providers/scanner/types.js';
+import type { InboundMessage } from '../../src/providers/channel/types.js';
+import type { ChatChunk } from '../../src/providers/llm/types.js';
+import type { AuditEntry } from '../../src/providers/audit/types.js';
+import type { ConversationTurn } from '../../src/providers/memory/types.js';
 
 const POWER_CONFIG = resolve(import.meta.dirname, 'ax-test-power.yaml');
 
@@ -166,7 +163,7 @@ afterEach(() => {
 
 describe('Phase 2 Provider Map', () => {
   test('all Phase 2 providers are registered', async () => {
-    const { PROVIDER_MAP } = await import('../../src/provider-map.js');
+    const { PROVIDER_MAP } = await import('../../src/host/provider-map.js');
 
     // Phase 2 providers
     expect(PROVIDER_MAP.memory).toHaveProperty('memu');
@@ -179,13 +176,13 @@ describe('Phase 2 Provider Map', () => {
   });
 
   test('provider map paths use correct subdirectory format', async () => {
-    const { PROVIDER_MAP } = await import('../../src/provider-map.js');
+    const { PROVIDER_MAP } = await import('../../src/host/provider-map.js');
 
-    // All paths should be relative and start with ./providers/
+    // All paths should be relative and start with ../providers/
     for (const [kind, map] of Object.entries(PROVIDER_MAP)) {
       for (const [name, path] of Object.entries(map as Record<string, string>)) {
         expect(path).toMatch(
-          /^\.\/providers\/[a-z]+\/[a-z]+\.js$/,
+          /^\.\.\/providers\/[a-z]+\/[a-z]+\.js$/,
           `${kind}/${name} path "${path}" doesn't match format`,
         );
       }
@@ -457,8 +454,8 @@ describe('Power User Profile', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('Architectural Invariants', () => {
-  test('ConversationTurn type is in provider types', async () => {
-    const types = await import('../../src/providers/types.js');
+  test('ConversationTurn type is in memory provider types', async () => {
+    const types = await import('../../src/providers/memory/types.js');
     // ConversationTurn should be exported
     const turn: ConversationTurn = { role: 'user', content: 'test' };
     expect(turn.role).toBe('user');

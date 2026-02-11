@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type {
-  BrowserProvider, BrowserConfig, BrowserSession, PageSnapshot, Config,
-} from '../types.js';
+  BrowserProvider, BrowserConfig, BrowserSession, PageSnapshot,
+} from './types.js';
+import type { Config } from '../../types.js';
 
 /**
  * Sandboxed Playwright browser provider.

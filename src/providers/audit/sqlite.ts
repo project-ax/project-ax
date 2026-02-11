@@ -2,7 +2,8 @@ import { mkdirSync } from 'node:fs';
 import { openDatabase } from '../../utils/sqlite.js';
 import type { SQLiteDatabase } from '../../utils/sqlite.js';
 import { dataDir, dataFile } from '../../paths.js';
-import type { AuditProvider, AuditEntry, AuditFilter, Config } from '../types.js';
+import type { AuditProvider, AuditEntry, AuditFilter } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<AuditProvider> {
   mkdirSync(dataDir(), { recursive: true });

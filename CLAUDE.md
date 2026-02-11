@@ -13,20 +13,30 @@ This file provides guidance to Claude Code when working with code in this reposi
 npm run build     # TypeScript compilation (tsc)
 npm test          # Run all tests (vitest on Node.js)
 bun test          # Run all tests (Bun native runner)
-npm start         # Start AX (tsx src/host.ts)
+npm start         # Start AX (tsx src/main.ts)
 npm run test:fuzz # Run fuzz tests (vitest --run tests/ipc-fuzz.test.ts)
 ```
 
 ## Architecture Overview
 
-AX uses a **provider contract pattern**. Every subsystem is a TypeScript interface (`src/providers/types.ts`) with pluggable implementations. The host process (trusted) communicates with agent containers (untrusted) via IPC over Unix sockets.
+AX uses a **provider contract pattern**. Every subsystem is a TypeScript interface with pluggable implementations. The host process (trusted, `src/host/`) communicates with agent processes (sandboxed, `src/agent/`) via IPC over Unix sockets.
+
+### Directory Structure
+
+- **`src/host/`** — Trusted host-side: server, router, IPC handler, registry, proxy, taint budget, provider map, OAuth
+- **`src/agent/`** — Sandboxed agent-side: runner, IPC client/transport, local tools, MCP server
+- **`src/agent/runners/`** — Agent type implementations (pi-session, claude-code)
+- **`src/providers/`** — Provider implementations, each category in its own subdirectory with co-located `types.ts`
+- **`src/types.ts`** — Shared cross-cutting types (Config, ProviderRegistry, Message, TaintTag)
+- **`tests/`** — Mirrors `src/` structure exactly (tests/host/, tests/agent/, tests/providers/category/)
 
 ### Key Patterns
 
-- **Provider subdirectories:** `src/providers/llm/anthropic.ts` — each provider category is a subdirectory. Mapped via static allowlist in `src/provider-map.ts` (SC-SEC-002).
+- **Co-located provider types:** Each provider category has its own `types.ts` (e.g. `src/providers/llm/types.ts`). Shared types live in `src/types.ts`.
+- **Provider subdirectories:** `src/providers/llm/anthropic.ts` — each provider category is a subdirectory. Mapped via static allowlist in `src/host/provider-map.ts` (SC-SEC-002).
 - **safePath for all file ops:** Every file-based provider MUST use `safePath()` from `src/utils/safe-path.ts` when constructing paths from input.
 - **IPC schema validation:** Every IPC action has a Zod schema with `.strict()` mode in `src/ipc-schemas.ts`.
-- **Provider loading:** Static allowlist in `src/provider-map.ts` — no dynamic path construction.
+- **Provider loading:** Static allowlist in `src/host/provider-map.ts` — no dynamic path construction.
 - **Each provider exports** `create(config: Config)` function.
 
 ### Bug Fix Policy

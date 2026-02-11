@@ -1,4 +1,5 @@
-import type { LLMProvider, ChatRequest, ChatChunk, Config } from '../types.js';
+import type { LLMProvider, ChatRequest, ChatChunk } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<LLMProvider> {
   return {

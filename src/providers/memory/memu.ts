@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type {
   MemoryProvider, MemoryEntry, MemoryQuery, ProactiveHint,
-  ConversationTurn, Config,
-} from '../types.js';
+  ConversationTurn,
+} from './types.js';
+import type { Config } from '../../types.js';
 
 /**
  * memU knowledge-graph memory provider.

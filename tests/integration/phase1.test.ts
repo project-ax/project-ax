@@ -13,17 +13,14 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 
 // Direct-integration imports (not subprocess)
-import { createRouter } from '../../src/router.js';
+import { createRouter } from '../../src/host/router.js';
 import { MessageQueue } from '../../src/db.js';
-import { TaintBudget, thresholdForProfile } from '../../src/taint-budget.js';
-import type {
-  ProviderRegistry,
-  Config,
-  ScanResult,
-  InboundMessage,
-  ChatChunk,
-  AuditEntry,
-} from '../../src/providers/types.js';
+import { TaintBudget, thresholdForProfile } from '../../src/host/taint-budget.js';
+import type { ProviderRegistry, Config } from '../../src/types.js';
+import type { ScanResult } from '../../src/providers/scanner/types.js';
+import type { InboundMessage } from '../../src/providers/channel/types.js';
+import type { ChatChunk } from '../../src/providers/llm/types.js';
+import type { AuditEntry } from '../../src/providers/audit/types.js';
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '../..');
 const STANDARD_CONFIG = resolve(import.meta.dirname, 'ax-test-standard.yaml');
@@ -342,7 +339,7 @@ describe('Balanced Profile Config', () => {
 
   test('standard profile providers can be instantiated', async () => {
     const { loadConfig } = await import('../../src/config.js');
-    const { loadProviders } = await import('../../src/registry.js');
+    const { loadProviders } = await import('../../src/host/registry.js');
     const config = loadConfig(STANDARD_CONFIG);
 
     // Set AX_HOME to a temp dir so SQLite providers don't write to project root
@@ -371,7 +368,7 @@ describe('Balanced Profile Config', () => {
 
 describe('Provider Map', () => {
   test('all Phase 1 providers are registered', async () => {
-    const { PROVIDER_MAP } = await import('../../src/provider-map.js');
+    const { PROVIDER_MAP } = await import('../../src/host/provider-map.js');
 
     // LLM providers
     expect(PROVIDER_MAP.llm).toHaveProperty('anthropic');

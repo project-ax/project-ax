@@ -21,8 +21,8 @@ import type {
   ProposalResult,
   SkillLogEntry,
   LogOptions,
-  Config,
-} from '../types.js';
+} from './types.js';
+import type { Config } from '../../types.js';
 
 // ═══════════════════════════════════════════════════════
 // Hard-reject patterns (never overridable)

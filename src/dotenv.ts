@@ -62,7 +62,7 @@ function maybeRefreshOAuthToken(envFilePath: string): void {
 }
 
 async function refreshOAuthTokenAsync(refreshToken: string, envFilePath: string): Promise<void> {
-  const { refreshOAuthTokens } = await import('./oauth.js');
+  const { refreshOAuthTokens } = await import('./host/oauth.js');
   const tokens = await refreshOAuthTokens(refreshToken);
 
   // Update process.env

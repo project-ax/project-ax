@@ -1,7 +1,8 @@
 import { appendFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { dataFile } from '../../paths.js';
-import type { AuditProvider, AuditEntry, AuditFilter, Config } from '../types.js';
+import type { AuditProvider, AuditEntry, AuditFilter } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<AuditProvider> {
   const auditPath = dataFile('audit', 'audit.jsonl');

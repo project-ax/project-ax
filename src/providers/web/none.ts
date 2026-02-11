@@ -1,4 +1,5 @@
-import type { WebProvider, Config } from '../types.js';
+import type { WebProvider } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<WebProvider> {
   return {

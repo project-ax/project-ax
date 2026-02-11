@@ -2,7 +2,8 @@ import { readFileSync, writeFileSync, readdirSync, unlinkSync, mkdirSync } from 
 import { randomUUID } from 'node:crypto';
 import { safePath } from '../../utils/safe-path.js';
 import { dataFile } from '../../paths.js';
-import type { MemoryProvider, MemoryEntry, MemoryQuery, Config } from '../types.js';
+import type { MemoryProvider, MemoryEntry, MemoryQuery } from './types.js';
+import type { Config } from '../../types.js';
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 

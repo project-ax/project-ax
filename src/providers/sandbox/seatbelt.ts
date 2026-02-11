@@ -1,6 +1,7 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
-import type { SandboxProvider, SandboxConfig, SandboxProcess, Config } from '../types.js';
+import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   const policyPath = resolve('policies/agent.sb');

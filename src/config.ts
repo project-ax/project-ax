@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import type { Config } from './providers/types.js';
+import type { Config } from './types.js';
 import { configPath as defaultConfigPath } from './paths.js';
 import { PROFILE_NAMES } from './onboarding/prompts.js';
 

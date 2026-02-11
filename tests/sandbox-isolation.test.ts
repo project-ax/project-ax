@@ -13,9 +13,9 @@ import { describe, test, expect, vi } from 'vitest';
 import { resolve, sep } from 'node:path';
 import { create as createSeatbelt } from '../src/providers/sandbox/seatbelt.js';
 import { create as createSubprocess } from '../src/providers/sandbox/subprocess.js';
-import { createIPCMcpServer } from '../src/container/ipc-mcp-server.js';
-import type { IPCClient } from '../src/container/ipc-client.js';
-import type { Config } from '../src/providers/types.js';
+import { createIPCMcpServer } from '../src/agent/mcp-server.js';
+import type { IPCClient } from '../src/agent/ipc-client.js';
+import type { Config } from '../src/types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ describe('buildSystemPrompt uses relative paths', () => {
   test('claude-code system prompt uses ./skills, not absolute path', async () => {
     // Read and evaluate the module's buildSystemPrompt behavior
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/container/agents/claude-code.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/agent/runners/claude-code.ts'), 'utf-8');
 
     // System prompt should reference ./skills (relative)
     expect(source).toContain("Skills directory: ./skills");
@@ -158,13 +158,13 @@ describe('buildSystemPrompt uses relative paths', () => {
 
   test('pi-session system prompt uses ./skills, not absolute path', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/container/agents/pi-session.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/agent/runners/pi-session.ts'), 'utf-8');
     expect(source).toContain("Skills directory: ./skills");
   });
 
   test('agent-runner system prompt uses ./skills, not absolute path', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/container/agent-runner.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/agent/runner.ts'), 'utf-8');
     expect(source).toContain("Skills directory: ./skills");
   });
 });
@@ -179,7 +179,7 @@ describe('claude-code env spread', () => {
     // env filtering (5 vars only) provides the real isolation. But claude-code.ts
     // itself doesn't filter — it passes everything.
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/container/agents/claude-code.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/agent/runners/claude-code.ts'), 'utf-8');
 
     // Document that this spread exists
     expect(source).toContain('...process.env');
@@ -191,7 +191,7 @@ describe('claude-code env spread', () => {
 
   test('disallows WebFetch, WebSearch, and Skill built-in tools', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/container/agents/claude-code.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/agent/runners/claude-code.ts'), 'utf-8');
 
     expect(source).toContain("'WebFetch'");
     expect(source).toContain("'WebSearch'");
@@ -204,7 +204,7 @@ describe('claude-code env spread', () => {
 describe('server workspace isolation', () => {
   test('spawn command uses workspace-local skills path, not host path', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/server.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/host/server.ts'), 'utf-8');
 
     // The skills path passed to agent should be wsSkillsDir (in workspace),
     // not the host-side skillsDir or hostSkillsDir
@@ -221,7 +221,7 @@ describe('server workspace isolation', () => {
 
   test('workspace files do not contain project root path', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/server.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/host/server.ts'), 'utf-8');
 
     // The CONTEXT.md written to workspace should contain session info,
     // not host paths
@@ -370,11 +370,11 @@ describe('spawn command construction', () => {
     // (seatbelt) is what prevents these from reaching the agent. But for
     // subprocess (dev-only), the agent can see these paths via process.argv.
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/server.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/host/server.ts'), 'utf-8');
 
     // Verify tsx and agent-runner paths use resolve() (they must for host-side spawning)
     expect(source).toContain("resolve('node_modules/.bin/tsx')");
-    expect(source).toContain("resolve('src/container/agent-runner.ts')");
+    expect(source).toContain("resolve('src/agent/runner.ts')");
   });
 
   test('agent-runner parseArgs does not expose paths beyond what is passed in', () => {
@@ -382,7 +382,7 @@ describe('spawn command construction', () => {
     // These are already workspace-local paths set by server.ts.
     // Verify it doesn't use resolve() or process.cwd() to construct additional paths.
     const { readFileSync } = require('node:fs');
-    const source = readFileSync(resolve('src/container/agent-runner.ts'), 'utf-8');
+    const source = readFileSync(resolve('src/agent/runner.ts'), 'utf-8');
 
     // parseArgs should only use the paths provided via CLI args and env vars
     const parseArgsBody = source.slice(
@@ -442,7 +442,7 @@ describe('MCP server tool registry security', () => {
 
 describe('IPC tools for pi-agent-core do not expose paths', () => {
   test('ipc-tools exports memory, web, and audit tools — no skill tools', async () => {
-    const { createIPCTools } = await import('../src/container/ipc-tools.js');
+    const { createIPCTools } = await import('../src/agent/ipc-tools.js');
     const client = createMockClient();
     const tools = createIPCTools(client);
     const names = tools.map(t => t.name);

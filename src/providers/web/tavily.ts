@@ -1,5 +1,6 @@
 import { tavily } from '@tavily/core';
-import type { WebProvider, FetchRequest, FetchResponse, SearchResult, TaintTag, Config } from '../types.js';
+import type { WebProvider, FetchRequest, FetchResponse, SearchResult } from './types.js';
+import type { Config, TaintTag } from '../../types.js';
 
 /**
  * Web provider using the official Tavily JS SDK.

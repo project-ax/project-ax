@@ -26,7 +26,7 @@ let smokeTestHome: string;
 let socketPath: string;
 
 function startServer(configPath: string = TEST_CONFIG): ChildProcess {
-  const hostScript = resolve(PROJECT_ROOT, 'src/host.ts');
+  const hostScript = resolve(PROJECT_ROOT, 'src/main.ts');
   const args = IS_BUN
     ? ['run', hostScript, '--config', configPath]
     : ['tsx', hostScript, '--config', configPath];
@@ -190,7 +190,7 @@ describe('Smoke Test', () => {
   }, 60_000);
 
   test('host fails fast when LLM provider requires missing API key', async () => {
-    const hostScript = resolve(PROJECT_ROOT, 'src/host.ts');
+    const hostScript = resolve(PROJECT_ROOT, 'src/main.ts');
     const configFile = resolve(PROJECT_ROOT, 'ax.yaml');
     const cmd = IS_BUN ? 'bun' : 'npx';
     const args = IS_BUN

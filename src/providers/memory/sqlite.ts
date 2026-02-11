@@ -3,7 +3,8 @@ import { mkdirSync } from 'node:fs';
 import { openDatabase } from '../../utils/sqlite.js';
 import type { SQLiteDatabase } from '../../utils/sqlite.js';
 import { dataDir, dataFile } from '../../paths.js';
-import type { MemoryProvider, MemoryEntry, MemoryQuery, Config } from '../types.js';
+import type { MemoryProvider, MemoryEntry, MemoryQuery } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<MemoryProvider> {
   mkdirSync(dataDir(), { recursive: true });

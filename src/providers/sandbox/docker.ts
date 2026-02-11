@@ -15,7 +15,8 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import type { SandboxProvider, SandboxConfig, SandboxProcess, Config } from '../types.js';
+import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
+import type { Config } from '../../types.js';
 
 const DEFAULT_IMAGE = 'ax/agent:latest';
 const DEFAULT_PID_LIMIT = 256;

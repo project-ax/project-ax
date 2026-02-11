@@ -1,4 +1,5 @@
-import type { CredentialProvider, Config } from '../types.js';
+import type { CredentialProvider } from './types.js';
+import type { Config } from '../../types.js';
 
 /**
  * OS keychain credentials provider.

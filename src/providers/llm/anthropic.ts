@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMProvider, ChatRequest, ChatChunk, Config, ContentBlock } from '../types.js';
+import type { LLMProvider, ChatRequest, ChatChunk } from './types.js';
+import type { Config, ContentBlock } from '../../types.js';
 import { debug } from '../../logger.js';
 
 const SRC = 'host:anthropic';

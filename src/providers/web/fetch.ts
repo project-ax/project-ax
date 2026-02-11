@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises';
-import type { WebProvider, FetchRequest, FetchResponse, Config, TaintTag } from '../types.js';
+import type { WebProvider, FetchRequest, FetchResponse } from './types.js';
+import type { Config, TaintTag } from '../../types.js';
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 const DEFAULT_TIMEOUT_MS = 10_000;

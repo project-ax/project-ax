@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { ChannelProvider, InboundMessage, OutboundMessage, Config } from '../types.js';
+import type { ChannelProvider, InboundMessage, OutboundMessage } from './types.js';
+import type { Config } from '../../types.js';
 
 /**
  * Slack channel provider using @slack/bolt with Socket Mode.

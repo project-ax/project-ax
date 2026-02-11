@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { safePath } from '../../utils/safe-path.js';
-import type { SkillStoreProvider, SkillMeta, SkillProposal, ProposalResult, SkillLogEntry, LogOptions, Config } from '../types.js';
+import type { SkillStoreProvider, SkillMeta, SkillProposal, ProposalResult, SkillLogEntry, LogOptions } from './types.js';
+import type { Config } from '../../types.js';
 
 const DEFAULT_SKILLS_DIR = 'skills';
 

@@ -124,7 +124,7 @@ export async function runConfigure(outputDir: string): Promise<void> {
       oauthExpiresAt = existing?.oauthExpiresAt;
     } else {
       // No existing token — launch browser OAuth flow
-      const { runOAuthFlow } = await import('../oauth.js');
+      const { runOAuthFlow } = await import('../host/oauth.js');
       const tokens = await runOAuthFlow();
       oauthToken = tokens.access_token;
       oauthRefreshToken = tokens.refresh_token;

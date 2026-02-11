@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import type { SandboxProvider, SandboxConfig, SandboxProcess, Config } from '../types.js';
+import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
+import type { Config } from '../../types.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   let warned = false;

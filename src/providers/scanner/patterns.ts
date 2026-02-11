@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import type { ScannerProvider, ScanTarget, ScanResult, Config } from '../types.js';
+import type { ScannerProvider, ScanTarget, ScanResult } from './types.js';
+import type { Config } from '../../types.js';
 
 interface Pattern {
   regex: RegExp;

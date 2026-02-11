@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { MessageQueue } from '../../src/db.js';
-import { createRouter, type Router } from '../../src/router.js';
-import { createIPCHandler } from '../../src/ipc.js';
-import type { ProviderRegistry, InboundMessage, AuditEntry } from '../../src/providers/types.js';
+import { createRouter, type Router } from '../../src/host/router.js';
+import { createIPCHandler } from '../../src/host/ipc-server.js';
+import type { ProviderRegistry } from '../../src/types.js';
+import type { InboundMessage } from '../../src/providers/channel/types.js';
+import type { AuditEntry } from '../../src/providers/audit/types.js';
 
 // ═══════════════════════════════════════════════════════
 // Mock LLM that returns canned responses

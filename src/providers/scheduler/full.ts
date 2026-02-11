@@ -1,14 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
-import type {
-  SchedulerProvider,
-  InboundMessage,
-  CronJobDef,
-  Config,
-  ProactiveHint,
-  AuditProvider,
-  MemoryProvider,
-} from '../types.js';
+import type { SchedulerProvider, CronJobDef } from './types.js';
+import type { InboundMessage } from '../channel/types.js';
+import type { ProactiveHint } from '../memory/types.js';
+import type { AuditProvider } from '../audit/types.js';
+import type { MemoryProvider } from '../memory/types.js';
+import type { Config } from '../../types.js';
 
 // ═══════════════════════════════════════════════════════
 // Cron expression matching
