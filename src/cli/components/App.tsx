@@ -1,6 +1,6 @@
 // src/cli/components/App.tsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Box, useApp, useInput } from 'ink';
+import { Box, useApp, useInput, useStdout } from 'ink';
 import { StatusBar, type ConnectionStatus } from './StatusBar.js';
 import { MessageList, type ChatMessage } from './MessageList.js';
 import { ThinkingIndicator } from './ThinkingIndicator.js';
@@ -31,6 +31,9 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
 
   // Keep ref in sync for use in async callbacks
   historyRef.current = history;
+
+  const { stdout } = useStdout();
+  const terminalHeight = stdout?.rows ?? 24;
 
   // Handle Ctrl+C
   useInput((_input, key) => {
@@ -193,7 +196,7 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={terminalHeight}>
       <StatusBar status={connectionStatus} model={model} />
       <MessageList messages={messages} />
       <ThinkingIndicator visible={isLoading} />
