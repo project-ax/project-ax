@@ -6,8 +6,20 @@ import hljs from 'highlight.js';
 const marked = new Marked();
 
 // Map highlight.js token classes to chalk styles
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
 function hljsToChalk(html: string): string {
-  return html
+  return decodeHtmlEntities(html
     .replace(/<span class="hljs-keyword">(.*?)<\/span>/g, (_, t) => chalk.magenta(t))
     .replace(/<span class="hljs-string">(.*?)<\/span>/g, (_, t) => chalk.green(t))
     .replace(/<span class="hljs-number">(.*?)<\/span>/g, (_, t) => chalk.yellow(t))
@@ -19,12 +31,7 @@ function hljsToChalk(html: string): string {
     .replace(/<span class="hljs-literal">(.*?)<\/span>/g, (_, t) => chalk.yellow(t))
     .replace(/<span class="hljs-attr">(.*?)<\/span>/g, (_, t) => chalk.cyan(t))
     .replace(/<span class="hljs-[^"]*">(.*?)<\/span>/g, (_, t) => t)
-    .replace(/<\/?[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/<\/?[^>]+>/g, ''));
 }
 
 // marked v11 uses positional arguments for renderer methods
@@ -91,5 +98,5 @@ marked.use({ renderer });
 export function renderMarkdown(content: string): string {
   if (!content) return '';
   const result = marked.parse(content) as string;
-  return result.replace(/\n{3,}/g, '\n\n').trimEnd();
+  return decodeHtmlEntities(result).replace(/\n{3,}/g, '\n\n').trimEnd();
 }

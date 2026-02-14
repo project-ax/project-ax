@@ -69,4 +69,12 @@ describe('renderMarkdown', () => {
     expect(result).toContain('Paragraph 1');
     expect(result).toContain('Paragraph 2');
   });
+
+  it('should decode HTML entities in rendered output', () => {
+    const result = renderMarkdown("Hello! I'm AX, and I said \"hi\"");
+    expect(result).toContain("I'm AX");
+    expect(result).toContain('"hi"');
+    expect(result).not.toContain('&#39;');
+    expect(result).not.toContain('&quot;');
+  });
 });
