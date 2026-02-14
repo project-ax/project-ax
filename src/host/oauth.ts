@@ -8,6 +8,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
+import { createInterface } from 'node:readline';
 
 // OAuth endpoints and client config
 const AUTH_URL = 'https://claude.ai/oauth/authorize';
@@ -159,14 +160,62 @@ export async function refreshOAuthTokens(refreshToken: string): Promise<OAuthTok
   };
 }
 
+// ── Manual code entry (paste-based fallback) ──
+
+/**
+ * Wait for the user to paste the redirect URL from their browser.
+ * After authorizing, the browser redirects to localhost:1455/callback?code=...&state=...
+ * which won't load. The user copies the URL from the address bar and pastes it here.
+ */
+function waitForPastedCode(expectedState: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+    rl.question('  Paste the URL from your browser: ', (answer: string) => {
+      rl.close();
+
+      const trimmed = answer.trim();
+      if (!trimmed) {
+        reject(new Error('No URL provided'));
+        return;
+      }
+
+      try {
+        // Parse the pasted URL to extract code and state
+        const url = new URL(trimmed);
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+        const error = url.searchParams.get('error');
+
+        if (error) {
+          reject(new Error(`OAuth error: ${error}`));
+          return;
+        }
+        if (state !== expectedState) {
+          reject(new Error('OAuth state mismatch — possible CSRF'));
+          return;
+        }
+        if (!code) {
+          reject(new Error('No authorization code found in URL'));
+          return;
+        }
+
+        resolve(code);
+      } catch {
+        reject(new Error('Invalid URL — paste the full URL from your browser address bar'));
+      }
+    });
+  });
+}
+
 // ── Full Interactive Flow ──
 
 /**
  * Run the full OAuth PKCE flow:
  * 1. Generate PKCE verifier/challenge + state
- * 2. Start local callback server
+ * 2. Try to start local callback server (may fail if port is busy)
  * 3. Open browser to authorization URL
- * 4. Wait for callback with auth code
+ * 4. Wait for callback OR manual URL paste
  * 5. Exchange code for tokens
  */
 export async function runOAuthFlow(): Promise<OAuthTokens> {
@@ -183,29 +232,57 @@ export async function runOAuthFlow(): Promise<OAuthTokens> {
   authUrl.searchParams.set('code_challenge', codeChallenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
 
-  // Start the callback server before opening the browser
-  const callbackPromise = startCallbackServer(state);
+  // Detect headless: no DISPLAY, no WAYLAND_DISPLAY, not macOS/Windows
+  const isHeadless = process.platform === 'linux'
+    && !process.env.DISPLAY
+    && !process.env.WAYLAND_DISPLAY;
 
-  console.log('\n  Opening browser for Claude Max authorization...');
-  console.log(`  If the browser doesn't open, visit:\n  ${authUrl.toString()}\n`);
+  // Try to start the callback server on machines with a browser.
+  // On headless servers, skip it — the redirect goes to the user's local
+  // browser, not this machine, so the callback server can't catch it.
+  let callbackPromise: Promise<{ code: string; server: Server }> | null = null;
+  if (!isHeadless) {
+    try {
+      callbackPromise = startCallbackServer(state);
+    } catch {
+      // Callback server failed to start — fall through to manual paste
+    }
+  }
 
-  // Open browser (platform-specific)
-  const { exec } = await import('node:child_process');
-  const openCmd = process.platform === 'darwin'
-    ? 'open'
-    : process.platform === 'win32'
-      ? 'start'
+  console.log('\n  Open this URL in your browser to authorize AX:\n');
+  console.log(`  ${authUrl.toString()}\n`);
+
+  // Try to open the browser (best-effort, will fail silently on headless)
+  if (!isHeadless) {
+    const { exec } = await import('node:child_process');
+    const openCmd = process.platform === 'darwin' ? 'open'
+      : process.platform === 'win32' ? 'start'
       : 'xdg-open';
+    exec(`${openCmd} "${authUrl.toString()}"`);
+  }
 
-  exec(`${openCmd} "${authUrl.toString()}"`);
+  let code: string;
 
-  // Wait for the callback
-  const { code, server } = await callbackPromise;
+  if (callbackPromise) {
+    // Desktop: race between auto-redirect and manual paste
+    console.log('  After authorizing, you\'ll be redirected back automatically.');
+    console.log('  If the redirect fails, copy the URL from your browser and paste it below.\n');
 
-  // Close the callback server
-  server.close();
+    const pastePromise = waitForPastedCode(state);
+    const result = await Promise.race([
+      callbackPromise.then(({ code: c, server }) => { server.close(); return c; }),
+      pastePromise,
+    ]);
+    code = result;
+  } else {
+    // Headless: paste-only flow
+    console.log('  After authorizing, your browser will redirect to a localhost URL.');
+    console.log('  The page won\'t load — that\'s expected.');
+    console.log('  Copy the full URL from your browser\'s address bar and paste it here.\n');
 
-  // Exchange the code for tokens
+    code = await waitForPastedCode(state);
+  }
+
   const tokens = await exchangeCodeForTokens(code, codeVerifier, state);
 
   console.log('  Authorization successful!\n');
