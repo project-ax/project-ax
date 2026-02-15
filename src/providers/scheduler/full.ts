@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import type { SchedulerProvider, CronJobDef } from './types.js';
-import type { InboundMessage } from '../channel/types.js';
+import type { InboundMessage, SessionAddress } from '../channel/types.js';
+
+function schedulerSession(sender: string): SessionAddress {
+  return { provider: 'scheduler', scope: 'dm', identifiers: { peer: sender } };
+}
 import type { ProactiveHint } from '../memory/types.js';
 import type { AuditProvider } from '../audit/types.js';
 import type { MemoryProvider } from '../memory/types.js';
@@ -155,11 +159,11 @@ export async function create(
 
     onMessageHandler({
       id: randomUUID(),
-      channel: 'scheduler',
+      session: schedulerSession('heartbeat'),
       sender: 'heartbeat',
       content: 'Heartbeat check — review pending tasks and proactive hints.',
+      attachments: [],
       timestamp: new Date(),
-      isGroup: false,
     });
   }
 
@@ -173,11 +177,11 @@ export async function create(
       if (matchesCron(job.schedule, now)) {
         onMessageHandler({
           id: randomUUID(),
-          channel: 'scheduler',
+          session: schedulerSession(`cron:${job.id}`),
           sender: `cron:${job.id}`,
           content: job.prompt,
+          attachments: [],
           timestamp: now,
-          isGroup: false,
         });
       }
     }
@@ -259,11 +263,11 @@ export async function create(
 
     onMessageHandler({
       id: randomUUID(),
-      channel: 'scheduler',
+      session: schedulerSession(`hint:${hint.kind}`),
       sender: `hint:${hint.kind}`,
       content: hint.suggestedPrompt,
+      attachments: [],
       timestamp: new Date(),
-      isGroup: false,
     });
   }
 

@@ -169,7 +169,7 @@ describe('scheduler-full', () => {
     memory.fireHint(makeHint({ confidence: 0.85 }));
 
     // Should have generated an InboundMessage
-    const hintMsg = received.find(m => m.channel === 'scheduler' && m.sender.startsWith('hint:'));
+    const hintMsg = received.find(m => m.session.provider === 'scheduler' && m.sender.startsWith('hint:'));
     expect(hintMsg).toBeTruthy();
     expect(hintMsg!.content).toContain('Check pending tasks');
   });

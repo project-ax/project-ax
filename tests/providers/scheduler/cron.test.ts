@@ -86,7 +86,8 @@ describe('scheduler-cron', () => {
     stopFn = null;
 
     expect(received.length).toBeGreaterThan(0);
-    expect(received[0].channel).toBe('scheduler');
+    expect(received[0].session.provider).toBe('scheduler');
+    expect(received[0].session.scope).toBe('dm');
     expect(received[0].sender).toBe('heartbeat');
   });
 

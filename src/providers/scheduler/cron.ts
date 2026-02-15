@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { SchedulerProvider, CronJobDef } from './types.js';
-import type { InboundMessage } from '../channel/types.js';
+import type { InboundMessage, SessionAddress } from '../channel/types.js';
+
+function schedulerSession(sender: string): SessionAddress {
+  return { provider: 'scheduler', scope: 'dm', identifiers: { peer: sender } };
+}
 import type { Config } from '../../types.js';
 
 interface ActiveHours {
@@ -47,11 +51,11 @@ export async function create(config: Config): Promise<SchedulerProvider> {
 
     const msg: InboundMessage = {
       id: randomUUID(),
-      channel: 'scheduler',
+      session: schedulerSession('heartbeat'),
       sender: 'heartbeat',
       content: 'Heartbeat check — review pending tasks and proactive hints.',
+      attachments: [],
       timestamp: new Date(),
-      isGroup: false,
     };
 
     onMessageHandler(msg);
@@ -88,11 +92,11 @@ export async function create(config: Config): Promise<SchedulerProvider> {
       if (!matchesCron(job.schedule, now)) continue;
       const msg: InboundMessage = {
         id: randomUUID(),
-        channel: 'scheduler',
+        session: schedulerSession(`cron:${job.id}`),
         sender: `cron:${job.id}`,
         content: job.prompt,
+        attachments: [],
         timestamp: now,
-        isGroup: false,
       };
       onMessageHandler(msg);
     }
