@@ -603,16 +603,20 @@ export async function createServer(
     // Connect channel providers (Slack, Discord, etc.)
     for (const channel of providers.channels) {
       channel.onMessage(async (msg: InboundMessage) => {
+        if (!channel.shouldRespond(msg)) {
+          logger.debug('Channel message filtered', { provider: channel.name, sender: msg.sender });
+          return;
+        }
         const result = await router.processInbound(msg);
         if (!result.queued) {
-          await channel.send(msg.sender, {
+          await channel.send(msg.session, {
             content: `Message blocked: ${result.scanResult.reason ?? 'security scan failed'}`,
           });
           return;
         }
         sessionCanaries.set(result.sessionId, result.canaryToken);
         const { responseContent } = await processCompletion(msg.content, `ch-${randomUUID().slice(0, 8)}`, [], msg.id);
-        await channel.send(msg.sender, { content: responseContent });
+        await channel.send(msg.session, { content: responseContent });
       });
       await channel.connect();
     }
