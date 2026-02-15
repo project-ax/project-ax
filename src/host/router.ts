@@ -64,7 +64,7 @@ export function createRouter(
       // Scan input
       const scanResult = await providers.scanner.scanInput({
         content: msg.content,
-        source: msg.channel,
+        source: msg.session.provider,
         taint,
         sessionId,
       });

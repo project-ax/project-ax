@@ -300,11 +300,11 @@ export async function createServer(
 
     const inbound: InboundMessage = {
       id: sessionId,
-      channel: 'http',
+      session: { provider: 'http', scope: 'dm', identifiers: { peer: 'client' } },
       sender: 'client',
       content,
+      attachments: [],
       timestamp: new Date(),
-      isGroup: false,
     };
 
     const result = await router.processInbound(inbound);
