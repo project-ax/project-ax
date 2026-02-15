@@ -3,7 +3,7 @@ import type { ProfileName } from './onboarding/prompts.js';
 import type { LLMProvider } from './providers/llm/types.js';
 import type { MemoryProvider } from './providers/memory/types.js';
 import type { ScannerProvider } from './providers/scanner/types.js';
-import type { ChannelProvider } from './providers/channel/types.js';
+import type { ChannelProvider, ChannelAccessConfig } from './providers/channel/types.js';
 import type { WebProvider } from './providers/web/types.js';
 import type { BrowserProvider } from './providers/browser/types.js';
 import type { CredentialProvider } from './providers/credentials/types.js';
@@ -48,6 +48,7 @@ export interface Config {
     scheduler: string;
     skillScreener?: string;
   };
+  channel_config?: Record<string, Partial<ChannelAccessConfig>>;
   sandbox: {
     timeout_sec: number;
     memory_mb: number;
