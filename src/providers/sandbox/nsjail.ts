@@ -8,10 +8,11 @@
  * - Memory and time limits enforced at kernel level
  */
 
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
 import type { Config } from '../../types.js';
+import { exitCodePromise, killProcess, checkCommand, sandboxProcess } from './utils.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   const policyPath = resolve('policies/agent.kafel');
@@ -70,36 +71,14 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      const exitCode = new Promise<number>((resolve, reject) => {
-        child.on('exit', (code) => resolve(code ?? 1));
-        child.on('error', reject);
-      });
-
-      return {
-        pid: child.pid!,
-        exitCode,
-        stdout: child.stdout,
-        stderr: child.stderr,
-        stdin: child.stdin,
-        kill() { child.kill(); },
-      };
+      const exitCode = exitCodePromise(child);
+      return sandboxProcess(child, exitCode);
     },
 
-    async kill(pid: number): Promise<void> {
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // Process already exited
-      }
-    },
+    kill: killProcess,
 
     async isAvailable(): Promise<boolean> {
-      try {
-        execFileSync('which', ['nsjail'], { stdio: 'ignore' });
-        return true;
-      } catch {
-        return false;
-      }
+      return checkCommand('which', ['nsjail']);
     },
   };
 }

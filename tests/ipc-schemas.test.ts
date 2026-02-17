@@ -251,5 +251,22 @@ describe('IPC Schema Validation (SC-SEC-001)', () => {
         expect(result.success).toBe(false);
       }
     });
+
+    test('registry has at least 20 actions', () => {
+      expect(Object.keys(IPC_SCHEMAS).length).toBeGreaterThanOrEqual(20);
+    });
+
+    test('every schema in registry accepts its own action literal', () => {
+      for (const [action, schema] of Object.entries(IPC_SCHEMAS)) {
+        // Build a minimal payload — we only need action to pass the literal check
+        // (other required fields will fail, but the action literal itself should be right)
+        const result = schema.safeParse({ action });
+        // If it fails, it should be for missing fields, not wrong action
+        if (!result.success) {
+          const issues = result.error.issues.map((i: any) => i.message);
+          expect(issues.join(',')).not.toContain('Invalid literal value');
+        }
+      }
+    });
   });
 });

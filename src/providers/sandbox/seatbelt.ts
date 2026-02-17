@@ -1,7 +1,8 @@
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
 import type { Config } from '../../types.js';
+import { exitCodePromise, enforceTimeout, killProcess, checkCommand, sandboxProcess } from './utils.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   const policyPath = resolve('policies/agent.sb');
@@ -37,45 +38,15 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      const exitCode = new Promise<number>((resolve, reject) => {
-        child.on('exit', (code) => resolve(code ?? 1));
-        child.on('error', reject);
-      });
-
-      // Enforce timeout
-      if (config.timeoutSec) {
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL');
-          }
-        }, config.timeoutSec * 1000);
-      }
-
-      return {
-        pid: child.pid!,
-        exitCode,
-        stdout: child.stdout,
-        stderr: child.stderr,
-        stdin: child.stdin,
-        kill() { child.kill(); },
-      };
+      const exitCode = exitCodePromise(child);
+      enforceTimeout(child, config.timeoutSec);
+      return sandboxProcess(child, exitCode);
     },
 
-    async kill(pid: number): Promise<void> {
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // Process already exited
-      }
-    },
+    kill: killProcess,
 
     async isAvailable(): Promise<boolean> {
-      try {
-        execFileSync('which', ['sandbox-exec'], { stdio: 'ignore' });
-        return true;
-      } catch {
-        return false;
-      }
+      return checkCommand('which', ['sandbox-exec']);
     },
   };
 }

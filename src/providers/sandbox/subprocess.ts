@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
 import type { Config } from '../../types.js';
+import { exitCodePromise, enforceTimeout, killProcess, sandboxProcess } from './utils.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   let warned = false;
@@ -24,37 +25,12 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      const exitCode = new Promise<number>((resolve, reject) => {
-        child.on('exit', (code) => resolve(code ?? 1));
-        child.on('error', reject);
-      });
-
-      // Enforce timeout
-      if (config.timeoutSec) {
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL');
-          }
-        }, config.timeoutSec * 1000);
-      }
-
-      return {
-        pid: child.pid!,
-        exitCode,
-        stdout: child.stdout,
-        stderr: child.stderr,
-        stdin: child.stdin,
-        kill() { child.kill(); },
-      };
+      const exitCode = exitCodePromise(child);
+      enforceTimeout(child, config.timeoutSec);
+      return sandboxProcess(child, exitCode);
     },
 
-    async kill(pid: number): Promise<void> {
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // Process already exited
-      }
-    },
+    kill: killProcess,
 
     async isAvailable(): Promise<boolean> {
       return true; // Always available — it's just a subprocess

@@ -1,110 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import { createHash } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import type { SchedulerProvider, CronJobDef } from './types.js';
-import type { InboundMessage, SessionAddress } from '../channel/types.js';
-
-function schedulerSession(sender: string): SessionAddress {
-  return { provider: 'scheduler', scope: 'dm', identifiers: { peer: sender } };
-}
-import type { ProactiveHint } from '../memory/types.js';
+import type { InboundMessage } from '../channel/types.js';
+import type { ProactiveHint, MemoryProvider } from '../memory/types.js';
 import type { AuditProvider } from '../audit/types.js';
-import type { MemoryProvider } from '../memory/types.js';
 import type { Config } from '../../types.js';
-
-// ═══════════════════════════════════════════════════════
-// Cron expression matching
-// ═══════════════════════════════════════════════════════
-
-/**
- * Parse a single cron field (minute, hour, dom, month, dow).
- * Supports: *, N, N-M, *​/N, N-M/N, comma-separated lists.
- * Returns a Set of matching values within [min, max].
- */
-function parseCronField(field: string, min: number, max: number): Set<number> {
-  const result = new Set<number>();
-
-  for (const part of field.split(',')) {
-    const stepParts = part.split('/');
-    const range = stepParts[0];
-    const step = stepParts[1] ? parseInt(stepParts[1], 10) : 1;
-
-    let start = min;
-    let end = max;
-
-    if (range === '*') {
-      // already defaults
-    } else if (range.includes('-')) {
-      const [lo, hi] = range.split('-').map(Number);
-      start = lo;
-      end = hi;
-    } else {
-      start = parseInt(range, 10);
-      end = start;
-    }
-
-    for (let i = start; i <= end; i += step) {
-      result.add(i);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Check if the given Date matches a standard 5-field cron expression.
- * Fields: minute hour day-of-month month day-of-week
- */
-function matchesCron(schedule: string, date: Date): boolean {
-  const fields = schedule.trim().split(/\s+/);
-  if (fields.length !== 5) return false;
-
-  const minute = date.getMinutes();
-  const hour = date.getHours();
-  const dom = date.getDate();
-  const month = date.getMonth() + 1; // 1-12
-  const dow = date.getDay(); // 0=Sun
-
-  const [minF, hourF, domF, monthF, dowF] = fields;
-
-  return (
-    parseCronField(minF, 0, 59).has(minute) &&
-    parseCronField(hourF, 0, 23).has(hour) &&
-    parseCronField(domF, 1, 31).has(dom) &&
-    parseCronField(monthF, 1, 12).has(month) &&
-    parseCronField(dowF, 0, 6).has(dow)
-  );
-}
-
-// ═══════════════════════════════════════════════════════
-// Active hours check
-// ═══════════════════════════════════════════════════════
-
-interface ActiveHours {
-  start: number; // minutes from midnight
-  end: number;
-  timezone: string;
-}
-
-function parseTime(timeStr: string): number {
-  const [h, m] = timeStr.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function isWithinActiveHours(hours: ActiveHours): boolean {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: hours.timezone,
-  });
-  const currentMinutes = parseTime(timeStr);
-  return currentMinutes >= hours.start && currentMinutes < hours.end;
-}
-
-// ═══════════════════════════════════════════════════════
-// Hint signature for cooldown dedup
-// ═══════════════════════════════════════════════════════
+import {
+  type ActiveHours,
+  schedulerSession, parseTime, isWithinActiveHours, matchesCron,
+} from './utils.js';
 
 function hintSignature(hint: ProactiveHint): string {
   return createHash('sha256')

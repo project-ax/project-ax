@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
 import type { Config } from '../../types.js';
+import { exitCodePromise, enforceTimeout, killProcess, checkCommand, sandboxProcess } from './utils.js';
 
 const DEFAULT_IMAGE = 'ax/agent:latest';
 const DEFAULT_PID_LIMIT = 256;
@@ -106,45 +107,15 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      const exitCode = new Promise<number>((resolve, reject) => {
-        child.on('exit', (code) => resolve(code ?? 1));
-        child.on('error', reject);
-      });
-
-      // Enforce timeout at host level too (belt and suspenders)
-      if (config.timeoutSec) {
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL');
-          }
-        }, (config.timeoutSec + 5) * 1000); // +5s grace for Docker cleanup
-      }
-
-      return {
-        pid: child.pid!,
-        exitCode,
-        stdout: child.stdout,
-        stderr: child.stderr,
-        stdin: child.stdin,
-        kill() { child.kill(); },
-      };
+      const exitCode = exitCodePromise(child);
+      enforceTimeout(child, config.timeoutSec, 5); // +5s grace for Docker cleanup
+      return sandboxProcess(child, exitCode);
     },
 
-    async kill(pid: number): Promise<void> {
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // Process already exited
-      }
-    },
+    kill: killProcess,
 
     async isAvailable(): Promise<boolean> {
-      try {
-        execFileSync('docker', ['info'], { stdio: 'ignore' });
-        return true;
-      } catch {
-        return false;
-      }
+      return checkCommand('docker', ['info']);
     },
   };
 }

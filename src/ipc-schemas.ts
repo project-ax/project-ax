@@ -26,7 +26,20 @@ const uuid = z.string().regex(
 );
 
 // ═══════════════════════════════════════════════════════
-// Action schemas — one per IPC action
+// Builder + auto-registry
+// ═══════════════════════════════════════════════════════
+
+const registry: [string, z.ZodType][] = [];
+
+/** Create a strict IPC action schema and register it in IPC_SCHEMAS. */
+function ipcAction<T extends z.ZodRawShape>(action: string, fields: T) {
+  const schema = z.strictObject({ action: z.literal(action), ...fields });
+  registry.push([action, schema]);
+  return schema;
+}
+
+// ═══════════════════════════════════════════════════════
+// Action schemas
 // ═══════════════════════════════════════════════════════
 
 // ── LLM ──────────────────────────────────────────────
@@ -37,8 +50,7 @@ const contentBlock = z.union([
   z.strictObject({ type: z.literal('tool_result'), tool_use_id: safeString(200), content: safeString(200_000) }),
 ]);
 
-export const LlmCallSchema = z.strictObject({
-  action: z.literal('llm_call'),
+export const LlmCallSchema = ipcAction('llm_call', {
   model: safeString(128).optional(),
   messages: z.array(z.strictObject({
     role: z.enum(['user', 'assistant', 'system']),
@@ -55,58 +67,48 @@ export const LlmCallSchema = z.strictObject({
 
 // ── Memory ───────────────────────────────────────────
 
-export const MemoryWriteSchema = z.strictObject({
-  action: z.literal('memory_write'),
+export const MemoryWriteSchema = ipcAction('memory_write', {
   scope: scopeName,
   content: safeString(100_000),
   tags: z.array(safeString(100)).optional(),
   tainted: z.boolean().optional(),
 });
 
-export const MemoryQuerySchema = z.strictObject({
-  action: z.literal('memory_query'),
+export const MemoryQuerySchema = ipcAction('memory_query', {
   scope: scopeName,
   query: safeString(10_000).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   tags: z.array(safeString(100)).optional(),
 });
 
-export const MemoryReadSchema = z.strictObject({
-  action: z.literal('memory_read'),
-  id: uuid,
-});
+export const MemoryReadSchema = ipcAction('memory_read', { id: uuid });
 
-export const MemoryDeleteSchema = z.strictObject({
-  action: z.literal('memory_delete'),
-  id: uuid,
-});
+export const MemoryDeleteSchema = ipcAction('memory_delete', { id: uuid });
 
-export const MemoryListSchema = z.strictObject({
-  action: z.literal('memory_list'),
+export const MemoryListSchema = ipcAction('memory_list', {
   scope: scopeName,
   limit: z.number().int().min(1).max(100).optional(),
 });
 
 // ── Web ──────────────────────────────────────────────
 
-export const WebFetchSchema = z.strictObject({
-  action: z.literal('web_fetch'),
+export const WebFetchSchema = ipcAction('web_fetch', {
   url: z.url().max(2048),
   method: z.enum(['GET', 'HEAD']).optional(),
   headers: z.record(safeString(200), safeString(4096)).optional(),
   timeoutMs: z.number().int().min(1000).max(30_000).optional(),
 });
 
-export const WebSearchSchema = z.strictObject({
-  action: z.literal('web_search'),
+export const WebSearchSchema = ipcAction('web_search', {
   query: safeString(1000),
   maxResults: z.number().int().min(1).max(20).optional(),
 });
 
 // ── Browser ──────────────────────────────────────────
 
-export const BrowserLaunchSchema = z.strictObject({
-  action: z.literal('browser_launch'),
+const browserSession = safeString(128);
+
+export const BrowserLaunchSchema = ipcAction('browser_launch', {
   config: z.strictObject({
     headless: z.boolean().optional(),
     viewport: z.strictObject({
@@ -116,53 +118,31 @@ export const BrowserLaunchSchema = z.strictObject({
   }).optional(),
 });
 
-export const BrowserNavigateSchema = z.strictObject({
-  action: z.literal('browser_navigate'),
-  session: safeString(128),
-  url: z.url().max(2048),
+export const BrowserNavigateSchema = ipcAction('browser_navigate', {
+  session: browserSession, url: z.url().max(2048),
 });
 
-export const BrowserSnapshotSchema = z.strictObject({
-  action: z.literal('browser_snapshot'),
-  session: safeString(128),
+export const BrowserSnapshotSchema = ipcAction('browser_snapshot', { session: browserSession });
+
+export const BrowserClickSchema = ipcAction('browser_click', {
+  session: browserSession, ref: z.number().int().min(0),
 });
 
-export const BrowserClickSchema = z.strictObject({
-  action: z.literal('browser_click'),
-  session: safeString(128),
-  ref: z.number().int().min(0),
+export const BrowserTypeSchema = ipcAction('browser_type', {
+  session: browserSession, ref: z.number().int().min(0), text: safeString(10_000),
 });
 
-export const BrowserTypeSchema = z.strictObject({
-  action: z.literal('browser_type'),
-  session: safeString(128),
-  ref: z.number().int().min(0),
-  text: safeString(10_000),
-});
+export const BrowserScreenshotSchema = ipcAction('browser_screenshot', { session: browserSession });
 
-export const BrowserScreenshotSchema = z.strictObject({
-  action: z.literal('browser_screenshot'),
-  session: safeString(128),
-});
-
-export const BrowserCloseSchema = z.strictObject({
-  action: z.literal('browser_close'),
-  session: safeString(128),
-});
+export const BrowserCloseSchema = ipcAction('browser_close', { session: browserSession });
 
 // ── Skills ───────────────────────────────────────────
 
-export const SkillReadSchema = z.strictObject({
-  action: z.literal('skill_read'),
-  name: safeString(200),
-});
+export const SkillReadSchema = ipcAction('skill_read', { name: safeString(200) });
 
-export const SkillListSchema = z.strictObject({
-  action: z.literal('skill_list'),
-});
+export const SkillListSchema = ipcAction('skill_list', {});
 
-export const SkillProposeSchema = z.strictObject({
-  action: z.literal('skill_propose'),
+export const SkillProposeSchema = ipcAction('skill_propose', {
   skill: safeString(200),
   content: safeString(100_000),
   reason: safeString(2000).optional(),
@@ -170,8 +150,7 @@ export const SkillProposeSchema = z.strictObject({
 
 // ── Audit ────────────────────────────────────────────
 
-export const AuditQuerySchema = z.strictObject({
-  action: z.literal('audit_query'),
+export const AuditQuerySchema = ipcAction('audit_query', {
   filter: z.strictObject({
     action: safeString(100).optional(),
     sessionId: safeString(128).optional(),
@@ -183,8 +162,7 @@ export const AuditQuerySchema = z.strictObject({
 
 // ── Agent Delegation ────────────────────────────────
 
-export const AgentDelegateSchema = z.strictObject({
-  action: z.literal('agent_delegate'),
+export const AgentDelegateSchema = ipcAction('agent_delegate', {
   task: safeString(50_000),
   context: safeString(100_000).optional(),
   maxTokens: z.number().int().min(1).max(200_000).optional(),
@@ -195,49 +173,23 @@ export const AgentDelegateSchema = z.strictObject({
 
 export const IDENTITY_FILES = ['SOUL.md', 'IDENTITY.md', 'USER.md'] as const;
 
-export const IdentityWriteSchema = z.strictObject({
-  action: z.literal('identity_write'),
+export const IdentityWriteSchema = ipcAction('identity_write', {
   file: z.enum(IDENTITY_FILES),
   content: safeString(32_768),
   reason: safeString(512),
 });
 
-export const IdentityProposeSchema = z.strictObject({
-  action: z.literal('identity_propose'),
+export const IdentityProposeSchema = ipcAction('identity_propose', {
   file: z.enum(IDENTITY_FILES),
   content: safeString(32_768),
   reason: safeString(512),
 });
 
 // ═══════════════════════════════════════════════════════
-// Schema registry
+// Auto-generated registry
 // ═══════════════════════════════════════════════════════
 
-export const IPC_SCHEMAS: Record<string, z.ZodType> = {
-  llm_call:               LlmCallSchema,
-  memory_write:           MemoryWriteSchema,
-  memory_query:           MemoryQuerySchema,
-  memory_read:            MemoryReadSchema,
-  memory_delete:          MemoryDeleteSchema,
-  memory_list:            MemoryListSchema,
-  web_fetch:              WebFetchSchema,
-  web_search:             WebSearchSchema,
-  browser_launch:         BrowserLaunchSchema,
-  browser_navigate:       BrowserNavigateSchema,
-  browser_snapshot:       BrowserSnapshotSchema,
-  browser_click:          BrowserClickSchema,
-  browser_type:           BrowserTypeSchema,
-  browser_screenshot:     BrowserScreenshotSchema,
-  browser_close:          BrowserCloseSchema,
-  skill_read:             SkillReadSchema,
-  skill_list:             SkillListSchema,
-  skill_propose:          SkillProposeSchema,
-  audit_query:            AuditQuerySchema,
-  agent_delegate:         AgentDelegateSchema,
-  identity_write:         IdentityWriteSchema,
-  identity_propose:       IdentityProposeSchema,
-};
-
+export const IPC_SCHEMAS: Record<string, z.ZodType> = Object.fromEntries(registry);
 export const VALID_ACTIONS = Object.keys(IPC_SCHEMAS);
 
 /**

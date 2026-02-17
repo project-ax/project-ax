@@ -1,35 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { SchedulerProvider, CronJobDef } from './types.js';
-import type { InboundMessage, SessionAddress } from '../channel/types.js';
-
-function schedulerSession(sender: string): SessionAddress {
-  return { provider: 'scheduler', scope: 'dm', identifiers: { peer: sender } };
-}
+import type { InboundMessage } from '../channel/types.js';
 import type { Config } from '../../types.js';
-
-interface ActiveHours {
-  start: number; // minutes from midnight
-  end: number;
-  timezone: string;
-}
-
-function parseTime(timeStr: string): number {
-  const [h, m] = timeStr.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function isWithinActiveHours(hours: ActiveHours): boolean {
-  const now = new Date();
-  // Get current time in the configured timezone
-  const timeStr = now.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: hours.timezone,
-  });
-  const currentMinutes = parseTime(timeStr);
-  return currentMinutes >= hours.start && currentMinutes < hours.end;
-}
+import {
+  type ActiveHours,
+  schedulerSession, parseTime, isWithinActiveHours, matchesCron,
+} from './utils.js';
 
 export async function create(config: Config): Promise<SchedulerProvider> {
   const jobs: Map<string, CronJobDef> = new Map();
@@ -48,57 +24,30 @@ export async function create(config: Config): Promise<SchedulerProvider> {
   function fireHeartbeat(): void {
     if (!onMessageHandler) return;
     if (!isWithinActiveHours(activeHours)) return;
-
-    const msg: InboundMessage = {
+    onMessageHandler({
       id: randomUUID(),
       session: schedulerSession('heartbeat'),
       sender: 'heartbeat',
       content: 'Heartbeat check — review pending tasks and proactive hints.',
       attachments: [],
       timestamp: new Date(),
-    };
-
-    onMessageHandler(msg);
-  }
-
-  function matchesCron(schedule: string, date: Date): boolean {
-    const fields = schedule.trim().split(/\s+/);
-    if (fields.length !== 5) return false;
-    const ranges: [number, number][] = [[0,59],[0,23],[1,31],[1,12],[0,6]];
-    const vals = [date.getMinutes(), date.getHours(), date.getDate(), date.getMonth()+1, date.getDay()];
-    return fields.every((f, i) => {
-      const [min, max] = ranges[i];
-      const matches = new Set<number>();
-      for (const part of f.split(',')) {
-        const [range, stepStr] = part.split('/');
-        const step = stepStr ? parseInt(stepStr, 10) : 1;
-        let lo = min, hi = max;
-        if (range !== '*') {
-          if (range.includes('-')) { const [a, b] = range.split('-').map(Number); lo = a; hi = b; }
-          else { lo = hi = parseInt(range, 10); }
-        }
-        for (let v = lo; v <= hi; v += step) matches.add(v);
-      }
-      return matches.has(vals[i]);
     });
   }
 
   function checkCronJobs(): void {
     if (!onMessageHandler) return;
     if (!isWithinActiveHours(activeHours)) return;
-
     const now = new Date();
     for (const job of jobs.values()) {
       if (!matchesCron(job.schedule, now)) continue;
-      const msg: InboundMessage = {
+      onMessageHandler({
         id: randomUUID(),
         session: schedulerSession(`cron:${job.id}`),
         sender: `cron:${job.id}`,
         content: job.prompt,
         attachments: [],
         timestamp: now,
-      };
-      onMessageHandler(msg);
+      });
     }
   }
 
