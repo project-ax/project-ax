@@ -53,4 +53,18 @@ describe('SecurityModule', () => {
     });
     expect(mod.shouldInclude(ctx)).toBe(false);
   });
+
+  test('does NOT claim identity files are immutable', () => {
+    const mod = new SecurityModule();
+    const text = mod.render(makeContext()).join('\n');
+    expect(text).not.toContain('Immutable Files');
+    expect(text).not.toContain('cannot modify SOUL.md');
+  });
+
+  test('mentions identity is agent-owned', () => {
+    const mod = new SecurityModule();
+    const text = mod.render(makeContext()).join('\n');
+    expect(text).toContain('Identity Ownership');
+    expect(text).toContain('audited');
+  });
 });
