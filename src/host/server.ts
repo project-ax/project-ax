@@ -8,7 +8,7 @@
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Server as NetServer } from 'node:net';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -79,6 +79,19 @@ interface OpenAIStreamChunk {
 // Helpers
 // =====================================================
 
+/** Returns true when the agent is still in bootstrap mode (no SOUL.md yet, BOOTSTRAP.md present). */
+export function isAgentBootstrapMode(agentDirPath: string): boolean {
+  return !existsSync(join(agentDirPath, 'SOUL.md')) && existsSync(join(agentDirPath, 'BOOTSTRAP.md'));
+}
+
+/** Returns true when the given userId appears in the agent's admins file. */
+export function isAdmin(agentDirPath: string, userId: string): boolean {
+  const adminsPath = join(agentDirPath, 'admins');
+  if (!existsSync(adminsPath)) return false;
+  const lines = readFileSync(adminsPath, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.includes(userId);
+}
+
 // =====================================================
 // Server Factory
 // =====================================================
@@ -123,6 +136,15 @@ export async function createServer(
     }
   }
 
+  // Default user ID for the creating user (used for admin seeding and IPC context)
+  const defaultUserId = process.env.USER ?? 'default';
+
+  // Seed admins file on first run so the creating user can bootstrap the agent.
+  const adminsPath = join(agentDirVal, 'admins');
+  if (!existsSync(adminsPath)) {
+    writeFileSync(adminsPath, `${defaultUserId}\n`, 'utf-8');
+  }
+
   const handleIPC = createIPCHandler(providers, {
     taintBudget,
     agentDir: agentDirVal,
@@ -133,7 +155,6 @@ export async function createServer(
   // IPC socket server (internal agent-to-host socket)
   const ipcSocketDir = mkdtempSync(join(tmpdir(), 'ax-'));
   const ipcSocketPath = join(ipcSocketDir, 'proxy.sock');
-  const defaultUserId = process.env.USER ?? 'default';
   const defaultCtx = { sessionId: 'server', agentId: 'system', userId: defaultUserId };
   const ipcServer: NetServer = createIPCServer(ipcSocketPath, handleIPC, defaultCtx);
   logger.info('ipc_server_started', { socket: ipcSocketPath });
@@ -673,6 +694,15 @@ export async function createServer(
         const dedupeKey = `${channel.name}:${msg.id}`;
         if (isChannelDuplicate(dedupeKey)) {
           logger.debug('channel_message_deduplicated', { provider: channel.name, messageId: msg.id });
+          return;
+        }
+
+        // Bootstrap gate: only admins can interact while the agent is being set up.
+        if (isAgentBootstrapMode(agentDirVal) && !isAdmin(agentDirVal, msg.sender)) {
+          logger.info('bootstrap_gate_blocked', { provider: channel.name, sender: msg.sender });
+          await channel.send(msg.session, {
+            content: 'This agent is still being set up. Only admins can interact during bootstrap.',
+          });
           return;
         }
 

@@ -24,8 +24,8 @@ export async function resetAgent(agentDir: string, templatesDir: string): Promis
     }
   }
 
-  // Note: per-user USER.md files are NOT deleted during bootstrap.
-  // They represent learned user preferences that persist across agent resets.
+  // Note: per-user USER.md files and the admins file are NOT deleted during bootstrap.
+  // They represent learned user preferences and access control that persist across agent resets.
 }
 
 export async function runBootstrap(args: string[]): Promise<void> {
