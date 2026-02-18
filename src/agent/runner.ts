@@ -22,6 +22,8 @@ import { createIPCStreamFn } from './ipc-transport.js';
 import { createLocalTools } from './local-tools.js';
 import { createIPCTools } from './ipc-tools.js';
 import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadContext, loadSkills } from './stream-utils.js';
+import { PromptBuilder } from './prompt/builder.js';
+import type { IdentityFiles } from './prompt/types.js';
 import { getLogger, truncate } from '../logger.js';
 
 const logger = getLogger().child({ component: 'runner' });
@@ -69,6 +71,11 @@ export interface AgentConfig {
   userMessage?: string;
   history?: ConversationTurn[];
   agentDir?: string;
+  // Taint state from host (via stdin payload)
+  taintRatio?: number;
+  taintThreshold?: number;
+  profile?: string;
+  sandboxType?: string;
 }
 
 /**
@@ -213,6 +220,17 @@ function loadIdentityFile(agentDir: string, filename: string): string {
   } catch {
     return '';
   }
+}
+
+function loadIdentityFiles(agentDir?: string): IdentityFiles {
+  const load = (name: string) => agentDir ? loadIdentityFile(agentDir, name) : '';
+  return {
+    agent: load('AGENT.md'),
+    soul: load('SOUL.md'),
+    identity: load('IDENTITY.md'),
+    user: load('USER.md'),
+    bootstrap: load('BOOTSTRAP.md'),
+  };
 }
 
 export function buildSystemPrompt(context: string, skills: string[], agentDir?: string): string {
@@ -421,9 +439,26 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   const client = new IPCClient({ socketPath: config.ipcSocket });
   await client.connect();
 
-  const context = loadContext(config.workspace);
+  const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
-  const systemPrompt = buildSystemPrompt(context, skills, config.agentDir);
+  const identityFiles = loadIdentityFiles(config.agentDir);
+
+  const promptBuilder = new PromptBuilder();
+  const promptResult = promptBuilder.build({
+    agentType: config.agent ?? 'pi-agent-core',
+    workspace: config.workspace,
+    skills,
+    profile: config.profile ?? 'balanced',
+    sandboxType: config.sandboxType ?? 'subprocess',
+    taintRatio: config.taintRatio ?? 0,
+    taintThreshold: config.taintThreshold ?? 1,
+    identityFiles,
+    contextContent,
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    historyTokens: config.history?.length ? estimateTokens(JSON.stringify(config.history)) : 0,
+  });
+  const systemPrompt = promptResult.content;
+  logger.debug('prompt_built', promptResult.metadata);
 
   // Build tools: local (execute in sandbox) + IPC (route to host)
   const localTools = createLocalTools(config.workspace);
@@ -589,14 +624,20 @@ if (isMain) {
   const config = parseArgs();
   logger.debug('main_start', { agent: config.agent, workspace: config.workspace });
   readStdin().then((data) => {
-    const { message, history } = parseStdinPayload(data);
+    const payload = parseStdinPayload(data);
     logger.debug('stdin_parsed', {
-      messageLength: message.length,
-      historyTurns: history.length,
-      messagePreview: truncate(message, 200),
+      messageLength: payload.message.length,
+      historyTurns: payload.history.length,
+      messagePreview: truncate(payload.message, 200),
+      taintRatio: payload.taintRatio,
+      profile: payload.profile,
     });
-    config.userMessage = message;
-    config.history = history;
+    config.userMessage = payload.message;
+    config.history = payload.history;
+    config.taintRatio = payload.taintRatio;
+    config.taintThreshold = payload.taintThreshold;
+    config.profile = payload.profile;
+    config.sandboxType = payload.sandboxType;
     return run(config);
   }).catch((err) => {
     logger.error('main_error', { error: (err as Error).message, stack: (err as Error).stack });
