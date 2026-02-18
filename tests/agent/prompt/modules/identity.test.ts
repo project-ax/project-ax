@@ -89,7 +89,7 @@ describe('IdentityModule', () => {
     expect(text).not.toContain('## User\n');
   });
 
-  test('tells agent it can evolve via identity_write (not identity_propose)', () => {
+  test('tells agent about identity_write and user_write tools', () => {
     const mod = new IdentityModule();
     const ctx = makeContext({
       identityFiles: {
@@ -102,6 +102,8 @@ describe('IdentityModule', () => {
     });
     const text = mod.render(ctx).join('\n');
     expect(text).toContain('identity_write');
+    expect(text).toContain('user_write');
+    expect(text).toContain('per-user');
     expect(text).toContain('Identity Evolution');
     // Should NOT reference the removed identity_propose
     expect(text).not.toContain('identity_propose');
