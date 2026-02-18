@@ -12,6 +12,7 @@
  */
 
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { IPCClient } from '../ipc-client.js';
 import { startTCPBridge } from '../tcp-bridge.js';
@@ -20,8 +21,30 @@ import type { AgentConfig } from '../runner.js';
 import { PromptBuilder } from '../prompt/builder.js';
 import { loadContext, loadSkills } from '../stream-utils.js';
 import { getLogger } from '../../logger.js';
+import type { IdentityFiles } from '../prompt/types.js';
 
 const logger = getLogger().child({ component: 'claude-code' });
+
+// ── Identity file loading ────────────────────────────────────────────
+
+function loadIdentityFile(agentDir: string, filename: string): string {
+  try {
+    return readFileSync(join(agentDir, filename), 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function loadIdentityFiles(agentDir?: string): IdentityFiles {
+  const load = (name: string) => agentDir ? loadIdentityFile(agentDir, name) : '';
+  return {
+    agent: load('AGENT.md'),
+    soul: load('SOUL.md'),
+    identity: load('IDENTITY.md'),
+    user: load('USER.md'),
+    bootstrap: load('BOOTSTRAP.md'),
+  };
+}
 
 // ── Main runner ─────────────────────────────────────────────────────
 
@@ -57,8 +80,7 @@ export async function runClaudeCode(config: AgentConfig): Promise<void> {
     sandboxType: config.sandboxType ?? 'subprocess',
     taintRatio: config.taintRatio ?? 0,
     taintThreshold: config.taintThreshold ?? 1,
-    // claude-code doesn't have agentDir, so identity files are empty
-    identityFiles: { agent: '', soul: '', identity: '', user: '', bootstrap: '' },
+    identityFiles: loadIdentityFiles(config.agentDir),
     contextContent,
     contextWindow: 200000,
     historyTokens: config.history?.length ? JSON.stringify(config.history).length / 4 : 0,

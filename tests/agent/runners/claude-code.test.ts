@@ -1,8 +1,9 @@
 import { describe, test, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
+import { PromptBuilder } from '../../../src/agent/prompt/builder.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { startAnthropicProxy } from '../../../src/host/proxy.js';
 
@@ -120,5 +121,77 @@ describe('claude-code proxy infrastructure', () => {
     expect(response.content[0].type).toBe('text');
     expect((response.content[0] as { type: 'text'; text: string }).text).toBe('SDK path test');
     expect(receivedUrl).toBe('/v1/messages');
+  });
+});
+
+describe('claude-code identity file loading', () => {
+  let agentDir: string;
+
+  afterEach(() => {
+    if (agentDir) rmSync(agentDir, { recursive: true, force: true });
+  });
+
+  test('system prompt includes identity files from agentDir', async () => {
+    // Regression: claude-code runner previously hardcoded empty identity files,
+    // so SOUL.md/IDENTITY.md written by identity_write were never loaded.
+    agentDir = mkdtempSync(join(tmpdir(), 'cc-identity-'));
+    writeFileSync(join(agentDir, 'SOUL.md'), '# Soul\nI am curious and kind.');
+    writeFileSync(join(agentDir, 'IDENTITY.md'), '# Identity\n**Name**: Connie');
+
+    // Load identity the same way claude-code.ts does
+    const { readFileSync } = await import('node:fs');
+    function loadIdentityFile(dir: string, filename: string): string {
+      try { return readFileSync(join(dir, filename), 'utf-8'); } catch { return ''; }
+    }
+    const identityFiles = {
+      agent: loadIdentityFile(agentDir, 'AGENT.md'),
+      soul: loadIdentityFile(agentDir, 'SOUL.md'),
+      identity: loadIdentityFile(agentDir, 'IDENTITY.md'),
+      user: loadIdentityFile(agentDir, 'USER.md'),
+      bootstrap: loadIdentityFile(agentDir, 'BOOTSTRAP.md'),
+    };
+
+    const builder = new PromptBuilder();
+    const result = builder.build({
+      agentType: 'claude-code',
+      workspace: '/tmp',
+      skills: [],
+      profile: 'balanced',
+      sandboxType: 'subprocess',
+      taintRatio: 0,
+      taintThreshold: 1,
+      identityFiles,
+      contextContent: '',
+      contextWindow: 200000,
+      historyTokens: 0,
+    });
+
+    expect(result.content).toContain('I am curious and kind');
+    expect(result.content).toContain('Connie');
+  });
+
+  test('system prompt falls back to default when agentDir has no identity files', async () => {
+    agentDir = mkdtempSync(join(tmpdir(), 'cc-identity-empty-'));
+
+    const identityFiles = { agent: '', soul: '', identity: '', user: '', bootstrap: '' };
+
+    const builder = new PromptBuilder();
+    const result = builder.build({
+      agentType: 'claude-code',
+      workspace: '/tmp',
+      skills: [],
+      profile: 'balanced',
+      sandboxType: 'subprocess',
+      taintRatio: 0,
+      taintThreshold: 1,
+      identityFiles,
+      contextContent: '',
+      contextWindow: 200000,
+      historyTokens: 0,
+    });
+
+    // Falls back to default identity
+    expect(result.content).toContain('You are AX');
+    expect(result.content).not.toContain('Connie');
   });
 });
