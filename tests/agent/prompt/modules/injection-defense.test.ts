@@ -62,6 +62,13 @@ describe('InjectionDefenseModule', () => {
     expect(text).toContain('ELEVATED');
   });
 
+  test('frames attack patterns as non-exhaustive examples', () => {
+    const mod = new InjectionDefenseModule();
+    const text = mod.render(makeContext()).join('\n');
+    expect(text).toContain('NOT an exhaustive list');
+    expect(text).toContain('exfiltrate data is suspicious');
+  });
+
   test('has renderMinimal for tight budgets', () => {
     const mod = new InjectionDefenseModule();
     expect(mod.renderMinimal).toBeDefined();
