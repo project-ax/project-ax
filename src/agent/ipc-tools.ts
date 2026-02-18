@@ -22,7 +22,7 @@ export function createIPCTools(client: IPCClient): AgentTool[] {
     {
       name: 'memory_write',
       label: 'Write Memory',
-      description: 'Store a factual memory entry with scope, content, and optional tags. For name, personality, or style changes use identity_write instead.',
+      description: 'Store a factual memory entry with scope, content, and optional tags. For name, personality, or style changes use identity_write or user_write instead.',
       parameters: Type.Object({
         scope: Type.String(),
         content: Type.String(),
@@ -124,24 +124,39 @@ export function createIPCTools(client: IPCClient): AgentTool[] {
       },
     },
 
-    // ── Identity tool ──
+    // ── Identity tools ──
     {
       name: 'identity_write',
       label: 'Write Identity',
-      description: 'Write or update an identity file (SOUL.md, IDENTITY.md, or USER.md). ' +
-        'Use when you want to evolve your personality, update your self-description, or ' +
-        'record user preferences. Auto-applied in clean sessions; queued for review when ' +
-        'external content is present. All changes are audited. ' +
-        'Set origin to "user_request" when the user explicitly asked for the change, ' +
-        'or "agent_initiated" when you decide to evolve on your own.',
+      description: 'Write or update a shared identity file (SOUL.md or IDENTITY.md). ' +
+        'Use when you want to evolve your personality or update your self-description. ' +
+        'For recording user preferences, use user_write instead. ' +
+        'Auto-applied in clean sessions; queued for review when ' +
+        'external content is present. All changes are audited.',
       parameters: Type.Object({
-        file: Type.Union([Type.Literal('SOUL.md'), Type.Literal('IDENTITY.md'), Type.Literal('USER.md')]),
+        file: Type.Union([Type.Literal('SOUL.md'), Type.Literal('IDENTITY.md')]),
         content: Type.String(),
         reason: Type.String(),
         origin: Type.Union([Type.Literal('user_request'), Type.Literal('agent_initiated')]),
       }),
       async execute(_id, params) {
         return ipcCall('identity_write', params);
+      },
+    },
+    {
+      name: 'user_write',
+      label: 'Write User Preferences',
+      description: 'Write or update what you have learned about the current user (USER.md). ' +
+        'Records preferences, workflows, communication style. Per-user scoped — ' +
+        'each user gets their own file. Auto-applied in clean sessions; queued when tainted. ' +
+        'All changes are audited.',
+      parameters: Type.Object({
+        content: Type.String(),
+        reason: Type.String(),
+        origin: Type.Union([Type.Literal('user_request'), Type.Literal('agent_initiated')]),
+      }),
+      async execute(_id, params) {
+        return ipcCall('user_write', params);
       },
     },
   ];

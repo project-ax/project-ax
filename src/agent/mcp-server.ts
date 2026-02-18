@@ -52,7 +52,7 @@ export function createIPCMcpServer(client: IPCClient): McpSdkServerConfigWithIns
     version: '1.0.0',
     tools: [
       // ── Memory tools ──
-      tool('memory_write', 'Store a factual memory entry with scope, content, and optional tags. For name, personality, or style changes use identity_write instead.', {
+      tool('memory_write', 'Store a factual memory entry with scope, content, and optional tags. For name, personality, or style changes use identity_write or user_write instead.', {
         scope: z.string(),
         content: z.string(),
         tags: z.array(z.string()).optional(),
@@ -95,22 +95,31 @@ export function createIPCMcpServer(client: IPCClient): McpSdkServerConfigWithIns
         limit: z.number().optional(),
       }, (args) => ipcCall('audit_query', args)),
 
-      // ── Identity tool ──
+      // ── Identity tools ──
       tool(
         'identity_write',
-        'Write or update an identity file (SOUL.md, IDENTITY.md, or USER.md). ' +
-        'Use when you want to evolve your personality, change your name, update your self-description, or ' +
-        'record user preferences. Auto-applied in clean sessions; queued for review when ' +
-        'external content is present. All changes are audited. ' +
-        'Set origin to "user_request" when the user explicitly asked for the change, ' +
-        'or "agent_initiated" when you decide to evolve on your own.',
+        'Write or update a shared identity file (SOUL.md or IDENTITY.md). ' +
+        'For recording user preferences, use user_write instead. ' +
+        'Auto-applied in clean sessions; queued when tainted. All changes are audited.',
         {
-          file: z.enum(['SOUL.md', 'IDENTITY.md', 'USER.md']),
+          file: z.enum(['SOUL.md', 'IDENTITY.md']),
           content: z.string(),
           reason: z.string(),
           origin: z.enum(['user_request', 'agent_initiated']),
         },
         (args) => ipcCall('identity_write', args),
+      ),
+
+      tool(
+        'user_write',
+        'Write or update what you have learned about the current user (USER.md). ' +
+        'Per-user scoped. Auto-applied in clean sessions; queued when tainted. All changes are audited.',
+        {
+          content: z.string(),
+          reason: z.string(),
+          origin: z.enum(['user_request', 'agent_initiated']),
+        },
+        (args) => ipcCall('user_write', args),
       ),
     ],
   });

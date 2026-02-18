@@ -126,4 +126,34 @@ describe('ipc-tools', () => {
     expect(tool.description).toContain('queued');
     expect(tool.description).toContain('audited');
   });
+
+  test('exports user_write tool', () => {
+    const client = createMockClient();
+    const tools = createIPCTools(client as any);
+    const names = tools.map((t) => t.name);
+    expect(names).toContain('user_write');
+  });
+
+  test('user_write sends IPC call with correct action', async () => {
+    const client = createMockClient();
+    const tools = createIPCTools(client as any);
+    const tool = findTool(tools, 'user_write');
+    await tool.execute('tc8', {
+      content: '# User prefs\nLikes dark mode',
+      reason: 'Observed preference',
+      origin: 'agent_initiated',
+    });
+    expect(client.call).toHaveBeenCalledWith({
+      action: 'user_write',
+      content: '# User prefs\nLikes dark mode',
+      reason: 'Observed preference',
+      origin: 'agent_initiated',
+    });
+  });
+
+  test('total tool count is 10', () => {
+    const client = createMockClient();
+    const tools = createIPCTools(client as any);
+    expect(tools.length).toBe(10);
+  });
 });

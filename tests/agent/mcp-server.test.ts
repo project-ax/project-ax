@@ -166,7 +166,7 @@ describe('IPC MCP Server', () => {
     expect(result.content[0].text).toContain('"ok":true');
   });
 
-  test('all 9 IPC tools are registered', () => {
+  test('all 10 IPC tools are registered', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
@@ -176,12 +176,34 @@ describe('IPC MCP Server', () => {
       'web_search', 'web_fetch',
       'audit_query',
       'identity_write',
+      'user_write',
     ];
 
     const registeredNames = Object.keys(tools);
     for (const name of expectedTools) {
       expect(registeredNames, `expected tool "${name}" to be registered`).toContain(name);
     }
-    expect(registeredNames.length).toBe(9);
+    expect(registeredNames.length).toBe(10);
+  });
+
+  test('user_write calls IPC client with correct action', async () => {
+    const client = createMockClient({ ok: true, applied: true });
+    const server = createIPCMcpServer(client);
+    const tools = getTools(server);
+
+    expect(tools['user_write']).toBeDefined();
+
+    const result = await tools['user_write'].handler(
+      { content: '# User prefs', reason: 'Learned from chat', origin: 'agent_initiated' },
+      {},
+    );
+
+    expect(client.call).toHaveBeenCalledWith({
+      action: 'user_write',
+      content: '# User prefs',
+      reason: 'Learned from chat',
+      origin: 'agent_initiated',
+    });
+    expect(result.content[0].text).toContain('"ok":true');
   });
 });
