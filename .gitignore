@@ -29,6 +29,11 @@ Thumbs.db
 # Worktrees
 .worktrees/
 
+# Mutable identity files (live in ~/.ax/agents/ now)
+agents/*/SOUL.md
+agents/*/IDENTITY.md
+agents/*/USER.md
+
 # Logs / crashes
 *.log
 npm-debug.log*
