@@ -430,8 +430,24 @@ function createIPCToolDefinitions(client: IPCClient): ToolDefinition[] {
   ] as ToolDefinition[];
 }
 
-// Import shared buildSystemPrompt from runner (supports identity files + bootstrap mode)
-import { buildSystemPrompt } from '../runner.js';
+import { readFileSync } from 'node:fs';
+import { PromptBuilder } from '../prompt/builder.js';
+import type { IdentityFiles } from '../prompt/types.js';
+
+function loadIdentityFile(agentDir: string, filename: string): string {
+  try { return readFileSync(join(agentDir, filename), 'utf-8'); } catch { return ''; }
+}
+
+function loadIdentityFiles(agentDir?: string): IdentityFiles {
+  const load = (name: string) => agentDir ? loadIdentityFile(agentDir, name) : '';
+  return {
+    agent: load('AGENT.md'),
+    soul: load('SOUL.md'),
+    identity: load('IDENTITY.md'),
+    user: load('USER.md'),
+    bootstrap: load('BOOTSTRAP.md'),
+  };
+}
 
 // ── Main runner ─────────────────────────────────────────────────────
 
@@ -482,10 +498,27 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   }
   logger.debug('provider_registered', { api: apiName });
 
-  // Build system prompt
-  const context = loadContext(config.workspace);
+  // Build system prompt via modular PromptBuilder
+  const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
-  const systemPrompt = buildSystemPrompt(context, skills, config.agentDir);
+  const identityFiles = loadIdentityFiles(config.agentDir);
+
+  const promptBuilder = new PromptBuilder();
+  const promptResult = promptBuilder.build({
+    agentType: config.agent ?? 'pi-coding-agent',
+    workspace: config.workspace,
+    skills,
+    profile: config.profile ?? 'balanced',
+    sandboxType: config.sandboxType ?? 'subprocess',
+    taintRatio: config.taintRatio ?? 0,
+    taintThreshold: config.taintThreshold ?? 1,
+    identityFiles,
+    contextContent,
+    contextWindow: 200000,
+    historyTokens: config.history?.length ? JSON.stringify(config.history).length / 4 : 0,
+  });
+  const systemPrompt = promptResult.content;
+  debug(SRC, 'prompt_built', promptResult.metadata);
 
   // Create coding tools bound to the workspace directory.
   // IMPORTANT: codingTools (the pre-instantiated export) captures process.cwd()
