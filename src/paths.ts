@@ -17,6 +17,10 @@
  *       audit/          — file audit provider
  *       credentials.enc — encrypted credentials
  *       workspaces/     — persistent agent workspaces (keyed by session UUID)
+ *     agents/
+ *       assistant/          — mutable agent state (SOUL.md, IDENTITY.md)
+ *         users/
+ *           <userId>/       — per-user state (USER.md)
  */
 
 import { join } from 'node:path';
@@ -58,4 +62,25 @@ export function isValidSessionId(id: string): boolean {
 /** Path to a persistent agent workspace directory for a given session. */
 export function workspaceDir(sessionId: string): string {
   return join(dataDir(), 'workspaces', sessionId);
+}
+
+const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+
+function validatePathSegment(value: string, label: string): void {
+  if (!value || !SAFE_NAME_RE.test(value)) {
+    throw new Error(`Invalid ${label}: must be alphanumeric/dash/underscore, got "${value}"`);
+  }
+}
+
+/** Path to an agent's mutable state directory: ~/.ax/agents/<name>/ */
+export function agentStateDir(agentName: string): string {
+  validatePathSegment(agentName, 'agent name');
+  return join(axHome(), 'agents', agentName);
+}
+
+/** Path to a per-user directory within an agent's state: ~/.ax/agents/<name>/users/<userId>/ */
+export function agentUserDir(agentName: string, userId: string): string {
+  validatePathSegment(agentName, 'agent name');
+  validatePathSegment(userId, 'userId');
+  return join(agentStateDir(agentName), 'users', userId);
 }

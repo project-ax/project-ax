@@ -1,7 +1,7 @@
 import { describe, test, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { isValidSessionId, workspaceDir } from '../src/paths.js';
+import { isValidSessionId, workspaceDir, agentStateDir, agentUserDir, axHome } from '../src/paths.js';
 
 describe('paths', () => {
   const originalEnv = process.env.AX_HOME;
@@ -61,5 +61,25 @@ describe('paths', () => {
     expect(isValidSessionId('550e8400-e29b-41d4-a716-44665544000')).toBe(false); // too short
     expect(isValidSessionId('550e8400-e29b-41d4-a716-4466554400000')).toBe(false); // too long
     expect(isValidSessionId('not-a-uuid-at-all')).toBe(false);
+  });
+
+  test('agentStateDir returns ~/.ax/agents/<name>', () => {
+    expect(agentStateDir('assistant')).toBe(join(axHome(), 'agents', 'assistant'));
+  });
+
+  test('agentUserDir returns ~/.ax/agents/<name>/users/<userId>', () => {
+    expect(agentUserDir('assistant', 'U12345')).toBe(
+      join(axHome(), 'agents', 'assistant', 'users', 'U12345'),
+    );
+  });
+
+  test('agentUserDir rejects path traversal in userId', () => {
+    expect(() => agentUserDir('assistant', '../etc')).toThrow();
+    expect(() => agentUserDir('assistant', 'foo/bar')).toThrow();
+    expect(() => agentUserDir('assistant', '')).toThrow();
+  });
+
+  test('agentStateDir rejects path traversal in agent name', () => {
+    expect(() => agentStateDir('../etc')).toThrow();
   });
 });
