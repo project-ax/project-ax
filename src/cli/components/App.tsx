@@ -1,5 +1,5 @@
 // src/cli/components/App.tsx
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useReducer } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { StatusBar, type ConnectionStatus } from './StatusBar.js';
@@ -22,14 +22,43 @@ interface HistoryMessage {
   content: string;
 }
 
+interface ChatState {
+  messages: ChatMessage[];
+  streamingContent: string | null;
+}
+
+type ChatAction =
+  | { type: 'ADD_MESSAGE'; message: ChatMessage }
+  | { type: 'STREAM_START' }
+  | { type: 'STREAM_UPDATE'; content: string }
+  | { type: 'STREAM_COMPLETE'; message: ChatMessage }
+  | { type: 'CLEAR' };
+
+function chatReducer(state: ChatState, action: ChatAction): ChatState {
+  switch (action.type) {
+    case 'ADD_MESSAGE':
+      return { ...state, messages: [...state.messages, action.message] };
+    case 'STREAM_START':
+      return { ...state, streamingContent: '' };
+    case 'STREAM_UPDATE':
+      return { ...state, streamingContent: action.content };
+    case 'STREAM_COMPLETE':
+      return {
+        streamingContent: null,
+        messages: [...state.messages, action.message],
+      };
+    case 'CLEAR':
+      return { messages: [], streamingContent: null };
+  }
+}
+
 export function App({ fetchFn, sessionId, stream = true, model = 'default', onReady }: AppProps) {
   const { exit } = useApp();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatState, dispatch] = useReducer(chatReducer, { messages: [], streamingContent: null });
   const [history, setHistory] = useState<HistoryMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [lastResponseMs, setLastResponseMs] = useState<number | undefined>(undefined);
-  const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const requestStartRef = useRef<number>(0);
   const historyRef = useRef<HistoryMessage[]>([]);
 
@@ -62,7 +91,7 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
   });
 
   const addMessage = useCallback((msg: ChatMessage) => {
-    setMessages(prev => [...prev, msg]);
+    dispatch({ type: 'ADD_MESSAGE', message: msg });
   }, []);
 
   const handleSubmit = useCallback(async (value: string) => {
@@ -76,7 +105,7 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
           exit();
           return;
         case 'clear':
-          setMessages([]);
+          dispatch({ type: 'CLEAR' });
           setHistory([]);
           historyRef.current = [];
           return;
@@ -130,8 +159,9 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
 
       if (stream && response.body) {
         const assistantContent = await handleStreamResponse(response.body);
-        setStreamingContent(null);
-        addMessage({ role: 'assistant', content: assistantContent, type: 'normal' });
+        // Atomic: clear streaming + commit message in a single state update
+        // to prevent Ink's <Static> from rendering both simultaneously
+        dispatch({ type: 'STREAM_COMPLETE', message: { role: 'assistant', content: assistantContent, type: 'normal' } });
         const finalHistory = [...updatedHistory, { role: 'assistant' as const, content: assistantContent }];
         setHistory(finalHistory);
         historyRef.current = finalHistory;
@@ -174,7 +204,7 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
     const decoder = new TextDecoder();
     let fullContent = '';
 
-    setStreamingContent('');
+    dispatch({ type: 'STREAM_START' });
 
     try {
       while (true) {
@@ -196,8 +226,7 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
               const content = parsed.choices[0]?.delta?.content;
               if (content) {
                 fullContent += content;
-                const currentContent = fullContent;
-                setStreamingContent(currentContent);
+                dispatch({ type: 'STREAM_UPDATE', content: fullContent });
               }
             } catch {
               // Ignore parse errors for incomplete JSON
@@ -214,13 +243,13 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
 
   return (
     <Box flexDirection="column">
-      <Static items={messages}>
+      <Static items={chatState.messages}>
         {(msg, i) => (
           <Message key={i} role={msg.role} content={msg.content} type={msg.type} />
         )}
       </Static>
-      {streamingContent !== null && (
-        <Message role="assistant" content={streamingContent} type="normal" />
+      {chatState.streamingContent !== null && (
+        <Message role="assistant" content={chatState.streamingContent} type="normal" />
       )}
       <InputBox onSubmit={handleSubmit} isDisabled={isLoading} />
       <Box justifyContent="space-between">
@@ -237,7 +266,7 @@ export function App({ fetchFn, sessionId, stream = true, model = 'default', onRe
           model={model}
           streaming={stream}
           lastResponseMs={lastResponseMs}
-          messageCount={messages.length}
+          messageCount={chatState.messages.length}
         />
       </Box>
     </Box>
