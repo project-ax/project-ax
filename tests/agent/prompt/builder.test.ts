@@ -96,4 +96,21 @@ describe('PromptBuilder', () => {
     expect(result.metadata.modules).not.toContain('context');
     expect(result.metadata.modules).not.toContain('skills');
   });
+
+  test('metadata includes per-module token breakdown', () => {
+    const builder = new PromptBuilder();
+    const ctx = makeContext({
+      identityFiles: { agent: 'Bot.', soul: 'Soul.', identity: '', user: '', bootstrap: '' },
+      contextContent: 'Context.',
+      skills: ['# Skill\nContent.'],
+    });
+    const result = builder.build(ctx);
+    expect(result.metadata.tokensByModule).toBeDefined();
+    expect(Object.keys(result.metadata.tokensByModule).length).toBeGreaterThan(0);
+    // Each entry should be a positive number
+    for (const [_name, tokens] of Object.entries(result.metadata.tokensByModule)) {
+      expect(typeof tokens).toBe('number');
+      expect(tokens).toBeGreaterThan(0);
+    }
+  });
 });

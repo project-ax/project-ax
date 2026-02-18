@@ -18,6 +18,7 @@ export interface PromptMetadata {
   modules: string[];
   estimatedTokens: number;
   buildTimeMs: number;
+  tokensByModule: Record<string, number>;
 }
 
 /**
@@ -47,12 +48,15 @@ export class PromptBuilder {
 
     // Render each module (using minimal version when flagged by budget manager)
     const sections: string[] = [];
+    const tokensByModule: Record<string, number> = {};
     for (const { module: mod, useMinimal } of allocations) {
       const lines = useMinimal && mod.renderMinimal
         ? mod.renderMinimal(ctx)
         : mod.render(ctx);
       if (lines.length > 0) {
-        sections.push(lines.join('\n'));
+        const section = lines.join('\n');
+        sections.push(section);
+        tokensByModule[mod.name] = Math.ceil(section.length / 4);
       }
     }
 
@@ -66,6 +70,7 @@ export class PromptBuilder {
         modules: allocations.map(a => a.module.name),
         estimatedTokens,
         buildTimeMs: Date.now() - start,
+        tokensByModule,
       },
     };
   }
