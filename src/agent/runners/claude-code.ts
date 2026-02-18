@@ -11,40 +11,17 @@
  *         → AX IPC tools via in-process MCP server (memory, web_search, audit)
  */
 
-import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { IPCClient } from '../ipc-client.js';
 import { startTCPBridge } from '../tcp-bridge.js';
 import { createIPCMcpServer } from '../mcp-server.js';
 import type { AgentConfig } from '../runner.js';
 import { PromptBuilder } from '../prompt/builder.js';
+import { loadIdentityFiles } from '../identity-loader.js';
 import { loadContext, loadSkills } from '../stream-utils.js';
 import { getLogger } from '../../logger.js';
-import type { IdentityFiles } from '../prompt/types.js';
 
 const logger = getLogger().child({ component: 'claude-code' });
-
-// ── Identity file loading ────────────────────────────────────────────
-
-function loadIdentityFile(agentDir: string, filename: string): string {
-  try {
-    return readFileSync(join(agentDir, filename), 'utf-8');
-  } catch {
-    return '';
-  }
-}
-
-function loadIdentityFiles(agentDir?: string): IdentityFiles {
-  const load = (name: string) => agentDir ? loadIdentityFile(agentDir, name) : '';
-  return {
-    agents: load('AGENTS.md'),
-    soul: load('SOUL.md'),
-    identity: load('IDENTITY.md'),
-    user: load('USER.md'),
-    bootstrap: load('BOOTSTRAP.md'),
-  };
-}
 
 // ── Main runner ─────────────────────────────────────────────────────
 
@@ -80,7 +57,11 @@ export async function runClaudeCode(config: AgentConfig): Promise<void> {
     sandboxType: config.sandboxType ?? 'subprocess',
     taintRatio: config.taintRatio ?? 0,
     taintThreshold: config.taintThreshold ?? 1,
-    identityFiles: loadIdentityFiles(config.agentDir),
+    identityFiles: loadIdentityFiles({
+      defDir: config.agentDefDir ?? config.agentDir,
+      stateDir: config.agentStateDir ?? config.agentDir,
+      userId: config.userId,
+    }),
     contextContent,
     contextWindow: 200000,
     historyTokens: config.history?.length ? JSON.stringify(config.history).length / 4 : 0,

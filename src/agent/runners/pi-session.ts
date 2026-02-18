@@ -430,24 +430,8 @@ function createIPCToolDefinitions(client: IPCClient): ToolDefinition[] {
   ] as ToolDefinition[];
 }
 
-import { readFileSync } from 'node:fs';
 import { PromptBuilder } from '../prompt/builder.js';
-import type { IdentityFiles } from '../prompt/types.js';
-
-function loadIdentityFile(agentDir: string, filename: string): string {
-  try { return readFileSync(join(agentDir, filename), 'utf-8'); } catch { return ''; }
-}
-
-function loadIdentityFiles(agentDir?: string): IdentityFiles {
-  const load = (name: string) => agentDir ? loadIdentityFile(agentDir, name) : '';
-  return {
-    agents: load('AGENTS.md'),
-    soul: load('SOUL.md'),
-    identity: load('IDENTITY.md'),
-    user: load('USER.md'),
-    bootstrap: load('BOOTSTRAP.md'),
-  };
-}
+import { loadIdentityFiles } from '../identity-loader.js';
 
 // ── Main runner ─────────────────────────────────────────────────────
 
@@ -501,7 +485,11 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   // Build system prompt via modular PromptBuilder
   const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
-  const identityFiles = loadIdentityFiles(config.agentDir);
+  const identityFiles = loadIdentityFiles({
+    defDir: config.agentDefDir ?? config.agentDir,
+    stateDir: config.agentStateDir ?? config.agentDir,
+    userId: config.userId,
+  });
 
   const promptBuilder = new PromptBuilder();
   const promptResult = promptBuilder.build({

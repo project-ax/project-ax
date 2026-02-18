@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
@@ -23,7 +22,7 @@ import { createLocalTools } from './local-tools.js';
 import { createIPCTools } from './ipc-tools.js';
 import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadContext, loadSkills } from './stream-utils.js';
 import { PromptBuilder } from './prompt/builder.js';
-import type { IdentityFiles } from './prompt/types.js';
+import { loadIdentityFiles } from './identity-loader.js';
 import { getLogger, truncate } from '../logger.js';
 
 const logger = getLogger().child({ component: 'runner' });
@@ -71,6 +70,9 @@ export interface AgentConfig {
   userMessage?: string;
   history?: ConversationTurn[];
   agentDir?: string;
+  agentDefDir?: string;
+  agentStateDir?: string;
+  userId?: string;
   // Taint state from host (via stdin payload)
   taintRatio?: number;
   taintThreshold?: number;
@@ -213,26 +215,6 @@ function parseArgs(): AgentConfig {
 
   return { agent, ipcSocket, workspace, skills, proxySocket: proxySocket || undefined, maxTokens: maxTokens || undefined, verbose, agentDir: agentDir || undefined };
 }
-
-function loadIdentityFile(agentDir: string, filename: string): string {
-  try {
-    return readFileSync(join(agentDir, filename), 'utf-8');
-  } catch {
-    return '';
-  }
-}
-
-function loadIdentityFiles(agentDir?: string): IdentityFiles {
-  const load = (name: string) => agentDir ? loadIdentityFile(agentDir, name) : '';
-  return {
-    agents: load('AGENTS.md'),
-    soul: load('SOUL.md'),
-    identity: load('IDENTITY.md'),
-    user: load('USER.md'),
-    bootstrap: load('BOOTSTRAP.md'),
-  };
-}
-
 
 // ── Proxy-based StreamFn (Anthropic SDK via Unix socket) ─────────────
 
@@ -398,7 +380,11 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
 
   const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
-  const identityFiles = loadIdentityFiles(config.agentDir);
+  const identityFiles = loadIdentityFiles({
+    defDir: config.agentDefDir ?? config.agentDir,
+    stateDir: config.agentStateDir ?? config.agentDir,
+    userId: config.userId,
+  });
 
   const promptBuilder = new PromptBuilder();
   const promptResult = promptBuilder.build({
