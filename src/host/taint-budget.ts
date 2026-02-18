@@ -32,6 +32,7 @@ const PROFILE_THRESHOLDS: Record<string, number> = {
 
 const DEFAULT_SENSITIVE_ACTIONS = new Set([
   'identity_write',
+  'user_write',
   'oauth_call',
   'skill_propose',
   'browser_navigate',
