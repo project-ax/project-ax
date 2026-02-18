@@ -11,31 +11,28 @@ function readFile(dir: string, filename: string): string {
 }
 
 export interface IdentityLoadOptions {
-  /** Repo directory containing immutable files (AGENTS.md, BOOTSTRAP.md) */
-  defDir?: string;
-  /** ~/.ax/agents/<name>/ directory containing mutable files (SOUL.md, IDENTITY.md) */
-  stateDir?: string;
+  /** ~/.ax/agents/<name>/ directory containing all identity files */
+  agentDir?: string;
   /** User ID for per-user USER.md loading */
   userId?: string;
 }
 
 export function loadIdentityFiles(opts: IdentityLoadOptions): IdentityFiles {
-  const { defDir, stateDir, userId } = opts;
+  const { agentDir, userId } = opts;
 
-  const loadDef = (name: string) => defDir ? readFile(defDir, name) : '';
-  const loadState = (name: string) => stateDir ? readFile(stateDir, name) : '';
+  const load = (name: string) => agentDir ? readFile(agentDir, name) : '';
 
-  // USER.md is per-user: load from stateDir/users/<userId>/USER.md
+  // USER.md is per-user: load from agentDir/users/<userId>/USER.md
   let user = '';
-  if (stateDir && userId) {
-    user = readFile(join(stateDir, 'users', userId), 'USER.md');
+  if (agentDir && userId) {
+    user = readFile(join(agentDir, 'users', userId), 'USER.md');
   }
 
   return {
-    agents: loadDef('AGENTS.md'),
-    soul: loadState('SOUL.md'),
-    identity: loadState('IDENTITY.md'),
+    agents: load('AGENTS.md'),
+    soul: load('SOUL.md'),
+    identity: load('IDENTITY.md'),
     user,
-    bootstrap: loadDef('BOOTSTRAP.md'),
+    bootstrap: load('BOOTSTRAP.md'),
   };
 }

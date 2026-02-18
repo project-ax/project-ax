@@ -1,25 +1,25 @@
 import { existsSync, unlinkSync, copyFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { agentStateDir } from '../paths.js';
+import { agentDir as agentDirPath } from '../paths.js';
 
-const SHARED_STATE_FILES = ['SOUL.md', 'IDENTITY.md'];
+const EVOLVABLE_FILES = ['SOUL.md', 'IDENTITY.md'];
 
 /** Reset an agent's identity by deleting evolvable files and copying a fresh BOOTSTRAP.md. */
-export async function resetAgent(defDir: string, stateDir: string): Promise<void> {
-  // Delete shared mutable state from stateDir
-  for (const file of SHARED_STATE_FILES) {
-    try { unlinkSync(join(stateDir, file)); } catch { /* may not exist */ }
+export async function resetAgent(agentDir: string, templatesDir: string): Promise<void> {
+  // Delete evolvable identity files
+  for (const file of EVOLVABLE_FILES) {
+    try { unlinkSync(join(agentDir, file)); } catch { /* may not exist */ }
   }
 
-  // Delete BOOTSTRAP.md from stateDir (may exist from previous incomplete bootstrap)
-  try { unlinkSync(join(stateDir, 'BOOTSTRAP.md')); } catch { /* may not exist */ }
+  // Delete BOOTSTRAP.md (may exist from previous incomplete bootstrap)
+  try { unlinkSync(join(agentDir, 'BOOTSTRAP.md')); } catch { /* may not exist */ }
 
-  mkdirSync(stateDir, { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
 
-  // Copy BOOTSTRAP.md template from repo dir
-  const bootstrapSrc = join(defDir, 'BOOTSTRAP.md');
+  // Copy BOOTSTRAP.md template
+  const bootstrapSrc = join(templatesDir, 'BOOTSTRAP.md');
   if (existsSync(bootstrapSrc)) {
-    copyFileSync(bootstrapSrc, join(stateDir, 'BOOTSTRAP.md'));
+    copyFileSync(bootstrapSrc, join(agentDir, 'BOOTSTRAP.md'));
   }
 
   // Note: per-user USER.md files are NOT deleted during bootstrap.
@@ -28,15 +28,15 @@ export async function resetAgent(defDir: string, stateDir: string): Promise<void
 
 export async function runBootstrap(args: string[]): Promise<void> {
   const agentName = args[0] || 'assistant';
-  const defDir = resolve('agents', agentName);
-  const stateDir = agentStateDir(agentName);
+  const agentDir = agentDirPath(agentName);
+  const templatesDir = resolve('templates');
 
-  if (!existsSync(defDir)) {
-    console.error(`Agent definition directory not found: ${defDir}`);
+  if (!existsSync(templatesDir)) {
+    console.error(`Templates directory not found: ${templatesDir}`);
     process.exit(1);
   }
 
-  const hasSoul = existsSync(join(stateDir, 'SOUL.md'));
+  const hasSoul = existsSync(join(agentDir, 'SOUL.md'));
   if (hasSoul) {
     const readline = await import('node:readline');
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -54,6 +54,6 @@ export async function runBootstrap(args: string[]): Promise<void> {
     }
   }
 
-  await resetAgent(defDir, stateDir);
+  await resetAgent(agentDir, templatesDir);
   console.log(`[bootstrap] Reset complete. Run 'ax chat' to begin the bootstrap ritual.`);
 }

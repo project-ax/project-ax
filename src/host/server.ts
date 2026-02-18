@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, 
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { axHome, dataDir, dataFile, isValidSessionId, workspaceDir, agentStateDir } from '../paths.js';
+import { axHome, dataDir, dataFile, isValidSessionId, workspaceDir, agentDir as agentDirPath } from '../paths.js';
 import type { Config, ProviderRegistry } from '../types.js';
 import type { InboundMessage } from '../providers/channel/types.js';
 import { loadProviders } from './registry.js';
@@ -110,13 +110,22 @@ export async function createServer(
   });
   const router = createRouter(providers, db, { taintBudget });
   const agentName = 'assistant';
-  const agentDefDir = resolve('agents', agentName);
-  const agentState = agentStateDir(agentName);
-  mkdirSync(agentState, { recursive: true });
+  const agentDirVal = agentDirPath(agentName);
+  mkdirSync(agentDirVal, { recursive: true });
+
+  // First-run: copy default templates into agent dir if files don't already exist
+  const templatesDir = resolve('templates');
+  for (const file of ['AGENTS.md', 'BOOTSTRAP.md', 'capabilities.yaml']) {
+    const dest = join(agentDirVal, file);
+    const src = join(templatesDir, file);
+    if (!existsSync(dest) && existsSync(src)) {
+      copyFileSync(src, dest);
+    }
+  }
+
   const handleIPC = createIPCHandler(providers, {
     taintBudget,
-    agentDir: agentDefDir,
-    agentStateDir: agentState,
+    agentDir: agentDirVal,
     profile: config.profile,
   });
 
@@ -431,8 +440,7 @@ export async function createServer(
         '--workspace', workspace,
         '--skills', wsSkillsDir,
         '--max-tokens', String(maxTokens),
-        '--agent-def-dir', agentDefDir,
-        '--agent-state-dir', agentState,
+        '--agent-dir', agentDirVal,
         ...(proxySocketPath ? ['--proxy-socket', proxySocketPath] : []),
         ...(opts.verbose ? ['--verbose'] : []),
       ];

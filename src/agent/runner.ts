@@ -70,8 +70,6 @@ export interface AgentConfig {
   userMessage?: string;
   history?: ConversationTurn[];
   agentDir?: string;
-  agentDefDir?: string;
-  agentStateDir?: string;
   userId?: string;
   // Taint state from host (via stdin payload)
   taintRatio?: number;
@@ -190,8 +188,6 @@ function parseArgs(): AgentConfig {
   let maxTokens = 0;
   let verbose = false;
   let agentDir = '';
-  let agentDefDir = '';
-  let agentStateDir = '';
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -203,8 +199,6 @@ function parseArgs(): AgentConfig {
       case '--max-tokens': maxTokens = parseInt(args[++i], 10) || 0; break;
       case '--verbose': verbose = true; break;
       case '--agent-dir': agentDir = args[++i]; break;
-      case '--agent-def-dir': agentDefDir = args[++i]; break;
-      case '--agent-state-dir': agentStateDir = args[++i]; break;
     }
   }
 
@@ -223,8 +217,6 @@ function parseArgs(): AgentConfig {
     maxTokens: maxTokens || undefined,
     verbose,
     agentDir: agentDir || undefined,
-    agentDefDir: agentDefDir || undefined,
-    agentStateDir: agentStateDir || undefined,
   };
 }
 
@@ -393,8 +385,7 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
   const identityFiles = loadIdentityFiles({
-    defDir: config.agentDefDir ?? config.agentDir,
-    stateDir: config.agentStateDir ?? config.agentDir,
+    agentDir: config.agentDir,
     userId: config.userId,
   });
 

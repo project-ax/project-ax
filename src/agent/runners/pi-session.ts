@@ -486,8 +486,7 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
   const identityFiles = loadIdentityFiles({
-    defDir: config.agentDefDir ?? config.agentDir,
-    stateDir: config.agentStateDir ?? config.agentDir,
+    agentDir: config.agentDir,
     userId: config.userId,
   });
 

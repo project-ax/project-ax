@@ -18,7 +18,7 @@
  *       credentials.enc — encrypted credentials
  *       workspaces/     — persistent agent workspaces (keyed by session UUID)
  *     agents/
- *       assistant/          — mutable agent state (SOUL.md, IDENTITY.md)
+ *       assistant/          — all agent files (AGENTS.md, BOOTSTRAP.md, capabilities.yaml, SOUL.md, IDENTITY.md)
  *         users/
  *           <userId>/       — per-user state (USER.md)
  */
@@ -72,15 +72,18 @@ function validatePathSegment(value: string, label: string): void {
   }
 }
 
-/** Path to an agent's mutable state directory: ~/.ax/agents/<name>/ */
-export function agentStateDir(agentName: string): string {
+/** Path to an agent's directory: ~/.ax/agents/<name>/ */
+export function agentDir(agentName: string): string {
   validatePathSegment(agentName, 'agent name');
   return join(axHome(), 'agents', agentName);
 }
+
+/** @deprecated Use agentDir instead. */
+export const agentStateDir = agentDir;
 
 /** Path to a per-user directory within an agent's state: ~/.ax/agents/<name>/users/<userId>/ */
 export function agentUserDir(agentName: string, userId: string): string {
   validatePathSegment(agentName, 'agent name');
   validatePathSegment(userId, 'userId');
-  return join(agentStateDir(agentName), 'users', userId);
+  return join(agentDir(agentName), 'users', userId);
 }

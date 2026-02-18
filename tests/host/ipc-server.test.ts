@@ -553,34 +553,28 @@ describe('unified identity_write', () => {
     rmSync(agentDir, { recursive: true });
   });
 
-  test('identity_write writes to agentStateDir not agentDir', async () => {
-    const agentDir = join(tmpdir(), `ax-test-def-${randomUUID()}`);
-    const stateDir = join(tmpdir(), `ax-test-state-${randomUUID()}`);
+  test('identity_write writes to agentDir', async () => {
+    const agentDir = join(tmpdir(), `ax-test-agent-${randomUUID()}`);
     mkdirSync(agentDir, { recursive: true });
-    mkdirSync(stateDir, { recursive: true });
 
     const handle = createIPCHandler(mockRegistry(), {
       agentDir,
-      agentStateDir: stateDir,
       profile: 'balanced',
     });
 
     const result = JSON.parse(await handle(JSON.stringify({
       action: 'identity_write',
       file: 'SOUL.md',
-      content: '# Soul\nWritten to state dir.',
+      content: '# Soul\nWritten to agent dir.',
       reason: 'Test',
       origin: 'agent_initiated',
     }), ctx));
 
     expect(result.ok).toBe(true);
     expect(result.applied).toBe(true);
-    // Should write to stateDir, not agentDir
-    expect(existsSync(join(stateDir, 'SOUL.md'))).toBe(true);
-    expect(existsSync(join(agentDir, 'SOUL.md'))).toBe(false);
+    expect(existsSync(join(agentDir, 'SOUL.md'))).toBe(true);
 
     rmSync(agentDir, { recursive: true });
-    rmSync(stateDir, { recursive: true });
   });
 });
 

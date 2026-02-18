@@ -58,8 +58,7 @@ export async function runClaudeCode(config: AgentConfig): Promise<void> {
     taintRatio: config.taintRatio ?? 0,
     taintThreshold: config.taintThreshold ?? 1,
     identityFiles: loadIdentityFiles({
-      defDir: config.agentDefDir ?? config.agentDir,
-      stateDir: config.agentStateDir ?? config.agentDir,
+      agentDir: config.agentDir,
       userId: config.userId,
     }),
     contextContent,

@@ -24,10 +24,8 @@ export interface IPCHandlerOptions {
   delegation?: DelegationConfig;
   /** Called when an agent_delegate request is received. Returns agent response. */
   onDelegate?: (task: string, context: string | undefined, ctx: IPCContext) => Promise<string>;
-  /** Path to agents/{name}/ directory (repo) for reading immutable files. */
+  /** Path to ~/.ax/agents/{name}/ for all identity files. */
   agentDir?: string;
-  /** Path to ~/.ax/agents/{name}/ for writing mutable identity state. */
-  agentStateDir?: string;
   /** Security profile name (paranoid, balanced, yolo). Gates identity mutations. */
   profile?: string;
 }
@@ -38,8 +36,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
   const maxConcurrent = opts?.delegation?.maxConcurrent ?? 3;
   const maxDepth = opts?.delegation?.maxDepth ?? 2;
   let activeDelegations = 0;
-  const agentDir = opts?.agentDir ?? resolve('agents/assistant');
-  const stateDir = opts?.agentStateDir ?? agentDir; // backward compat
+  const agentDir = opts?.agentDir;
   const profile = opts?.profile ?? 'paranoid';
 
   const handlers: Record<string, (req: any, ctx: IPCContext) => Promise<any>> = {
@@ -241,12 +238,14 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       }
 
       // 3. Auto-apply (balanced + clean, or yolo)
-      // Write to state dir (not repo dir)
-      mkdirSync(stateDir, { recursive: true });
-      const filePath = join(stateDir, req.file);
+      if (!agentDir) {
+        return { ok: false, error: 'agentDir not configured' };
+      }
+      mkdirSync(agentDir, { recursive: true });
+      const filePath = join(agentDir, req.file);
       writeFileSync(filePath, req.content, 'utf-8');
 
-      // Bootstrap completion: delete BOOTSTRAP.md from REPO dir when SOUL.md is written
+      // Bootstrap completion: delete BOOTSTRAP.md from agentDir when SOUL.md is written
       if (req.file === 'SOUL.md') {
         const bootstrapPath = join(agentDir, 'BOOTSTRAP.md');
         try { unlinkSync(bootstrapPath); } catch { /* may not exist */ }

@@ -29,10 +29,8 @@ Thumbs.db
 # Worktrees
 .worktrees/
 
-# Mutable identity files (live in ~/.ax/agents/ now)
-agents/*/SOUL.md
-agents/*/IDENTITY.md
-agents/*/USER.md
+# Mutable identity files (live in ~/.ax/agents/ at runtime)
+# The repo templates/ directory only has default templates
 
 # Logs / crashes
 *.log
