@@ -66,6 +66,14 @@ export class ConversationStore {
     `).run(sessionId, sessionId, keep);
   }
 
+  /** Count the number of turns for a session. */
+  count(sessionId: string): number {
+    const row = this.db.prepare(
+      'SELECT COUNT(*) as cnt FROM turns WHERE session_id = ?'
+    ).get(sessionId) as { cnt: number } | undefined;
+    return row?.cnt ?? 0;
+  }
+
   /** Clear all turns for a session. */
   clear(sessionId: string): void {
     this.db.prepare('DELETE FROM turns WHERE session_id = ?').run(sessionId);

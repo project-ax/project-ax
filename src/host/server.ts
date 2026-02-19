@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { axHome, dataDir, dataFile, isValidSessionId, workspaceDir, agentDir as agentDirPath } from '../paths.js';
 import type { Config, ProviderRegistry } from '../types.js';
 import { canonicalize, type InboundMessage } from '../providers/channel/types.js';
+import { ConversationStore, type StoredTurn } from '../conversation-store.js';
 import { loadProviders } from './registry.js';
 import { MessageQueue } from '../db.js';
 import { createRouter, type Router } from './router.js';
@@ -116,9 +117,10 @@ export async function createServer(
     providers.channels.push(...opts.channels);
   }
 
-  // Initialize DB + Taint Budget + Router + IPC
+  // Initialize DB + Conversation Store + Taint Budget + Router + IPC
   mkdirSync(dataDir(), { recursive: true });
   const db = new MessageQueue(dataFile('messages.db'));
+  const conversationStore = new ConversationStore();
   const taintBudget = new TaintBudget({
     threshold: thresholdForProfile(config.profile),
   });
@@ -424,11 +426,61 @@ export async function createServer(
       writeFileSync(join(workspace, 'CONTEXT.md'), `# Session: ${queued.session_id}\n`);
       writeFileSync(join(workspace, 'message.txt'), content);
 
-      // Use client-provided conversation history (server is stateless)
-      const history = clientMessages.slice(0, -1).map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }));
+      // Build conversation history: prefer DB-persisted history for persistent sessions,
+      // fall back to client-provided history for ephemeral sessions.
+      let history: { role: 'user' | 'assistant'; content: string; sender?: string }[] = [];
+      const maxTurns = config.history.max_turns;
+
+      if (persistentSessionId && maxTurns > 0) {
+        // Load persisted history from DB
+        const storedTurns = conversationStore.load(persistentSessionId, maxTurns);
+
+        // For thread sessions, prepend context from the parent channel session
+        if (persistentSessionId.includes(':thread:') && config.history.thread_context_turns > 0) {
+          // Derive parent session ID: replace :thread:...:threadTs with :channel:...
+          const parts = persistentSessionId.split(':');
+          const scopeIdx = parts.indexOf('thread');
+          if (scopeIdx >= 0) {
+            const parentParts = [...parts];
+            parentParts[scopeIdx] = 'channel';
+            // Remove the thread timestamp (last identifier after channel)
+            parentParts.splice(scopeIdx + 2); // keep provider:channel:channelId
+            const parentSessionId = parentParts.join(':');
+
+            const parentTurns = conversationStore.load(parentSessionId, config.history.thread_context_turns);
+
+            // Dedup: if last parent turn matches first thread turn (same content+sender), skip it
+            if (parentTurns.length > 0 && storedTurns.length > 0) {
+              const lastParent = parentTurns[parentTurns.length - 1];
+              const firstThread = storedTurns[0];
+              if (lastParent.content === firstThread.content && lastParent.sender === firstThread.sender) {
+                parentTurns.pop();
+              }
+            }
+
+            // Prepend parent context before thread history
+            const parentHistory = parentTurns.map(t => ({
+              role: t.role as 'user' | 'assistant',
+              content: t.content,
+              ...(t.sender ? { sender: t.sender } : {}),
+            }));
+            history.push(...parentHistory);
+          }
+        }
+
+        // Add the session's own history
+        history.push(...storedTurns.map(t => ({
+          role: t.role as 'user' | 'assistant',
+          content: t.content,
+          ...(t.sender ? { sender: t.sender } : {}),
+        })));
+      } else {
+        // Ephemeral: use client-provided history (minus the current message)
+        history = clientMessages.slice(0, -1).map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+      }
 
       // Spawn sandbox
       const tsxBin = resolve('node_modules/.bin/tsx');
@@ -582,6 +634,20 @@ export async function createServer(
 
       db.complete(queued.id);
       sessionCanaries.delete(queued.session_id);
+
+      // Persist conversation turns for persistent sessions
+      if (persistentSessionId && maxTurns > 0) {
+        try {
+          conversationStore.append(persistentSessionId, 'user', content, userId);
+          conversationStore.append(persistentSessionId, 'assistant', outbound.content);
+          // Lazy prune: only when count exceeds limit
+          if (conversationStore.count(persistentSessionId) > maxTurns) {
+            conversationStore.prune(persistentSessionId, maxTurns);
+          }
+        } catch (err) {
+          reqLogger.warn('history_save_failed', { error: (err as Error).message });
+        }
+      }
 
       const finishReason = outbound.scanResult.verdict === 'BLOCK' ? 'content_filter' as const : 'stop' as const;
       reqLogger.debug('completion_done', {
