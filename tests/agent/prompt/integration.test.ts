@@ -23,6 +23,7 @@ describe('PromptBuilder integration', () => {
         user: 'The user prefers concise responses and TDD workflow.',
         bootstrap: '',
         userBootstrap: '',
+        heartbeat: '',
       },
       contextContent: '# AX Project\n\nA security-first AI agent framework.\n\n## Stack\nTypeScript, Node.js, Vitest',
       contextWindow: 200000,
@@ -77,7 +78,7 @@ describe('PromptBuilder integration', () => {
       sandboxType: 'subprocess',
       taintRatio: 0,
       taintThreshold: 0.10,
-      identityFiles: { agents: 'Bot.', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '' },
+      identityFiles: { agents: 'Bot.', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
       contextContent: 'x'.repeat(4000), // ~1000 tokens
       contextWindow: 2000, // Very tight
       historyTokens: 500,

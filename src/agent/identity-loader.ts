@@ -38,5 +38,6 @@ export function loadIdentityFiles(opts: IdentityLoadOptions): IdentityFiles {
     user,
     bootstrap: load('BOOTSTRAP.md'),
     userBootstrap,
+    heartbeat: load('HEARTBEAT.md'),
   };
 }

@@ -12,7 +12,7 @@ function makeContext(overrides: Partial<PromptContext> = {}): PromptContext {
     sandboxType: 'subprocess',
     taintRatio: 0,
     taintThreshold: 0.10,
-    identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '' },
+    identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
     contextContent: '',
     contextWindow: 200000,
     historyTokens: 0,
@@ -36,7 +36,7 @@ describe('IdentityModule', () => {
     const ctx = makeContext({
       identityFiles: {
         agents: '', soul: '', identity: '', user: '',
-        bootstrap: 'You are bootstrapping. Discover your identity.', userBootstrap: '',
+        bootstrap: 'You are bootstrapping. Discover your identity.', userBootstrap: '', heartbeat: '',
       },
     });
     const lines = mod.render(ctx);
@@ -53,7 +53,7 @@ describe('IdentityModule', () => {
         soul: 'I am curious and helpful.',
         identity: 'Name: TestBot',
         user: 'User prefers short answers.',
-        bootstrap: '', userBootstrap: '',
+        bootstrap: '', userBootstrap: '', heartbeat: '',
       },
     });
     const lines = mod.render(ctx);
@@ -77,7 +77,7 @@ describe('IdentityModule', () => {
   test('skips empty identity sections', () => {
     const mod = new IdentityModule();
     const ctx = makeContext({
-      identityFiles: { agents: 'Custom agent.', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '' },
+      identityFiles: { agents: 'Custom agent.', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
     });
     const lines = mod.render(ctx);
     const text = lines.join('\n');
@@ -97,7 +97,7 @@ describe('IdentityModule', () => {
         soul: 'I am curious.',
         identity: 'Name: TestBot',
         user: '',
-        bootstrap: '', userBootstrap: '',
+        bootstrap: '', userBootstrap: '', heartbeat: '',
       },
     });
     const text = mod.render(ctx).join('\n');
@@ -113,7 +113,7 @@ describe('IdentityModule', () => {
     const mod = new IdentityModule();
     const ctx = makeContext({
       profile: 'paranoid',
-      identityFiles: { agents: '', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '' },
+      identityFiles: { agents: '', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
     });
     const text = mod.render(ctx).join('\n');
     expect(text).toContain('paranoid');
@@ -125,7 +125,7 @@ describe('IdentityModule', () => {
     const mod = new IdentityModule();
     const ctx = makeContext({
       profile: 'balanced',
-      identityFiles: { agents: '', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '' },
+      identityFiles: { agents: '', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
     });
     const text = mod.render(ctx).join('\n');
     expect(text).toContain('auto-applied');
@@ -137,7 +137,7 @@ describe('IdentityModule', () => {
     const mod = new IdentityModule();
     const ctx = makeContext({
       profile: 'yolo',
-      identityFiles: { agents: '', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '' },
+      identityFiles: { agents: '', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
     });
     const text = mod.render(ctx).join('\n');
     expect(text).toContain('auto-applied');
@@ -154,6 +154,7 @@ describe('IdentityModule', () => {
         user: '',
         bootstrap: '',
         userBootstrap: 'You are meeting a new user. Learn their preferences.',
+        heartbeat: '',
       },
     });
     const text = mod.render(ctx).join('\n');
@@ -172,6 +173,7 @@ describe('IdentityModule', () => {
         user: 'Prefers concise answers.',
         bootstrap: '',
         userBootstrap: 'You are meeting a new user.',
+        heartbeat: '',
       },
     });
     const text = mod.render(ctx).join('\n');
@@ -186,7 +188,7 @@ describe('IdentityModule', () => {
     const ctx = makeContext({
       identityFiles: {
         agents: '', soul: '', identity: '', user: '',
-        bootstrap: 'Discover your identity.', userBootstrap: '',
+        bootstrap: 'Discover your identity.', userBootstrap: '', heartbeat: '',
       },
     });
     const text = mod.render(ctx).join('\n');

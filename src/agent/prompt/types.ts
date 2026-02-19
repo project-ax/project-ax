@@ -35,6 +35,7 @@ export interface IdentityFiles {
   user: string;           // USER.md
   bootstrap: string;      // BOOTSTRAP.md
   userBootstrap: string;  // USER_BOOTSTRAP.md (shown when USER.md is absent)
+  heartbeat: string;      // HEARTBEAT.md
 }
 
 /** Bootstrap mode: soul is absent but bootstrap instructions exist. */

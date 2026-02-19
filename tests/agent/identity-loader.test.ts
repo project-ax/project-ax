@@ -52,6 +52,7 @@ describe('loadIdentityFiles', () => {
     expect(files.user).toBe('');
     expect(files.bootstrap).toBe('');
     expect(files.userBootstrap).toBe('');
+    expect(files.heartbeat).toBe('');
   });
 
   test('returns empty user when no userId provided', () => {
@@ -86,11 +87,24 @@ describe('loadIdentityFiles', () => {
     expect(files.userBootstrap).toBe('');
   });
 
+  test('reads HEARTBEAT.md from agentDir', () => {
+    writeFileSync(join(agentDir, 'HEARTBEAT.md'), '# Heartbeat\nSchedule check-ins.');
+
+    const files = loadIdentityFiles({ agentDir });
+    expect(files.heartbeat).toBe('# Heartbeat\nSchedule check-ins.');
+  });
+
+  test('returns empty string for heartbeat when HEARTBEAT.md is absent', () => {
+    const files = loadIdentityFiles({ agentDir });
+    expect(files.heartbeat).toBe('');
+  });
+
   test('reads all identity files from single directory', () => {
     writeFileSync(join(agentDir, 'AGENTS.md'), '# Agents');
     writeFileSync(join(agentDir, 'BOOTSTRAP.md'), '# Bootstrap');
     writeFileSync(join(agentDir, 'SOUL.md'), '# Soul');
     writeFileSync(join(agentDir, 'IDENTITY.md'), '# Identity');
+    writeFileSync(join(agentDir, 'HEARTBEAT.md'), '# Heartbeat');
     const userDir = join(agentDir, 'users', 'alice');
     mkdirSync(userDir, { recursive: true });
     writeFileSync(join(userDir, 'USER.md'), '# Alice');
@@ -101,5 +115,6 @@ describe('loadIdentityFiles', () => {
     expect(files.soul).toBe('# Soul');
     expect(files.identity).toBe('# Identity');
     expect(files.user).toBe('# Alice');
+    expect(files.heartbeat).toBe('# Heartbeat');
   });
 });

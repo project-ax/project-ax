@@ -150,6 +150,7 @@ describe('claude-code identity file loading', () => {
       user: loadIdentityFile(agentDir, 'USER.md'),
       bootstrap: loadIdentityFile(agentDir, 'BOOTSTRAP.md'),
       userBootstrap: '',
+      heartbeat: '',
     };
 
     const builder = new PromptBuilder();
