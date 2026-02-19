@@ -151,34 +151,45 @@ export async function create(config: Config): Promise<ChannelProvider> {
     user: string,
     channel: string,
     threadTs?: string,
-    isDM?: boolean,
+    channelType?: string,
   ): SessionAddress {
-    if (isDM) {
+    // DMs: scoped per user
+    if (channelType === 'im') {
       return {
         provider: 'slack',
         scope: 'dm',
-        identifiers: { workspace: teamId, peer: user },
+        identifiers: { peer: user },
       };
     }
 
-    if (threadTs) {
-      const channelSession: SessionAddress = {
+    // Group DMs (multi-party): scoped per group channel
+    if (channelType === 'mpim') {
+      return {
         provider: 'slack',
-        scope: 'channel',
-        identifiers: { workspace: teamId, channel, peer: user },
+        scope: 'group',
+        identifiers: { channel },
       };
+    }
+
+    // Thread: own session with parent pointing to channel
+    if (threadTs) {
       return {
         provider: 'slack',
         scope: 'thread',
-        identifiers: { workspace: teamId, channel, thread: threadTs, peer: user },
-        parent: channelSession,
+        identifiers: { channel, thread: threadTs },
+        parent: {
+          provider: 'slack',
+          scope: 'channel',
+          identifiers: { channel },
+        },
       };
     }
 
+    // Channel: shared across all users
     return {
       provider: 'slack',
       scope: 'channel',
-      identifiers: { workspace: teamId, channel, peer: user },
+      identifiers: { channel },
     };
   }
 
@@ -210,12 +221,12 @@ export async function create(config: Config): Promise<ChannelProvider> {
     if (msg.user === botUserId) return;
     if (!messageHandler) return;
 
-    // Only process DMs here; channel messages are handled by app_mention
-    if (msg.channel_type !== 'im') return;
+    // Process DMs and group DMs here; channels handled by app_mention
+    if (msg.channel_type !== 'im' && msg.channel_type !== 'mpim') return;
 
     await messageHandler({
       id: msg.ts,
-      session: buildSession(msg.user, msg.channel, msg.thread_ts, true),
+      session: buildSession(msg.user, msg.channel, msg.thread_ts, msg.channel_type),
       sender: msg.user,
       content: msg.text,
       attachments: buildAttachments(msg.files),

@@ -6,27 +6,27 @@ describe('canonicalize', () => {
     const addr: SessionAddress = {
       provider: 'slack',
       scope: 'dm',
-      identifiers: { workspace: 'T01', peer: 'U789' },
+      identifiers: { peer: 'U789' },
     };
-    expect(canonicalize(addr)).toBe('slack:dm:T01:U789');
+    expect(canonicalize(addr)).toBe('slack:dm:U789');
   });
 
   test('serializes channel session', () => {
     const addr: SessionAddress = {
       provider: 'discord',
       scope: 'channel',
-      identifiers: { workspace: 'G01', channel: 'C01', peer: 'U123' },
+      identifiers: { channel: 'C01' },
     };
-    expect(canonicalize(addr)).toBe('discord:channel:G01:C01:U123');
+    expect(canonicalize(addr)).toBe('discord:channel:C01');
   });
 
   test('serializes thread session with all identifiers', () => {
     const addr: SessionAddress = {
       provider: 'slack',
       scope: 'thread',
-      identifiers: { workspace: 'T01', channel: 'C01', thread: '1234.5678', peer: 'U789' },
+      identifiers: { channel: 'C01', thread: '1234.5678' },
     };
-    expect(canonicalize(addr)).toBe('slack:thread:T01:C01:1234.5678:U789');
+    expect(canonicalize(addr)).toBe('slack:thread:C01:1234.5678');
   });
 
   test('omits empty identifier segments', () => {
