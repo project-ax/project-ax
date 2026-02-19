@@ -3,12 +3,14 @@ import { ConversationStore } from '../src/conversation-store.js';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 
 describe('ConversationStore', () => {
-  const dbPath = join(tmpdir(), `ax-conv-test-${Date.now()}.db`);
+  let dbPath: string;
   let store: ConversationStore;
 
   beforeEach(() => {
+    dbPath = join(tmpdir(), `ax-conv-test-${randomUUID()}.db`);
     store = new ConversationStore(dbPath);
   });
 
@@ -65,5 +67,42 @@ describe('ConversationStore', () => {
     store.append('sess1', 'user', 'hello');
     store.clear('sess1');
     expect(store.load('sess1')).toEqual([]);
+  });
+
+  it('returns empty array when maxTurns is 0', () => {
+    store.append('sess1', 'user', 'hello');
+    store.append('sess1', 'assistant', 'world');
+    expect(store.load('sess1', 0)).toEqual([]);
+  });
+
+  it('prune on nonexistent session does not throw', () => {
+    expect(() => store.prune('nonexistent', 10)).not.toThrow();
+  });
+
+  it('prune does not affect other sessions', () => {
+    for (let i = 0; i < 10; i++) {
+      store.append('sess1', 'user', `msg${i}`);
+      store.append('sess2', 'user', `other${i}`);
+    }
+    store.prune('sess1', 3);
+    expect(store.load('sess1')).toHaveLength(3);
+    expect(store.load('sess2')).toHaveLength(10);
+  });
+
+  it('count returns number of turns for a session', () => {
+    expect(store.count('sess1')).toBe(0);
+    store.append('sess1', 'user', 'hello');
+    store.append('sess1', 'assistant', 'world');
+    expect(store.count('sess1')).toBe(2);
+    // Other session unaffected
+    expect(store.count('sess2')).toBe(0);
+  });
+
+  it('clear does not affect other sessions', () => {
+    store.append('sess1', 'user', 'hello');
+    store.append('sess2', 'user', 'world');
+    store.clear('sess1');
+    expect(store.load('sess1')).toEqual([]);
+    expect(store.load('sess2')).toHaveLength(1);
   });
 });

@@ -44,7 +44,8 @@ export class ConversationStore {
 
   /** Load the last `maxTurns` turns for a session (oldest first). */
   load(sessionId: string, maxTurns?: number): StoredTurn[] {
-    if (maxTurns !== undefined && maxTurns > 0) {
+    if (maxTurns !== undefined) {
+      if (maxTurns <= 0) return [];
       return this.db.prepare(`
         SELECT * FROM (
           SELECT id, session_id, role, sender, content, created_at
