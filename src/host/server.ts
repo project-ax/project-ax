@@ -126,9 +126,12 @@ export async function createServer(
   const agentDirVal = agentDirPath(agentName);
   mkdirSync(agentDirVal, { recursive: true });
 
+  // Let scheduler know where the agent dir is (for HEARTBEAT.md loading)
+  config.scheduler.agent_dir = agentDirVal;
+
   // First-run: copy default templates into agent dir if files don't already exist
   const templatesDir = resolve('templates');
-  for (const file of ['AGENTS.md', 'BOOTSTRAP.md', 'USER_BOOTSTRAP.md', 'capabilities.yaml']) {
+  for (const file of ['AGENTS.md', 'BOOTSTRAP.md', 'USER_BOOTSTRAP.md', 'HEARTBEAT.md', 'capabilities.yaml']) {
     const dest = join(agentDirVal, file);
     const src = join(templatesDir, file);
     if (!existsSync(dest) && existsSync(src)) {
