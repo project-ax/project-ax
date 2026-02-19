@@ -432,6 +432,7 @@ export async function createServer(
       const maxTurns = config.history.max_turns;
 
       if (persistentSessionId && maxTurns > 0) {
+        // maxTurns=0 disables history entirely (no loading, no saving).
         // Load persisted history from DB
         const storedTurns = conversationStore.load(persistentSessionId, maxTurns);
 
@@ -900,9 +901,12 @@ export async function createServer(
       logger.debug('ipc_server_close_failed');
     }
 
-    // Close DB
+    // Close DBs
     try { db.close(); } catch {
       logger.debug('db_close_failed');
+    }
+    try { conversationStore.close(); } catch {
+      logger.debug('conversation_store_close_failed');
     }
 
     // Clean up sockets

@@ -6,8 +6,6 @@ import { randomUUID } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { createServer, type AxServer } from '../../src/host/server.js';
 import { loadConfig } from '../../src/config.js';
-import { ConversationStore } from '../../src/conversation-store.js';
-import { rmSync } from 'node:fs';
 import type { ChannelProvider, InboundMessage, OutboundMessage, SessionAddress } from '../../src/providers/channel/types.js';
 
 function sendRequest(
@@ -48,7 +46,6 @@ function sendRequest(
 describe('Server conversation history persistence', () => {
   let server: AxServer;
   let socketPath: string;
-  const convDbPath = join(tmpdir(), `ax-conv-history-test-${Date.now()}.db`);
 
   beforeEach(() => {
     socketPath = join(tmpdir(), `ax-test-hist-${randomUUID()}.sock`);
@@ -57,9 +54,6 @@ describe('Server conversation history persistence', () => {
   afterEach(async () => {
     if (server) await server.stop();
     try { unlinkSync(socketPath); } catch { /* ignore */ }
-    rmSync(convDbPath, { force: true });
-    rmSync(convDbPath + '-wal', { force: true });
-    rmSync(convDbPath + '-shm', { force: true });
   });
 
   it('should persist user and assistant turns for persistent sessions', async () => {

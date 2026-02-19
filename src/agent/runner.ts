@@ -79,9 +79,9 @@ export interface AgentConfig {
   sandboxType?: string;
 }
 
-/** Sanitize a sender name: only alphanumeric, underscore, dot, dash. */
+/** Sanitize a sender name: only alphanumeric, underscore, dot, dash; max 100 chars. */
 function sanitizeSender(sender: string): string {
-  return sender.replace(/[^a-zA-Z0-9_.\-]/g, '');
+  return sender.replace(/[^a-zA-Z0-9_.\-]/g, '').slice(0, 100);
 }
 
 /**
