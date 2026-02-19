@@ -53,6 +53,9 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         // Skills (read-only)
         '--ro-bind', config.skills, config.skills,
 
+        // Agent identity directory (read-only) — SOUL.md, BOOTSTRAP.md, etc.
+        ...(config.agentDir ? ['--ro-bind', config.agentDir, config.agentDir] : []),
+
         // IPC socket directory (read-write)
         '--bind', ipcSocketDir, ipcSocketDir,
 

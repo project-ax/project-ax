@@ -476,6 +476,7 @@ export async function createServer(
         workspace,
         skills: wsSkillsDir,
         ipcSocket: ipcSocketPath,
+        agentDir: agentDirVal,
         timeoutSec: config.sandbox.timeout_sec,
         memoryMB: config.sandbox.memory_mb,
         command: spawnCommand,

@@ -95,6 +95,59 @@ describe('seatbelt sandbox env isolation', () => {
     expect(source).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
     expect(source).not.toContain('TAVILY_API_KEY');
   });
+
+  test('seatbelt provider passes AGENT_DIR for identity file access', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(resolve('src/providers/sandbox/seatbelt.ts'), 'utf-8');
+
+    // The seatbelt provider must pass AGENT_DIR so the agent can read
+    // identity files (BOOTSTRAP.md, SOUL.md, IDENTITY.md, etc.)
+    expect(source).toContain('AGENT_DIR');
+  });
+
+  test('seatbelt policy allows read access to AGENT_DIR', async () => {
+    const { readFileSync } = await import('node:fs');
+    const policy = readFileSync(resolve('policies/agent.sb'), 'utf-8');
+
+    // The policy must allow read access to the agent identity directory
+    expect(policy).toContain('AGENT_DIR');
+    expect(policy).toContain('(allow file-read*');
+    // Verify it's read-only (no file-write* for AGENT_DIR)
+    expect(policy).not.toMatch(/file-write\*.*AGENT_DIR/);
+  });
+});
+
+// ── Agent Dir Passed to All Sandbox Providers ────────────────────────
+
+describe('sandbox providers accept agentDir for identity files', () => {
+  test('server passes agentDir to sandbox.spawn()', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(resolve('src/host/server.ts'), 'utf-8');
+
+    // processCompletion must pass agentDir in the sandbox config
+    expect(source).toMatch(/sandbox\.spawn\(\{[^}]*agentDir/s);
+  });
+
+  test('bwrap provider mounts agentDir read-only', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(resolve('src/providers/sandbox/bwrap.ts'), 'utf-8');
+    expect(source).toContain('agentDir');
+    expect(source).toContain('--ro-bind');
+  });
+
+  test('nsjail provider mounts agentDir read-only', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(resolve('src/providers/sandbox/nsjail.ts'), 'utf-8');
+    expect(source).toContain('agentDir');
+    expect(source).toContain('bindmount_ro');
+  });
+
+  test('docker provider mounts agentDir read-only', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(resolve('src/providers/sandbox/docker.ts'), 'utf-8');
+    expect(source).toContain('agentDir');
+    expect(source).toMatch(/:ro/);
+  });
 });
 
 // ── Subprocess Sandbox Env Leak (Documented Dev-Only Risk) ──────────

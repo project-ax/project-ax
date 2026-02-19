@@ -81,6 +81,7 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '-v', `${config.workspace}:${config.workspace}:rw`,
         '-v', `${config.skills}:${config.skills}:ro`,
         '-v', `${socketDir}:${socketDir}:rw`,
+        ...(config.agentDir ? ['-v', `${config.agentDir}:${config.agentDir}:ro`] : []),
 
         // Working directory
         '-w', config.workspace,

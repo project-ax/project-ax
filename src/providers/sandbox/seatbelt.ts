@@ -24,6 +24,7 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '-D', `IPC_SOCKET_DIR=${dirname(config.ipcSocket)}`,
         '-D', `PROJECT_DIR=${projectDir}`,
         '-D', `NODE_DIR=${nodeDir}`,
+        '-D', `AGENT_DIR=${config.agentDir ?? config.workspace}`,
         cmd, ...args,
       ], {
         cwd: config.workspace,

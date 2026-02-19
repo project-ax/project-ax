@@ -1,5 +1,5 @@
 ;; policies/agent.sb — Seatbelt sandbox for agent containers
-;; Parameters: WORKSPACE, SKILLS, IPC_SOCKET_DIR, PROJECT_DIR, NODE_DIR
+;; Parameters: WORKSPACE, SKILLS, IPC_SOCKET_DIR, PROJECT_DIR, NODE_DIR, AGENT_DIR
 (version 1)
 (deny default)
 
@@ -10,10 +10,11 @@
 (deny network-bind (remote ip))
 (deny network-bind (remote tcp))
 
-;; ── Agent data (read-write workspace, read-only skills) ──
+;; ── Agent data (read-write workspace, read-only skills, read-only identity) ──
 (allow file-read* (subpath (param "WORKSPACE")))
 (allow file-write* (subpath (param "WORKSPACE")))
 (allow file-read* (subpath (param "SKILLS")))
+(allow file-read* (subpath (param "AGENT_DIR")))
 
 ;; ── IPC + proxy sockets (communication channels to host) ──
 (allow file-read* file-write* (subpath (param "IPC_SOCKET_DIR")))

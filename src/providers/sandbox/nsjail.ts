@@ -41,6 +41,9 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         // Mount skills (read-only)
         '--bindmount_ro', `${config.skills}:${config.skills}`,
 
+        // Mount agent identity directory (read-only) — SOUL.md, BOOTSTRAP.md, etc.
+        ...(config.agentDir ? ['--bindmount_ro', `${config.agentDir}:${config.agentDir}`] : []),
+
         // Mount IPC socket directory
         '--bindmount', `${resolve(config.ipcSocket, '..')}:${resolve(config.ipcSocket, '..')}`,
 
