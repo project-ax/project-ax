@@ -2,7 +2,7 @@
 
 [ ] Slack channel
 [ ] Prompts (system, AGENTS.md, SOUL.md, IDENTITY.md, BOOTSTRAP.md)
-[ ] HEARTBEAT.md
+[x] HEARTBEAT.md
 [ ] Memu integration
 [ ] Use Nexus landing page design
 
