@@ -56,6 +56,10 @@ const ConfigSchema = z.strictObject({
     heartbeat_interval_min: z.number().int().min(1),
     agent_dir: z.string().optional(),
   }),
+  history: z.strictObject({
+    max_turns: z.number().int().min(0).max(10000).default(50),
+    thread_context_turns: z.number().int().min(0).max(50).default(5),
+  }).default({ max_turns: 50, thread_context_turns: 5 }),
 });
 
 export function loadConfig(path?: string): Config {

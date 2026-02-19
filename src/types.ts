@@ -65,6 +65,10 @@ export interface Config {
     proactive_hint_cooldown_sec?: number;
     agent_dir?: string;
   };
+  history: {
+    max_turns: number;
+    thread_context_turns: number;
+  };
 }
 
 export interface ProviderRegistry {
