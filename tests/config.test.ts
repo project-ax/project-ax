@@ -97,6 +97,45 @@ scheduler:
     }
   });
 
+  test('accepts config with model field', async () => {
+    const { writeFileSync, rmSync } = await import('node:fs');
+    const tmpPath = resolve(import.meta.dirname, '../ax-test-model.yaml');
+    writeFileSync(tmpPath, `
+model: groq/moonshotai/kimi-k2-instruct-0905
+profile: balanced
+providers:
+  llm: anthropic
+  memory: file
+  scanner: basic
+  channels: []
+  web: none
+  browser: none
+  credentials: env
+  skills: readonly
+  audit: file
+  sandbox: subprocess
+  scheduler: none
+sandbox:
+  timeout_sec: 120
+  memory_mb: 512
+scheduler:
+  active_hours: { start: "07:00", end: "23:00", timezone: "UTC" }
+  max_token_budget: 4096
+  heartbeat_interval_min: 30
+`);
+    try {
+      const config = loadConfig(tmpPath);
+      expect(config.model).toBe('groq/moonshotai/kimi-k2-instruct-0905');
+    } finally {
+      rmSync(tmpPath);
+    }
+  });
+
+  test('config without model field still parses (backward compat)', () => {
+    const config = loadConfig(resolve(import.meta.dirname, '../ax.yaml'));
+    expect(config.model).toBeUndefined();
+  });
+
   test('accepts config with optional skillScreener', async () => {
     const { writeFileSync, rmSync } = await import('node:fs');
     const tmpPath = resolve(import.meta.dirname, '../ax-test-screener.yaml');

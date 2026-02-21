@@ -25,6 +25,7 @@ const ChannelAccessConfigSchema = z.object({
 
 const ConfigSchema = z.strictObject({
   agent: z.enum(AGENT_TYPES).optional().default('pi-agent-core'),
+  model: z.string().optional(),
   profile: z.enum(PROFILE_NAMES),
   providers: z.strictObject({
     llm: z.string(),
