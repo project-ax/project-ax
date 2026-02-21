@@ -33,10 +33,10 @@ const logger = getLogger().child({ component: 'runner' });
 const DEFAULT_MODEL_ID = 'claude-sonnet-4-5-20250929';
 const DEFAULT_CONTEXT_WINDOW = 200000;
 
-function createDefaultModel(maxTokens?: number): Model<any> {
+function createDefaultModel(maxTokens?: number, modelId?: string): Model<any> {
   return {
-    id: DEFAULT_MODEL_ID,
-    name: 'Claude Sonnet 4.5',
+    id: modelId ?? DEFAULT_MODEL_ID,
+    name: modelId ?? 'Claude Sonnet 4.5',
     api: 'anthropic-messages',
     provider: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
@@ -62,6 +62,7 @@ export type AgentType = 'pi-agent-core' | 'pi-coding-agent' | 'claude-code';
 
 export interface AgentConfig {
   agent?: AgentType;
+  model?: string;          // e.g. 'moonshotai/kimi-k2-instruct-0905' (provider prefix already stripped)
   ipcSocket: string;
   workspace: string;
   skills: string;
@@ -194,6 +195,7 @@ export async function compactHistory(
 function parseArgs(): AgentConfig {
   const args = process.argv.slice(2);
   let agent: AgentType = 'pi-agent-core';
+  let model = '';
   let ipcSocket = '';
   let workspace = '';
   let skills = '';
@@ -205,6 +207,7 @@ function parseArgs(): AgentConfig {
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--agent': agent = args[++i] as AgentType; break;
+      case '--model': model = args[++i]; break;
       case '--ipc-socket': ipcSocket = args[++i]; break;
       case '--workspace': workspace = args[++i]; break;
       case '--skills': skills = args[++i]; break;
@@ -226,6 +229,7 @@ function parseArgs(): AgentConfig {
 
   return {
     agent, ipcSocket, workspace, skills,
+    model: model || undefined,
     proxySocket: proxySocket || undefined,
     maxTokens: maxTokens || undefined,
     verbose,
@@ -439,7 +443,7 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   // Convert (possibly compacted) history to pi-ai messages
   const historyMessages = historyToPiMessages(history);
 
-  const model = createDefaultModel(config.maxTokens);
+  const model = createDefaultModel(config.maxTokens, config.model);
 
   // Select stream function: proxy (Anthropic SDK via Unix socket) or IPC
   const streamFn = useProxy

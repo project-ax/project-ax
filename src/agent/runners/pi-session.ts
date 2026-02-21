@@ -44,10 +44,10 @@ const LLM_CALL_TIMEOUT_MS = parseInt(process.env.AX_LLM_TIMEOUT_MS ?? '', 10) ||
 
 // ── IPC model definition ────────────────────────────────────────────
 
-function createIPCModel(maxTokens?: number): Model<any> {
+function createIPCModel(maxTokens?: number, modelId?: string): Model<any> {
   return {
-    id: 'claude-sonnet-4-5-20250929',
-    name: 'Claude Sonnet 4.5 (via IPC)',
+    id: modelId ?? 'claude-sonnet-4-5-20250929',
+    name: modelId ? `${modelId} (via IPC)` : 'Claude Sonnet 4.5 (via IPC)',
     api: 'ax-ipc',
     provider: 'ax',
     baseUrl: 'http://localhost',
@@ -59,10 +59,10 @@ function createIPCModel(maxTokens?: number): Model<any> {
   };
 }
 
-function createProxyModel(maxTokens?: number): Model<any> {
+function createProxyModel(maxTokens?: number, modelId?: string): Model<any> {
   return {
-    id: 'claude-sonnet-4-5-20250929',
-    name: 'Claude Sonnet 4.5 (via proxy)',
+    id: modelId ?? 'claude-sonnet-4-5-20250929',
+    name: modelId ? `${modelId} (via proxy)` : 'Claude Sonnet 4.5 (via proxy)',
     api: 'ax-proxy',
     provider: 'ax',
     baseUrl: 'http://localhost',
@@ -444,7 +444,7 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
 
   // Decide LLM transport: proxy (direct Anthropic SDK) or IPC fallback
   const useProxy = !!config.proxySocket;
-  const activeModel = useProxy ? createProxyModel(config.maxTokens) : createIPCModel(config.maxTokens);
+  const activeModel = useProxy ? createProxyModel(config.maxTokens, config.model) : createIPCModel(config.maxTokens, config.model);
   const apiName = useProxy ? 'ax-proxy' : 'ax-ipc';
 
   logger.debug('session_start', {

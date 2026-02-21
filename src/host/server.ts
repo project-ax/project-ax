@@ -516,6 +516,14 @@ export async function createServer(
       }
 
       const maxTokens = config.max_tokens ?? 8192;
+
+      // Parse model: strip provider prefix (e.g., 'groq/moonshotai/kimi-k2' → 'moonshotai/kimi-k2')
+      const configModelId = config.model
+        ? config.model.includes('/')
+          ? config.model.slice(config.model.indexOf('/') + 1)
+          : config.model
+        : undefined;
+
       const spawnCommand = [tsxBin, resolve('src/agent/runner.ts'),
         '--agent', agentType,
         '--ipc-socket', ipcSocketPath,
@@ -523,6 +531,7 @@ export async function createServer(
         '--skills', wsSkillsDir,
         '--max-tokens', String(maxTokens),
         '--agent-dir', agentDirVal,
+        ...(configModelId ? ['--model', configModelId] : []),
         ...(proxySocketPath ? ['--proxy-socket', proxySocketPath] : []),
         ...(opts.verbose ? ['--verbose'] : []),
       ];
