@@ -4,6 +4,7 @@ import {
   isWithinActiveHours,
   parseCronField,
   matchesCron,
+  minuteKey,
   schedulerSession,
 } from '../../../src/providers/scheduler/utils.js';
 
@@ -109,6 +110,25 @@ describe('scheduler/utils', () => {
     test('invalid expression (not 5 fields) returns false', () => {
       expect(matchesCron('* * *', new Date())).toBe(false);
       expect(matchesCron('', new Date())).toBe(false);
+    });
+  });
+
+  describe('minuteKey', () => {
+    test('returns YYYY-MM-DDTHH:MM format', () => {
+      const d = new Date(2026, 1, 21, 19, 7, 34); // Feb 21, 2026 19:07:34 local
+      expect(minuteKey(d)).toBe('2026-02-21T19:07');
+    });
+
+    test('same minute different seconds produce same key', () => {
+      const a = new Date(2026, 2, 1, 12, 5, 0);
+      const b = new Date(2026, 2, 1, 12, 5, 59);
+      expect(minuteKey(a)).toBe(minuteKey(b));
+    });
+
+    test('different minutes produce different keys', () => {
+      const a = new Date(2026, 2, 1, 12, 5, 0);
+      const b = new Date(2026, 2, 1, 12, 6, 0);
+      expect(minuteKey(a)).not.toBe(minuteKey(b));
     });
   });
 

@@ -7,7 +7,7 @@ import type { InboundMessage } from '../channel/types.js';
 import type { Config } from '../../types.js';
 import {
   type ActiveHours,
-  schedulerSession, parseTime, isWithinActiveHours, matchesCron,
+  schedulerSession, parseTime, isWithinActiveHours, matchesCron, minuteKey,
 } from './utils.js';
 
 interface CronSchedulerDeps {
@@ -19,6 +19,9 @@ export async function create(config: Config, deps: CronSchedulerDeps = {}): Prom
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let cronTimer: ReturnType<typeof setInterval> | null = null;
   let onMessageHandler: ((msg: InboundMessage) => void) | null = null;
+
+  // Track last-fired minute per job to prevent duplicate fires within the same minute
+  const lastFiredMinute = new Map<string, string>();
 
   const activeHours: ActiveHours = {
     start: parseTime(config.scheduler.active_hours.start),
@@ -51,12 +54,15 @@ export async function create(config: Config, deps: CronSchedulerDeps = {}): Prom
     });
   }
 
-  function checkCronJobs(): void {
+  function checkCronJobs(at?: Date): void {
     if (!onMessageHandler) return;
     if (!isWithinActiveHours(activeHours)) return;
-    const now = new Date();
+    const now = at ?? new Date();
+    const mk = minuteKey(now);
     for (const job of jobs.list()) {
       if (!matchesCron(job.schedule, now)) continue;
+      if (lastFiredMinute.get(job.id) === mk) continue; // already fired this minute
+      lastFiredMinute.set(job.id, mk);
       onMessageHandler({
         id: randomUUID(),
         session: schedulerSession(`cron:${job.id}`),
@@ -101,6 +107,10 @@ export async function create(config: Config, deps: CronSchedulerDeps = {}): Prom
 
     listJobs(): CronJobDef[] {
       return jobs.list();
+    },
+
+    checkCronNow(at?: Date): void {
+      checkCronJobs(at);
     },
   };
 }

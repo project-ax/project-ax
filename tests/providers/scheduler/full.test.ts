@@ -155,6 +155,35 @@ describe('scheduler-full', () => {
     expect(received.filter(m => m.sender === 'cron:every-5')).toHaveLength(0);
   });
 
+  test('cron job fires only once per matching minute (no duplicate on re-check)', async () => {
+    const scheduler = await create(mockConfig);
+    const received: InboundMessage[] = [];
+
+    scheduler.addCron!({
+      id: 'dedup-job',
+      schedule: '* * * * *',
+      agentId: 'assistant',
+      prompt: 'Should fire once',
+    });
+
+    await scheduler.start((msg) => received.push(msg));
+    stopFn = () => scheduler.stop();
+
+    const t = new Date('2026-03-01T12:05:00Z');
+
+    // First check — should fire
+    scheduler.checkCronNow!(t);
+    expect(received.filter(m => m.sender === 'cron:dedup-job')).toHaveLength(1);
+
+    // Second check same minute — should NOT fire again
+    scheduler.checkCronNow!(new Date('2026-03-01T12:05:30Z'));
+    expect(received.filter(m => m.sender === 'cron:dedup-job')).toHaveLength(1);
+
+    // Next minute — should fire again
+    scheduler.checkCronNow!(new Date('2026-03-01T12:06:00Z'));
+    expect(received.filter(m => m.sender === 'cron:dedup-job')).toHaveLength(2);
+  });
+
   // ─── ProactiveHint bridge ──────────────────────────
 
   test('hint with sufficient confidence fires as InboundMessage', async () => {

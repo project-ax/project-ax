@@ -9,7 +9,7 @@ import type { AuditProvider } from '../audit/types.js';
 import type { Config } from '../../types.js';
 import {
   type ActiveHours,
-  schedulerSession, parseTime, isWithinActiveHours, matchesCron,
+  schedulerSession, parseTime, isWithinActiveHours, matchesCron, minuteKey,
 } from './utils.js';
 
 function hintSignature(hint: ProactiveHint): string {
@@ -37,6 +37,9 @@ export async function create(
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let cronTimer: ReturnType<typeof setInterval> | null = null;
   let onMessageHandler: ((msg: InboundMessage) => void) | null = null;
+
+  // Track last-fired minute per job to prevent duplicate fires within the same minute
+  const lastFiredMinute = new Map<string, string>();
 
   const activeHours: ActiveHours = {
     start: parseTime(config.scheduler.active_hours.start),
@@ -88,18 +91,20 @@ export async function create(
     if (!isWithinActiveHours(activeHours)) return;
 
     const now = at ?? new Date();
+    const mk = minuteKey(now);
 
     for (const job of jobs.list()) {
-      if (matchesCron(job.schedule, now)) {
-        onMessageHandler({
-          id: randomUUID(),
-          session: schedulerSession(`cron:${job.id}`),
-          sender: `cron:${job.id}`,
-          content: job.prompt,
-          attachments: [],
-          timestamp: now,
-        });
-      }
+      if (!matchesCron(job.schedule, now)) continue;
+      if (lastFiredMinute.get(job.id) === mk) continue; // already fired this minute
+      lastFiredMinute.set(job.id, mk);
+      onMessageHandler({
+        id: randomUUID(),
+        session: schedulerSession(`cron:${job.id}`),
+        sender: `cron:${job.id}`,
+        content: job.prompt,
+        attachments: [],
+        timestamp: now,
+      });
     }
   }
 
