@@ -354,7 +354,7 @@ describe('Slack channel provider', () => {
       );
     });
 
-    test('DMs have isMention=false', async () => {
+    test('DMs have isMention=false and include dmChannel for reactions', async () => {
       process.env.SLACK_BOT_TOKEN = 'xoxb-test';
       process.env.SLACK_APP_TOKEN = 'xapp-test';
       const { create } = await import('../../../src/providers/channel/slack.js');
@@ -376,7 +376,16 @@ describe('Slack channel provider', () => {
       });
 
       expect(handler).toHaveBeenCalledWith(
-        expect.objectContaining({ isMention: false }),
+        expect.objectContaining({
+          isMention: false,
+          session: expect.objectContaining({
+            scope: 'dm',
+            identifiers: expect.objectContaining({
+              peer: 'U123',
+              dmChannel: 'D01',
+            }),
+          }),
+        }),
       );
     });
   });
@@ -506,6 +515,57 @@ describe('Slack channel provider', () => {
       };
       // Should not throw even when API returns error
       await expect(provider.removeReaction!(session, '1111.2222', 'eyes')).resolves.toBeUndefined();
+    });
+
+    test('addReaction uses dmChannel for DM sessions', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      const provider = await create(testConfig());
+
+      const session: SessionAddress = {
+        provider: 'slack', scope: 'dm',
+        identifiers: { peer: 'U123', dmChannel: 'D01' },
+      };
+      await provider.addReaction!(session, '1111.2222', 'eyes');
+
+      expect(mockReactionsAdd).toHaveBeenCalledWith({
+        token: 'xoxb-test', channel: 'D01', name: 'eyes', timestamp: '1111.2222',
+      });
+    });
+
+    test('removeReaction uses dmChannel for DM sessions', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      const provider = await create(testConfig());
+
+      const session: SessionAddress = {
+        provider: 'slack', scope: 'dm',
+        identifiers: { peer: 'U123', dmChannel: 'D01' },
+      };
+      await provider.removeReaction!(session, '1111.2222', 'eyes');
+
+      expect(mockReactionsRemove).toHaveBeenCalledWith({
+        token: 'xoxb-test', channel: 'D01', name: 'eyes', timestamp: '1111.2222',
+      });
+    });
+
+    test('addReaction uses channel for group DM sessions', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      const provider = await create(testConfig());
+
+      const session: SessionAddress = {
+        provider: 'slack', scope: 'group',
+        identifiers: { channel: 'G01' },
+      };
+      await provider.addReaction!(session, '1111.2222', 'eyes');
+
+      expect(mockReactionsAdd).toHaveBeenCalledWith({
+        token: 'xoxb-test', channel: 'G01', name: 'eyes', timestamp: '1111.2222',
+      });
     });
   });
 

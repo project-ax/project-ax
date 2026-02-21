@@ -163,12 +163,13 @@ export async function create(config: Config): Promise<ChannelProvider> {
     threadTs?: string,
     channelType?: string,
   ): SessionAddress {
-    // DMs: scoped per user
+    // DMs: scoped per user. Store raw Slack channel ID (D-ID) for reactions API.
+    // canonicalize() only checks peer, so dmChannel doesn't affect session identity.
     if (channelType === 'im') {
       return {
         provider: 'slack',
         scope: 'dm',
-        identifiers: { peer: user },
+        identifiers: { peer: user, dmChannel: channel },
       };
     }
 
@@ -367,13 +368,13 @@ export async function create(config: Config): Promise<ChannelProvider> {
     },
 
     async addReaction(session: SessionAddress, messageId: string, emoji: string): Promise<void> {
-      const channel = session.identifiers.channel ?? session.identifiers.peer;
+      const channel = session.identifiers.dmChannel ?? session.identifiers.channel ?? session.identifiers.peer;
       if (!channel) return;
       await app.client.reactions.add({ token: botToken, channel, name: emoji, timestamp: messageId });
     },
 
     async removeReaction(session: SessionAddress, messageId: string, emoji: string): Promise<void> {
-      const channel = session.identifiers.channel ?? session.identifiers.peer;
+      const channel = session.identifiers.dmChannel ?? session.identifiers.channel ?? session.identifiers.peer;
       if (!channel) return;
       await app.client.reactions.remove({ token: botToken, channel, name: emoji, timestamp: messageId }).catch(() => {});
     },
