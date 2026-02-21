@@ -10,6 +10,10 @@ describe('Provider allowlist (SC-SEC-002)', () => {
     expect(resolveProviderPath('sandbox', 'subprocess')).toBe('../providers/sandbox/subprocess.js');
   });
 
+  test('resolves groq to openai module', () => {
+    expect(resolveProviderPath('llm', 'groq')).toBe('../providers/llm/openai.js');
+  });
+
   test('rejects unknown provider kind', () => {
     expect(() => resolveProviderPath('unknown', 'foo')).toThrow('Unknown provider kind');
   });
