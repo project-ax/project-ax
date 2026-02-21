@@ -90,6 +90,8 @@ export async function create(config: Config): Promise<ChannelProvider> {
   // Dynamic import — @slack/bolt is an optional dependency
   const { App, SocketModeReceiver } = await import('@slack/bolt');
 
+  const slackLogger = getLogger().child({ component: 'slack' });
+
   let messageHandler: ((msg: InboundMessage) => Promise<void>) | null = null;
   let botUserId: string | undefined;
   let teamId: string | undefined;
@@ -97,11 +99,21 @@ export async function create(config: Config): Promise<ChannelProvider> {
   let reconnecting = false;
   let intentionalDisconnect = false;
 
-  // Create receiver explicitly so we can monitor socket health
+  // Create receiver explicitly so we can monitor socket health.
+  // Disable the library's built-in auto-reconnect — it has an unhandled promise
+  // rejection bug in delayReconnectAttempt when start() fails during reconnection.
+  // We run our own health-check loop (ensureConnected) instead.
   const receiver = new SocketModeReceiver({ appToken });
+  (receiver.client as any).autoReconnectEnabled = false;
   const app = new App({
     token: botToken,
     receiver,
+  });
+
+  // Catch errors emitted by the socket-mode client so they don't become
+  // unhandled 'error' events on the EventEmitter.
+  receiver.client.on('error', (err: unknown) => {
+    slackLogger.warn('slack_socket_error', { error: err instanceof Error ? err.message : String(err) });
   });
 
   async function ensureConnected(): Promise<void> {
@@ -112,8 +124,6 @@ export async function create(config: Config): Promise<ChannelProvider> {
 
     reconnecting = true;
     let delay = INITIAL_BACKOFF_MS;
-
-    const slackLogger = getLogger().child({ component: 'slack' });
 
     while (!intentionalDisconnect) {
       try {
@@ -270,7 +280,11 @@ export async function create(config: Config): Promise<ChannelProvider> {
       const authResult = await app.client.auth.test({ token: botToken });
       botUserId = authResult.user_id as string;
       teamId = authResult.team_id as string;
-      healthCheckInterval = setInterval(() => { ensureConnected(); }, HEALTH_CHECK_MS);
+      healthCheckInterval = setInterval(() => {
+        ensureConnected().catch((err) => {
+          slackLogger.warn('slack_health_check_error', { error: err instanceof Error ? err.message : String(err) });
+        });
+      }, HEALTH_CHECK_MS);
     },
 
     onMessage(handler: (msg: InboundMessage) => Promise<void>): void {

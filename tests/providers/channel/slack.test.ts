@@ -27,7 +27,11 @@ const mockAuthTest = vi.fn().mockResolvedValue({ user_id: 'UBOT', team_id: 'T01'
 const mockStart = vi.fn().mockResolvedValue(undefined);
 const mockStop = vi.fn().mockResolvedValue(undefined);
 const mockIsActive = vi.fn().mockReturnValue(true);
-const mockSocketClient = { websocket: { isActive: mockIsActive } };
+const mockSocketClient = {
+  websocket: { isActive: mockIsActive },
+  on: vi.fn(),
+  autoReconnectEnabled: true,
+};
 const eventHandlers = new Map<string, Function>();
 
 vi.mock('@slack/bolt', () => ({
@@ -354,6 +358,27 @@ describe('Slack channel provider', () => {
       };
       await expect(provider.send(session, { content: 'test' }))
         .rejects.toThrow('no channel or peer');
+    });
+  });
+
+  describe('socket resilience', () => {
+    test('disables built-in auto-reconnect on socket-mode client', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      // Reset so we can observe the assignment
+      mockSocketClient.autoReconnectEnabled = true;
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      await create(testConfig());
+      expect(mockSocketClient.autoReconnectEnabled).toBe(false);
+    });
+
+    test('registers error handler on socket-mode client', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      mockSocketClient.on.mockClear();
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      await create(testConfig());
+      expect(mockSocketClient.on).toHaveBeenCalledWith('error', expect.any(Function));
     });
   });
 
