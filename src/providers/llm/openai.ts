@@ -160,7 +160,7 @@ export async function create(config: Config, providerName?: string): Promise<LLM
         messages,
         stream: true,
         stream_options: { include_usage: true },
-        ...(tools?.length ? { tools } : {}),
+        ...(tools?.length ? { tools, tool_choice: 'auto' as const } : {}),
       });
 
       // Accumulate tool call deltas. OpenAI streams tool calls incrementally:

@@ -179,6 +179,43 @@ describe('openai provider integration', () => {
     expect(doneChunk!.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
   });
 
+  test('sends tool_choice auto when tools are provided', async () => {
+    let capturedBody = '';
+    server = await startMockServer(PORT, (_req, body, res) => {
+      capturedBody = body;
+      writeSSE(res, buildTextSSE('ok'));
+    });
+
+    const provider = await create(config, 'groq');
+
+    // With tools — should include tool_choice
+    for await (const _chunk of provider.chat({
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'Hi' }],
+      tools: [{
+        name: 'read_file',
+        description: 'Read a file',
+        parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+      }],
+    })) { /* drain */ }
+
+    const parsed = JSON.parse(capturedBody);
+    expect(parsed.tool_choice).toBe('auto');
+    expect(parsed.tools).toBeDefined();
+    expect(parsed.tools).toHaveLength(1);
+
+    // Without tools — should NOT include tool_choice
+    capturedBody = '';
+    for await (const _chunk of provider.chat({
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })) { /* drain */ }
+
+    const parsedNoTools = JSON.parse(capturedBody);
+    expect(parsedNoTools.tool_choice).toBeUndefined();
+    expect(parsedNoTools.tools).toBeUndefined();
+  });
+
   test('streams tool call response from mock server', async () => {
     server = await startMockServer(PORT, (_req, _body, res) => {
       writeSSE(res, buildToolCallSSE());
