@@ -1,7 +1,8 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SchedulerProvider, CronJobDef } from './types.js';
+import type { SchedulerProvider, CronJobDef, JobStore } from './types.js';
+import { MemoryJobStore } from './types.js';
 import type { InboundMessage } from '../channel/types.js';
 import type { ProactiveHint, MemoryProvider } from '../memory/types.js';
 import type { AuditProvider } from '../audit/types.js';
@@ -25,13 +26,14 @@ function hintSignature(hint: ProactiveHint): string {
 interface FullSchedulerDeps {
   audit?: AuditProvider;
   memory?: MemoryProvider;
+  jobStore?: JobStore;
 }
 
 export async function create(
   config: Config,
   deps: FullSchedulerDeps = {},
 ): Promise<SchedulerProvider> {
-  const jobs: Map<string, CronJobDef> = new Map();
+  const jobs: JobStore = deps.jobStore ?? new MemoryJobStore();
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let cronTimer: ReturnType<typeof setInterval> | null = null;
   let onMessageHandler: ((msg: InboundMessage) => void) | null = null;
@@ -87,7 +89,7 @@ export async function create(
 
     const now = at ?? new Date();
 
-    for (const job of jobs.values()) {
+    for (const job of jobs.list()) {
       if (matchesCron(job.schedule, now)) {
         onMessageHandler({
           id: randomUUID(),
@@ -213,7 +215,7 @@ export async function create(
     },
 
     addCron(job: CronJobDef): void {
-      jobs.set(job.id, job);
+      jobs.set(job);
     },
 
     removeCron(jobId: string): void {
@@ -221,7 +223,7 @@ export async function create(
     },
 
     listJobs(): CronJobDef[] {
-      return [...jobs.values()];
+      return jobs.list();
     },
 
     checkCronNow(at?: Date): void {

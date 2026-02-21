@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SchedulerProvider, CronJobDef } from './types.js';
+import type { SchedulerProvider, CronJobDef, JobStore } from './types.js';
+import { MemoryJobStore } from './types.js';
 import type { InboundMessage } from '../channel/types.js';
 import type { Config } from '../../types.js';
 import {
@@ -9,8 +10,12 @@ import {
   schedulerSession, parseTime, isWithinActiveHours, matchesCron,
 } from './utils.js';
 
-export async function create(config: Config): Promise<SchedulerProvider> {
-  const jobs: Map<string, CronJobDef> = new Map();
+interface CronSchedulerDeps {
+  jobStore?: JobStore;
+}
+
+export async function create(config: Config, deps: CronSchedulerDeps = {}): Promise<SchedulerProvider> {
+  const jobs: JobStore = deps.jobStore ?? new MemoryJobStore();
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let cronTimer: ReturnType<typeof setInterval> | null = null;
   let onMessageHandler: ((msg: InboundMessage) => void) | null = null;
@@ -50,7 +55,7 @@ export async function create(config: Config): Promise<SchedulerProvider> {
     if (!onMessageHandler) return;
     if (!isWithinActiveHours(activeHours)) return;
     const now = new Date();
-    for (const job of jobs.values()) {
+    for (const job of jobs.list()) {
       if (!matchesCron(job.schedule, now)) continue;
       onMessageHandler({
         id: randomUUID(),
@@ -87,7 +92,7 @@ export async function create(config: Config): Promise<SchedulerProvider> {
     },
 
     addCron(job: CronJobDef): void {
-      jobs.set(job.id, job);
+      jobs.set(job);
     },
 
     removeCron(jobId: string): void {
@@ -95,7 +100,7 @@ export async function create(config: Config): Promise<SchedulerProvider> {
     },
 
     listJobs(): CronJobDef[] {
-      return [...jobs.values()];
+      return jobs.list();
     },
   };
 }

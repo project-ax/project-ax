@@ -328,6 +328,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
         agentId: ctx.agentId,
         prompt: req.prompt,
         maxTokenBudget: req.maxTokenBudget,
+        delivery: req.delivery,
       });
       await providers.audit.log({
         action: 'scheduler_add_cron',

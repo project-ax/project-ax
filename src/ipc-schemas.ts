@@ -195,6 +195,22 @@ export const SchedulerAddCronSchema = ipcAction('scheduler_add_cron', {
   schedule: safeString(100),
   prompt: safeString(10_000),
   maxTokenBudget: z.number().int().min(1).optional(),
+  delivery: z.strictObject({
+    mode: z.enum(['channel', 'none']),
+    target: z.union([
+      z.literal('last'),
+      z.strictObject({
+        provider: safeString(50),
+        scope: z.enum(['dm', 'channel', 'thread', 'group']),
+        identifiers: z.strictObject({
+          workspace: safeString(200).optional(),
+          channel: safeString(200).optional(),
+          thread: safeString(200).optional(),
+          peer: safeString(200).optional(),
+        }),
+      }),
+    ]).optional(),
+  }).optional(),
 });
 
 export const SchedulerRemoveCronSchema = ipcAction('scheduler_remove_cron', {

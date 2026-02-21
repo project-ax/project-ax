@@ -10,7 +10,7 @@ import type { CredentialProvider } from './providers/credentials/types.js';
 import type { SkillStoreProvider, SkillScreenerProvider } from './providers/skills/types.js';
 import type { AuditProvider } from './providers/audit/types.js';
 import type { SandboxProvider } from './providers/sandbox/types.js';
-import type { SchedulerProvider } from './providers/scheduler/types.js';
+import type { SchedulerProvider, CronDelivery } from './providers/scheduler/types.js';
 
 export type ContentBlock =
   | { type: 'text'; text: string }
@@ -65,6 +65,7 @@ export interface Config {
     proactive_hint_confidence_threshold?: number;
     proactive_hint_cooldown_sec?: number;
     agent_dir?: string;
+    defaultDelivery?: CronDelivery;
   };
   history: {
     max_turns: number;

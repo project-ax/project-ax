@@ -25,6 +25,8 @@ import { type Logger, getLogger, truncate } from '../logger.js';
 import { startAnthropicProxy } from './proxy.js';
 import { diagnoseError } from '../errors.js';
 import { ensureOAuthTokenFresh, refreshOAuthTokenFromEnv } from '../dotenv.js';
+import { SessionStore } from '../session-store.js';
+import { resolveDelivery } from './delivery.js';
 
 // =====================================================
 // Types
@@ -121,6 +123,7 @@ export async function createServer(
   mkdirSync(dataDir(), { recursive: true });
   const db = new MessageQueue(dataFile('messages.db'));
   const conversationStore = new ConversationStore();
+  const sessionStore = new SessionStore();
   const taintBudget = new TaintBudget({
     threshold: thresholdForProfile(config.profile),
   });
@@ -423,9 +426,8 @@ export async function createServer(
         reqLogger.debug('skills_copy_failed', { hostSkillsDir });
       }
 
-      // Write workspace files with raw user message (no taint tags or canary)
+      // Write session context into workspace (agent reads via loadContext())
       writeFileSync(join(workspace, 'CONTEXT.md'), `# Session: ${queued.session_id}\n`);
-      writeFileSync(join(workspace, 'message.txt'), content);
 
       // Build conversation history: prefer DB-persisted history for persistent sessions,
       // fall back to client-provided history for ephemeral sessions.
@@ -839,7 +841,60 @@ export async function createServer(
           msg.content, `sched-${randomUUID().slice(0, 8)}`, [], undefined,
           { sessionId: result.sessionId, messageId: result.messageId!, canaryToken: result.canaryToken },
         );
-        logger.info('scheduler_message_processed', { contentLength: responseContent.length });
+
+        // Resolve delivery target and send if applicable
+        if (responseContent.trim()) {
+          let delivery: import('../providers/scheduler/types.js').CronDelivery | undefined;
+          let jobAgentId = agentName;
+
+          if (msg.sender.startsWith('cron:')) {
+            const jobId = msg.sender.slice(5);
+            const jobs = providers.scheduler.listJobs?.() ?? [];
+            const job = jobs.find(j => j.id === jobId);
+            if (job?.delivery) {
+              delivery = job.delivery;
+              jobAgentId = job.agentId;
+            }
+          } else if (msg.sender === 'heartbeat') {
+            delivery = config.scheduler.defaultDelivery;
+          } else {
+            // hint or other scheduler message — use default
+            delivery = config.scheduler.defaultDelivery;
+          }
+
+          const resolution = resolveDelivery(delivery, {
+            sessionStore,
+            agentId: jobAgentId,
+            defaultDelivery: config.scheduler.defaultDelivery,
+            channels: providers.channels,
+          });
+
+          if (resolution.mode === 'channel' && resolution.session && resolution.channelProvider) {
+            const outbound = await router.processOutbound(responseContent, result.sessionId, result.canaryToken);
+            if (!outbound.canaryLeaked) {
+              try {
+                await resolution.channelProvider.send(resolution.session, { content: outbound.content });
+                logger.info('cron_delivered', {
+                  sender: msg.sender,
+                  provider: resolution.session.provider,
+                  contentLength: outbound.content.length,
+                });
+              } catch (err) {
+                logger.error('cron_delivery_failed', {
+                  sender: msg.sender,
+                  provider: resolution.session.provider,
+                  error: (err as Error).message,
+                });
+              }
+            } else {
+              logger.warn('cron_delivery_canary_leaked', { sender: msg.sender });
+            }
+          }
+        }
+
+        logger.info('scheduler_message_processed', {
+          contentLength: responseContent.length,
+        });
       }
     });
 
@@ -931,6 +986,9 @@ export async function createServer(
           if (responseContent.trim()) {
             await channel.send(msg.session, { content: responseContent });
           }
+
+          // Track last channel session for "last" delivery target resolution
+          sessionStore.trackSession(agentName, msg.session);
         } finally {
           // Remove eyes emoji regardless of outcome
           if (channel.removeReaction) {
@@ -975,6 +1033,9 @@ export async function createServer(
     }
     try { conversationStore.close(); } catch {
       logger.debug('conversation_store_close_failed');
+    }
+    try { sessionStore.close(); } catch {
+      logger.debug('session_store_close_failed');
     }
 
     // Clean up sockets

@@ -56,6 +56,22 @@ const ConfigSchema = z.strictObject({
     max_token_budget: z.number().int().min(1),
     heartbeat_interval_min: z.number().int().min(1),
     agent_dir: z.string().optional(),
+    defaultDelivery: z.strictObject({
+      mode: z.enum(['channel', 'none']),
+      target: z.union([
+        z.literal('last'),
+        z.strictObject({
+          provider: z.string(),
+          scope: z.enum(['dm', 'channel', 'thread', 'group']),
+          identifiers: z.strictObject({
+            workspace: z.string().optional(),
+            channel: z.string().optional(),
+            thread: z.string().optional(),
+            peer: z.string().optional(),
+          }),
+        }),
+      ]).optional(),
+    }).optional(),
   }),
   history: z.strictObject({
     max_turns: z.number().int().min(0).max(10000).default(50),
