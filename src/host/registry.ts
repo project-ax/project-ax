@@ -35,5 +35,5 @@ async function loadProvider(kind: string, name: string, config: Config) {
     );
   }
 
-  return mod.create(config);
+  return mod.create(config, name);
 }
