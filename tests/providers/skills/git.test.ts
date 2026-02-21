@@ -15,7 +15,7 @@ function mockConfig(): Config {
   return {
     profile: 'balanced',
     providers: {
-      llm: 'mock', memory: 'file', scanner: 'basic',
+      memory: 'file', scanner: 'basic',
       channels: ['cli'], web: 'none', browser: 'none',
       credentials: 'env', skills: 'git', audit: 'file',
       sandbox: 'subprocess', scheduler: 'none',

@@ -6,7 +6,6 @@ describe('Config parser', () => {
   test('loads and validates ax.yaml', () => {
     const config = loadConfig(resolve(import.meta.dirname, '../ax.yaml'));
     expect(config.profile).toBe('paranoid');
-    expect(config.providers.llm).toBe('anthropic');
     expect(config.providers.channels).toEqual([]);
     expect(config.sandbox.timeout_sec).toBe(120);
     expect(config.scheduler.active_hours.timezone).toBe('America/New_York');
@@ -36,7 +35,6 @@ describe('Config parser', () => {
 agent: ${agent}
 profile: balanced
 providers:
-  llm: anthropic
   memory: file
   scanner: basic
   channels: []
@@ -71,7 +69,6 @@ scheduler:
 agent: unknown-agent
 profile: balanced
 providers:
-  llm: anthropic
   memory: file
   scanner: basic
   channels: []
@@ -104,7 +101,6 @@ scheduler:
 model: groq/moonshotai/kimi-k2-instruct-0905
 profile: balanced
 providers:
-  llm: anthropic
   memory: file
   scanner: basic
   channels: []
@@ -145,7 +141,6 @@ scheduler:
     writeFileSync(tmpPath, `
 profile: balanced
 providers:
-  llm: anthropic
   memory: file
   scanner: basic
   channels: []

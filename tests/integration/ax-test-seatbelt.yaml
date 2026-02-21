@@ -1,7 +1,6 @@
 profile: paranoid
 model: mock/default
 providers:
-  llm: mock
   memory: file
   scanner: basic
   channels: []

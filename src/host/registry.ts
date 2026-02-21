@@ -10,11 +10,11 @@ export async function loadProviders(config: Config): Promise<ProviderRegistry> {
   );
 
   // For claude-code agents, LLM calls go through the credential-injecting proxy,
-  // not through IPC. Load the config-specified provider (typically 'anthropic') as
-  // a stub. For all other agents, always use the LLM router for model routing
-  // and fallback — it parses compound provider/model IDs from config.model.
+  // not through IPC. Load 'anthropic' as a stub so the server can report a model
+  // name. For all other agents, always use the LLM router — it parses compound
+  // provider/model IDs from config.model.
   const llmProviderName = config.agent === 'claude-code'
-    ? config.providers.llm
+    ? 'anthropic'
     : 'router';
 
   return {

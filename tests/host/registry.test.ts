@@ -5,7 +5,6 @@ import type { Config } from '../../src/types.js';
 const config: Config = {
   profile: 'paranoid',
   providers: {
-    llm: 'anthropic',
     memory: 'file',
     scanner: 'basic',
     channels: ['cli'],

@@ -345,10 +345,10 @@ describe('Smoke Test', () => {
   }, 60_000);
 
   test('groq provider: does not require Anthropic credentials', async () => {
-    // When providers.llm is 'groq', the server must NOT start the Anthropic
-    // proxy or check for ANTHROPIC_API_KEY. The agent should use IPC for LLM
-    // calls. Without a GROQ_API_KEY the provider returns an error, but the
-    // server itself should start and process the request (no credential gate).
+    // When using a non-claude-code agent (e.g. pi-coding-agent with groq model),
+    // the server must NOT start the Anthropic proxy or check for ANTHROPIC_API_KEY.
+    // The agent uses IPC for LLM calls. Without a GROQ_API_KEY the provider
+    // returns an error, but the server should start and process the request.
     const hostScript = resolve(PROJECT_ROOT, 'src/main.ts');
     const cmd = IS_BUN ? 'bun' : 'npx';
     const args = IS_BUN

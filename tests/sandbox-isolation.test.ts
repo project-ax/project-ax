@@ -22,7 +22,7 @@ import type { Config } from '../src/types.js';
 const mockConfig = {
   profile: 'paranoid',
   providers: {
-    llm: 'anthropic', memory: 'file', scanner: 'basic',
+    memory: 'file', scanner: 'basic',
     channels: ['cli'], web: 'none', browser: 'none',
     credentials: 'env', skills: 'readonly', audit: 'file',
     sandbox: 'subprocess', scheduler: 'none',

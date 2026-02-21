@@ -10,7 +10,7 @@ import type { AuditProvider } from '../../../src/providers/audit/types.js';
 const mockConfig = {
   profile: 'balanced',
   providers: {
-    llm: 'anthropic', memory: 'file', scanner: 'basic',
+    memory: 'file', scanner: 'basic',
     channels: ['cli'], web: 'none', browser: 'none',
     credentials: 'env', skills: 'readonly', audit: 'file',
     sandbox: 'subprocess', scheduler: 'full',

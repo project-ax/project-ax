@@ -4,7 +4,6 @@
 profile: yolo
 model: mock/default
 providers:
-  llm: mock
   memory: file
   scanner: patterns
   channels: []

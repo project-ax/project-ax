@@ -38,7 +38,6 @@ describe('Onboarding Wizard', () => {
 
     const config = parseYaml(readFileSync(configPath, 'utf-8'));
     expect(config.profile).toBe('paranoid');
-    expect(config.providers.llm).toBe('anthropic');
     expect(config.providers.scanner).toBe('patterns');
     expect(config.providers.web).toBe('none');
     expect(config.providers.skills).toBe('readonly');

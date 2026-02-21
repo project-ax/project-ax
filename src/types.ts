@@ -37,7 +37,6 @@ export interface Config {
   max_tokens?: number;
   profile: ProfileName;
   providers: {
-    llm: string;
     memory: string;
     scanner: string;
     channels: string[];

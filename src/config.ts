@@ -29,7 +29,6 @@ const ConfigSchema = z.strictObject({
   model_fallbacks: z.array(z.string()).optional(),
   profile: z.enum(PROFILE_NAMES),
   providers: z.strictObject({
-    llm: z.string(),
     memory: z.string(),
     scanner: z.string(),
     channels: z.array(z.string()),

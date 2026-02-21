@@ -51,7 +51,6 @@ export async function runOnboarding(opts: OnboardingOptions): Promise<void> {
 
   // Build providers object — only include skillScreener if the profile defines one
   const providers: Record<string, unknown> = {
-    llm: defaults.llm,
     memory: defaults.memory,
     scanner: defaults.scanner,
     channels: answers.channels,

@@ -14,7 +14,7 @@ function routerConfig(model: string, fallbacks?: string[]): Config {
     model_fallbacks: fallbacks,
     profile: 'balanced',
     providers: {
-      llm: 'mock', memory: 'file', scanner: 'basic',
+      memory: 'file', scanner: 'basic',
       channels: [], web: 'none', browser: 'none',
       credentials: 'env', skills: 'readonly', audit: 'file',
       sandbox: 'subprocess', scheduler: 'none',

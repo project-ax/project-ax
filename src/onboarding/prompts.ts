@@ -20,7 +20,6 @@ export const AGENT_DESCRIPTIONS: Record<AgentType, string> = {
 
 export interface ProfileDefaults {
   agent: AgentType;
-  llm: string;
   memory: string;
   scanner: string;
   web: string;
@@ -40,7 +39,6 @@ const defaultSandbox = process.platform === 'darwin' ? 'seatbelt' : 'bwrap';
 export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
   paranoid: {
     agent: 'pi-agent-core',
-    llm: 'anthropic',
     memory: 'file',
     scanner: 'patterns',
     web: 'none',
@@ -55,7 +53,6 @@ export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
   },
   balanced: {
     agent: 'pi-agent-core',
-    llm: 'anthropic',
     memory: 'sqlite',
     scanner: 'patterns',
     web: 'fetch',
@@ -71,7 +68,6 @@ export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
   },
   yolo: {
     agent: 'pi-agent-core',
-    llm: 'anthropic',
     memory: 'sqlite',
     scanner: 'patterns',
     web: 'fetch',
@@ -121,7 +117,6 @@ export const AUTH_METHOD_DESCRIPTIONS: Record<AuthMethod, string> = {
 
 /** Available provider choices per category, derived from the provider map. */
 export const PROVIDER_CHOICES = {
-  llm: ['anthropic'],
   memory: ['file', 'sqlite'],
   scanner: ['basic', 'patterns'],
   web: ['none', 'fetch'],

@@ -20,7 +20,6 @@ describe('history config', () => {
     const p = writeConfig(`
 profile: balanced
 providers:
-  llm: mock
   memory: file
   scanner: basic
   channels: []
@@ -47,7 +46,6 @@ scheduler:
     const p = writeConfig(`
 profile: balanced
 providers:
-  llm: mock
   memory: file
   scanner: basic
   channels: []
@@ -78,7 +76,6 @@ history:
     const p = writeConfig(`
 profile: balanced
 providers:
-  llm: mock
   memory: file
   scanner: basic
   channels: []

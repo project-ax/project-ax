@@ -36,7 +36,7 @@ function mockConfig(profile: 'paranoid' | 'balanced' | 'yolo' = 'balanced'): Con
     profile,
     model: 'mock/default',
     providers: {
-      llm: 'mock', memory: 'sqlite', scanner: 'patterns',
+      memory: 'sqlite', scanner: 'patterns',
       channels: [], web: 'none', browser: 'none',
       credentials: 'env', skills: 'readonly', audit: 'sqlite',
       sandbox: 'subprocess', scheduler: 'none',
