@@ -166,6 +166,8 @@ describe('Server conversation history persistence', () => {
   it('should load thread context from parent channel session', async () => {
     const sentMessages: { session: SessionAddress; content: OutboundMessage }[] = [];
     let messageHandler: ((msg: InboundMessage) => Promise<void>) | null = null;
+    // Use admin user to pass bootstrap gate
+    const adminUser = process.env.USER ?? 'default';
 
     const mockChannel: ChannelProvider = {
       name: 'test',
@@ -184,15 +186,17 @@ describe('Server conversation history persistence', () => {
     const channelMsg: InboundMessage = {
       id: 'thread-ctx-1',
       session: { provider: 'test', scope: 'channel', identifiers: { channel: 'C999' } },
-      sender: 'U111',
+      sender: adminUser,
       content: 'channel context message',
       attachments: [],
       timestamp: new Date(),
+      isMention: true,
     };
     await messageHandler!(channelMsg);
     expect(sentMessages).toHaveLength(1);
 
     // Second: a thread message with parent pointing to the channel
+    // Uses isMention: true to pass thread gating (first entry into this thread)
     const threadMsg: InboundMessage = {
       id: 'thread-ctx-2',
       session: {
@@ -201,10 +205,11 @@ describe('Server conversation history persistence', () => {
         identifiers: { channel: 'C999', thread: 'T111' },
         parent: { provider: 'test', scope: 'channel', identifiers: { channel: 'C999' } },
       },
-      sender: 'U222',
+      sender: adminUser,
       content: 'reply in thread',
       attachments: [],
       timestamp: new Date(),
+      isMention: true,
     };
     await messageHandler!(threadMsg);
     expect(sentMessages).toHaveLength(2);

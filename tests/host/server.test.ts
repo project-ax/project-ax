@@ -432,4 +432,177 @@ describe('Server', () => {
     const data = JSON.parse(res.body);
     expect(data.choices[0].message.content.length).toBeGreaterThan(0);
   });
+
+  // --- Eyes Emoji & Thread Gating ---
+  // Note: the server seeds an admins file with process.env.USER on first run.
+  // Channel messages from non-admin users are blocked by the bootstrap gate
+  // (BOOTSTRAP.md exists but SOUL.md doesn't). Use the admin user for tests
+  // that need to reach processCompletion.
+  const adminUser = process.env.USER ?? 'default';
+
+  it('should add and remove eyes emoji around channel message processing', async () => {
+    const sentMessages: { session: SessionAddress; content: OutboundMessage }[] = [];
+    const reactions: { action: string; emoji: string; messageId: string }[] = [];
+    let messageHandler: ((msg: InboundMessage) => Promise<void>) | null = null;
+
+    const mockChannel: ChannelProvider = {
+      name: 'test-emoji',
+      async connect() {},
+      onMessage(handler) { messageHandler = handler; },
+      shouldRespond() { return true; },
+      async send(session, content) { sentMessages.push({ session, content }); },
+      async disconnect() {},
+      async addReaction(_session, messageId, emoji) { reactions.push({ action: 'add', emoji, messageId }); },
+      async removeReaction(_session, messageId, emoji) { reactions.push({ action: 'remove', emoji, messageId }); },
+    };
+
+    const config = loadConfig('tests/integration/ax-test.yaml');
+    server = await createServer(config, { socketPath, channels: [mockChannel] });
+    await server.start();
+
+    const msg: InboundMessage = {
+      id: 'emoji-test-1',
+      session: { provider: 'test', scope: 'dm', identifiers: { peer: adminUser } },
+      sender: adminUser,
+      content: 'hello',
+      attachments: [],
+      timestamp: new Date(),
+      isMention: true,
+    };
+
+    await messageHandler!(msg);
+
+    // Eyes emoji should have been added then removed
+    expect(reactions).toEqual([
+      { action: 'add', emoji: 'eyes', messageId: 'emoji-test-1' },
+      { action: 'remove', emoji: 'eyes', messageId: 'emoji-test-1' },
+    ]);
+    // Response should have been sent
+    expect(sentMessages).toHaveLength(1);
+  });
+
+  it('should gate thread messages when bot has not participated', async () => {
+    const sentMessages: { session: SessionAddress; content: OutboundMessage }[] = [];
+    let messageHandler: ((msg: InboundMessage) => Promise<void>) | null = null;
+
+    const mockChannel: ChannelProvider = {
+      name: 'test-gate',
+      async connect() {},
+      onMessage(handler) { messageHandler = handler; },
+      shouldRespond() { return true; },
+      async send(session, content) { sentMessages.push({ session, content }); },
+      async disconnect() {},
+    };
+
+    const config = loadConfig('tests/integration/ax-test.yaml');
+    server = await createServer(config, { socketPath, channels: [mockChannel] });
+    await server.start();
+
+    // Thread reply with isMention=false and no prior conversation — should be gated
+    const msg: InboundMessage = {
+      id: 'gate-test-1',
+      session: { provider: 'test', scope: 'thread', identifiers: { channel: 'C01', thread: '1000.0001' } },
+      sender: 'U123',
+      content: 'a reply',
+      attachments: [],
+      timestamp: new Date(),
+      isMention: false,
+    };
+
+    await messageHandler!(msg);
+
+    // Message should have been dropped — no response sent
+    expect(sentMessages).toHaveLength(0);
+  });
+
+  it('should process thread messages when bot has participated (via prior mention)', async () => {
+    const sentMessages: { session: SessionAddress; content: OutboundMessage }[] = [];
+    let messageHandler: ((msg: InboundMessage) => Promise<void>) | null = null;
+
+    const mockChannel: ChannelProvider = {
+      name: 'test-thread',
+      async connect() {},
+      onMessage(handler) { messageHandler = handler; },
+      shouldRespond() { return true; },
+      async send(session, content) { sentMessages.push({ session, content }); },
+      async disconnect() {},
+    };
+
+    const config = loadConfig('tests/integration/ax-test.yaml');
+    server = await createServer(config, { socketPath, channels: [mockChannel] });
+    await server.start();
+
+    const threadSession: SessionAddress = {
+      provider: 'test', scope: 'thread',
+      identifiers: { channel: 'C02', thread: '2000.0001' },
+    };
+
+    // First: mention in thread (creates conversation store entry)
+    const mention: InboundMessage = {
+      id: 'thread-mention-1',
+      session: threadSession,
+      sender: adminUser,
+      content: 'hey bot help me',
+      attachments: [],
+      timestamp: new Date(),
+      isMention: true,
+    };
+    await messageHandler!(mention);
+    expect(sentMessages).toHaveLength(1);
+
+    // Second: non-mention reply in same thread — should now be processed
+    const reply: InboundMessage = {
+      id: 'thread-reply-1',
+      session: threadSession,
+      sender: adminUser,
+      content: 'thanks for that',
+      attachments: [],
+      timestamp: new Date(),
+      isMention: false,
+    };
+    await messageHandler!(reply);
+    expect(sentMessages).toHaveLength(2);
+  });
+
+  it('should call fetchThreadHistory on first mention in a thread', async () => {
+    const sentMessages: { session: SessionAddress; content: OutboundMessage }[] = [];
+    const fetchedThreads: { channel: string; threadTs: string }[] = [];
+    let messageHandler: ((msg: InboundMessage) => Promise<void>) | null = null;
+
+    const mockChannel: ChannelProvider = {
+      name: 'test-backfill',
+      async connect() {},
+      onMessage(handler) { messageHandler = handler; },
+      shouldRespond() { return true; },
+      async send(session, content) { sentMessages.push({ session, content }); },
+      async disconnect() {},
+      async fetchThreadHistory(channel, threadTs, _limit) {
+        fetchedThreads.push({ channel, threadTs });
+        return [
+          { sender: 'U999', content: 'earlier message', ts: '3000.0001' },
+        ];
+      },
+    };
+
+    const config = loadConfig('tests/integration/ax-test.yaml');
+    server = await createServer(config, { socketPath, channels: [mockChannel] });
+    await server.start();
+
+    const msg: InboundMessage = {
+      id: 'backfill-test-1',
+      session: { provider: 'test', scope: 'thread', identifiers: { channel: 'C03', thread: '3000.0001' } },
+      sender: adminUser,
+      content: 'hey bot',
+      attachments: [],
+      timestamp: new Date(),
+      isMention: true,
+    };
+
+    await messageHandler!(msg);
+
+    // fetchThreadHistory should have been called
+    expect(fetchedThreads).toEqual([{ channel: 'C03', threadTs: '3000.0001' }]);
+    // Response should still be sent
+    expect(sentMessages).toHaveLength(1);
+  });
 });
