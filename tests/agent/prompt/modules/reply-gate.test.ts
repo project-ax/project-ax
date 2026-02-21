@@ -12,7 +12,7 @@ function makeCtx(overrides: Partial<PromptContext> = {}): PromptContext {
     taintRatio: 0,
     taintThreshold: 0.3,
     identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-    contextContent: '',
+
     contextWindow: 200000,
     historyTokens: 0,
     replyOptional: false,

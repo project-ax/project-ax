@@ -13,7 +13,6 @@ function makeContext(overrides: Partial<PromptContext> = {}): PromptContext {
     taintRatio: 0,
     taintThreshold: 0.10,
     identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-    contextContent: '',
     contextWindow: 200000,
     historyTokens: 0,
     ...overrides,
@@ -29,7 +28,6 @@ describe('PromptBuilder', () => {
         soul: 'Curious helper.',
         identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '',
       },
-      contextContent: 'Node.js project.',
       skills: ['# Skill\nDo stuff.'],
     });
     const result = builder.build(ctx);
@@ -37,7 +35,6 @@ describe('PromptBuilder', () => {
     expect(result.content).toContain('TestBot');
     expect(result.content).toContain('Injection Defense');
     expect(result.content).toContain('Security Boundaries');
-    expect(result.content).toContain('Node.js project');
     expect(result.content).toContain('Skill');
     expect(result.metadata.moduleCount).toBeGreaterThan(0);
     expect(result.metadata.estimatedTokens).toBeGreaterThan(0);
@@ -93,7 +90,6 @@ describe('PromptBuilder', () => {
     const ctx = makeContext();
     const result = builder.build(ctx);
 
-    expect(result.metadata.modules).not.toContain('context');
     expect(result.metadata.modules).not.toContain('skills');
   });
 
@@ -101,7 +97,6 @@ describe('PromptBuilder', () => {
     const builder = new PromptBuilder();
     const ctx = makeContext({
       identityFiles: { agents: 'Bot.', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-      contextContent: 'Context.',
       skills: ['# Skill\nContent.'],
     });
     const result = builder.build(ctx);

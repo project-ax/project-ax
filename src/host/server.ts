@@ -426,9 +426,6 @@ export async function createServer(
         reqLogger.debug('skills_copy_failed', { hostSkillsDir });
       }
 
-      // Write session context into workspace (agent reads via loadContext())
-      writeFileSync(join(workspace, 'CONTEXT.md'), `# Session: ${queued.session_id}\n`);
-
       // Build conversation history: prefer DB-persisted history for persistent sessions,
       // fall back to client-provided history for ephemeral sessions.
       let history: { role: 'user' | 'assistant'; content: string; sender?: string }[] = [];

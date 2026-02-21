@@ -141,11 +141,6 @@ export function createLazyAnthropicClient(proxySocket: string): () => Promise<an
 
 // ── Filesystem helpers ───────────────────────────────────────────────
 
-/** Read workspace CONTEXT.md file, or empty string if missing. */
-export function loadContext(workspace: string): string {
-  try { return readFileSync(join(workspace, 'CONTEXT.md'), 'utf-8'); } catch { return ''; }
-}
-
 /** Read markdown skill files from a directory, or empty array if missing. */
 export function loadSkills(skillsDir: string): string[] {
   try {

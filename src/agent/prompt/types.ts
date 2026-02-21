@@ -20,9 +20,6 @@ export interface PromptContext {
   // Identity files (loaded from agentDir, empty string if absent)
   identityFiles: IdentityFiles;
 
-  // Workspace context (CONTEXT.md content)
-  contextContent: string;
-
   // Reply gating (from host — channel messages where bot may choose silence)
   replyOptional?: boolean;
 

@@ -135,45 +135,6 @@ describe('agent-runner', () => {
     expect(nonSystemMsgs[2]).toEqual({ role: 'user', content: 'Do you remember?' });
   });
 
-  test('run() loads CONTEXT.md into system prompt', async () => {
-    writeFileSync(join(workspace, 'CONTEXT.md'), 'Custom context instructions');
-
-    let receivedMessages: any[] = [];
-    server = createMockIPCServer(socketPath, (req) => {
-      if (req.action === 'llm_call') {
-        receivedMessages = (req.messages as any[]) ?? [];
-        return {
-          ok: true,
-          chunks: [
-            { type: 'text', content: 'OK' },
-            { type: 'done', usage: { inputTokens: 10, outputTokens: 5 } },
-          ],
-        };
-      }
-      return { ok: true };
-    });
-    await new Promise<void>((r) => server.on('listening', r));
-
-    const origWrite = process.stdout.write;
-    process.stdout.write = (() => true) as typeof process.stdout.write;
-
-    try {
-      await run({
-        ipcSocket: socketPath,
-        workspace,
-        skills: skillsDir,
-        userMessage: 'Test',
-      });
-    } finally {
-      process.stdout.write = origWrite;
-    }
-
-    // System prompt should be the first message with role 'system'
-    const systemMsg = receivedMessages.find((m: any) => m.role === 'system');
-    expect(systemMsg).toBeTruthy();
-    expect(systemMsg.content).toContain('Custom context instructions');
-  });
-
   test('run() loads skills from skills directory', async () => {
     writeFileSync(join(skillsDir, 'greeting.md'), '# Greeting Skill\nAlways greet politely.');
 

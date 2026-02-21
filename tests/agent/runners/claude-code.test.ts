@@ -163,7 +163,7 @@ describe('claude-code identity file loading', () => {
       taintRatio: 0,
       taintThreshold: 1,
       identityFiles,
-      contextContent: '',
+
       contextWindow: 200000,
       historyTokens: 0,
     });
@@ -187,7 +187,7 @@ describe('claude-code identity file loading', () => {
       taintRatio: 0,
       taintThreshold: 1,
       identityFiles,
-      contextContent: '',
+
       contextWindow: 200000,
       historyTokens: 0,
     });

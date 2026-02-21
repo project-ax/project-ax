@@ -35,6 +35,10 @@ export async function create(_config: Config): Promise<SandboxProvider> {
           AX_IPC_SOCKET: config.ipcSocket,
           AX_WORKSPACE: config.workspace,
           AX_SKILLS: config.skills,
+          // Redirect caches and data dirs so they don't pollute the workspace
+          npm_config_cache: '/tmp/.ax-npm-cache',
+          XDG_CACHE_HOME: '/tmp/.ax-cache',
+          AX_HOME: '/tmp/.ax-agent',
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       });

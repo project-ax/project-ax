@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { convertPiMessages, emitStreamEvents, loadContext, loadSkills } from '../../src/agent/stream-utils.js';
+import { convertPiMessages, emitStreamEvents, loadSkills } from '../../src/agent/stream-utils.js';
 
 // ── convertPiMessages ────────────────────────────────────────────────
 
@@ -233,23 +233,7 @@ describe('emitStreamEvents', () => {
   });
 });
 
-// ── loadContext / loadSkills ──────────────────────────────────────────
-
-describe('loadContext', () => {
-  const tmpDir = join(tmpdir(), 'ax-test-stream-utils-ctx-' + Date.now());
-
-  beforeEach(() => mkdirSync(tmpDir, { recursive: true }));
-  afterEach(() => rmSync(tmpDir, { recursive: true, force: true }));
-
-  test('reads CONTEXT.md from workspace', () => {
-    writeFileSync(join(tmpDir, 'CONTEXT.md'), 'test context');
-    expect(loadContext(tmpDir)).toBe('test context');
-  });
-
-  test('returns empty string when CONTEXT.md is missing', () => {
-    expect(loadContext(tmpDir)).toBe('');
-  });
-});
+// ── loadSkills ───────────────────────────────────────────────────────
 
 describe('loadSkills', () => {
   const tmpDir = join(tmpdir(), 'ax-test-stream-utils-skills-' + Date.now());

@@ -33,7 +33,7 @@ import type { MessageParam, Tool as AnthropicTool } from '@anthropic-ai/sdk/reso
 import { IPCClient } from '../ipc-client.js';
 import { compactHistory, historyToPiMessages } from '../runner.js';
 import type { AgentConfig } from '../runner.js';
-import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadContext, loadSkills } from '../stream-utils.js';
+import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadSkills } from '../stream-utils.js';
 import { getLogger, truncate } from '../../logger.js';
 
 const logger = getLogger().child({ component: 'pi-session' });
@@ -483,7 +483,6 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   logger.debug('provider_registered', { api: apiName });
 
   // Build system prompt via modular PromptBuilder
-  const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
   const identityFiles = loadIdentityFiles({
     agentDir: config.agentDir,
@@ -500,7 +499,6 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
     taintRatio: config.taintRatio ?? 0,
     taintThreshold: config.taintThreshold ?? 1,
     identityFiles,
-    contextContent,
     contextWindow: 200000,
     historyTokens: config.history?.length ? JSON.stringify(config.history).length / 4 : 0,
   });

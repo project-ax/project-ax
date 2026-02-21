@@ -20,7 +20,7 @@ import { IPCClient } from './ipc-client.js';
 import { createIPCStreamFn } from './ipc-transport.js';
 import { createLocalTools } from './local-tools.js';
 import { createIPCTools } from './ipc-tools.js';
-import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadContext, loadSkills } from './stream-utils.js';
+import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadSkills } from './stream-utils.js';
 import { PromptBuilder } from './prompt/builder.js';
 import { loadIdentityFiles } from './identity-loader.js';
 import { getLogger, truncate } from '../logger.js';
@@ -400,7 +400,6 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   const client = new IPCClient({ socketPath: config.ipcSocket });
   await client.connect();
 
-  const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
   const identityFiles = loadIdentityFiles({
     agentDir: config.agentDir,
@@ -417,7 +416,6 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
     taintRatio: config.taintRatio ?? 0,
     taintThreshold: config.taintThreshold ?? 1,
     identityFiles,
-    contextContent,
     contextWindow: DEFAULT_CONTEXT_WINDOW,
     historyTokens: config.history?.length ? estimateTokens(JSON.stringify(config.history)) : 0,
     replyOptional: config.replyOptional ?? false,

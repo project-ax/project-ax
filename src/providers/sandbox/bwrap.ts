@@ -83,6 +83,10 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--setenv', 'AX_IPC_SOCKET', config.ipcSocket,
         '--setenv', 'AX_WORKSPACE', config.workspace,
         '--setenv', 'AX_SKILLS', config.skills,
+        // Redirect caches and data dirs so they don't pollute the workspace
+        '--setenv', 'npm_config_cache', '/tmp/.ax-npm-cache',
+        '--setenv', 'XDG_CACHE_HOME', '/tmp/.ax-cache',
+        '--setenv', 'AX_HOME', '/tmp/.ax-agent',
 
         // Working directory
         '--chdir', config.workspace,

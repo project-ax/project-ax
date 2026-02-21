@@ -14,7 +14,7 @@ describe('PromptContext', () => {
       taintRatio: 0,
       taintThreshold: 0.10,
       identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-      contextContent: '',
+
       contextWindow: 200000,
       historyTokens: 0,
     };
@@ -34,7 +34,7 @@ describe('isBootstrapMode', () => {
       taintRatio: 0,
       taintThreshold: 0.10,
       identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: 'Bootstrap...', userBootstrap: '', heartbeat: '' },
-      contextContent: '',
+
       contextWindow: 200000,
       historyTokens: 0,
     };
@@ -51,7 +51,7 @@ describe('isBootstrapMode', () => {
       taintRatio: 0,
       taintThreshold: 0.10,
       identityFiles: { agents: '', soul: 'I have a soul', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-      contextContent: '',
+
       contextWindow: 200000,
       historyTokens: 0,
     };
@@ -68,7 +68,7 @@ describe('isBootstrapMode', () => {
       taintRatio: 0,
       taintThreshold: 0.10,
       identityFiles: { agents: '', soul: '', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-      contextContent: '',
+
       contextWindow: 200000,
       historyTokens: 0,
     };

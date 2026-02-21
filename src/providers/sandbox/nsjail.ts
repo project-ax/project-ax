@@ -65,6 +65,10 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--env', `AX_IPC_SOCKET=${config.ipcSocket}`,
         '--env', `AX_WORKSPACE=${config.workspace}`,
         '--env', `AX_SKILLS=${config.skills}`,
+        // Redirect caches and data dirs so they don't pollute the workspace
+        '--env', 'npm_config_cache=/tmp/.ax-npm-cache',
+        '--env', 'XDG_CACHE_HOME=/tmp/.ax-cache',
+        '--env', 'AX_HOME=/tmp/.ax-agent',
 
         // Command
         '--', cmd, ...args,

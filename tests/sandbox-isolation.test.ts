@@ -272,16 +272,6 @@ describe('server workspace isolation', () => {
     expect(spawnSection).not.toContain('hostSkillsDir');
   });
 
-  test('workspace files do not contain project root path', async () => {
-    const { readFileSync } = await import('node:fs');
-    const source = readFileSync(resolve('src/host/server.ts'), 'utf-8');
-
-    // The CONTEXT.md written to workspace should contain session info,
-    // not host paths
-    const contextLine = source.match(/writeFileSync.*CONTEXT\.md.*/)?.[0] ?? '';
-    expect(contextLine).not.toContain('resolve');
-    expect(contextLine).not.toContain('PROJECT_DIR');
-  });
 });
 
 // ── stripTaint deep nesting ──────────────────────────────────────────
@@ -440,7 +430,7 @@ describe('spawn command construction', () => {
     // parseArgs should only use the paths provided via CLI args and env vars
     const parseArgsBody = source.slice(
       source.indexOf('function parseArgs'),
-      source.indexOf('function loadContext'),
+      source.indexOf('function makeProxyErrorMessage'),
     );
 
     // Should not use resolve() or process.cwd() to construct paths

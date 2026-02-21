@@ -18,7 +18,7 @@ import { createIPCMcpServer } from '../mcp-server.js';
 import type { AgentConfig } from '../runner.js';
 import { PromptBuilder } from '../prompt/builder.js';
 import { loadIdentityFiles } from '../identity-loader.js';
-import { loadContext, loadSkills } from '../stream-utils.js';
+import { loadSkills } from '../stream-utils.js';
 import { getLogger } from '../../logger.js';
 
 const logger = getLogger().child({ component: 'claude-code' });
@@ -45,7 +45,6 @@ export async function runClaudeCode(config: AgentConfig): Promise<void> {
   const ipcMcpServer = createIPCMcpServer(client, { userId: config.userId });
 
   // 4. Build system prompt via modular PromptBuilder
-  const contextContent = loadContext(config.workspace);
   const skills = loadSkills(config.skills);
 
   const promptBuilder = new PromptBuilder();
@@ -61,7 +60,6 @@ export async function runClaudeCode(config: AgentConfig): Promise<void> {
       agentDir: config.agentDir,
       userId: config.userId,
     }),
-    contextContent,
     contextWindow: 200000,
     historyTokens: config.history?.length ? JSON.stringify(config.history).length / 4 : 0,
   });

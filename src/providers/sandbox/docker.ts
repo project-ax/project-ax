@@ -90,6 +90,10 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '-e', `AX_IPC_SOCKET=${config.ipcSocket}`,
         '-e', `AX_WORKSPACE=${config.workspace}`,
         '-e', `AX_SKILLS=${config.skills}`,
+        // Redirect caches and data dirs to /tmp (writable tmpfs) instead of workspace
+        '-e', 'npm_config_cache=/tmp/.ax-npm-cache',
+        '-e', 'XDG_CACHE_HOME=/tmp/.ax-cache',
+        '-e', 'AX_HOME=/tmp/.ax-agent',
       ];
 
       // Optional gVisor runtime for stronger isolation

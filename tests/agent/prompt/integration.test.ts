@@ -25,28 +25,25 @@ describe('PromptBuilder integration', () => {
         userBootstrap: '',
         heartbeat: '',
       },
-      contextContent: '# AX Project\n\nA security-first AI agent framework.\n\n## Stack\nTypeScript, Node.js, Vitest',
       contextWindow: 200000,
       historyTokens: 5000,
     };
 
     const result = new PromptBuilder().build(ctx);
 
-    // Verify structure order: identity < injection < security < context < skills < runtime
+    // Verify structure order: identity < injection < security < skills < runtime
     const content = result.content;
     const positions = {
       identity: content.indexOf('Manon'),
       injection: content.indexOf('Injection Defense'),
       security: content.indexOf('Security Boundaries'),
-      context: content.indexOf('AX Project'),
       skills: content.indexOf('Safety Skill'),
       runtime: content.indexOf('## Runtime'),
     };
 
     expect(positions.identity).toBeLessThan(positions.injection);
     expect(positions.injection).toBeLessThan(positions.security);
-    expect(positions.security).toBeLessThan(positions.context);
-    expect(positions.context).toBeLessThan(positions.skills);
+    expect(positions.security).toBeLessThan(positions.skills);
     expect(positions.skills).toBeLessThan(positions.runtime);
 
     // Verify taint awareness (elevated because 15% > 10% threshold)
@@ -54,17 +51,16 @@ describe('PromptBuilder integration', () => {
     expect(content).toContain('15.0%');
 
     // Verify metadata
-    expect(result.metadata.moduleCount).toBe(6); // all 6 modules
+    expect(result.metadata.moduleCount).toBe(5); // all 5 modules
     expect(result.metadata.estimatedTokens).toBeGreaterThan(100);
     expect(result.metadata.buildTimeMs).toBeLessThan(100);
 
     // Verify per-module token breakdown (Task 16 observability)
     expect(result.metadata.tokensByModule).toBeDefined();
-    expect(Object.keys(result.metadata.tokensByModule).length).toBe(6);
+    expect(Object.keys(result.metadata.tokensByModule).length).toBe(5);
     expect(result.metadata.tokensByModule['identity']).toBeGreaterThan(0);
     expect(result.metadata.tokensByModule['injection-defense']).toBeGreaterThan(0);
     expect(result.metadata.tokensByModule['security']).toBeGreaterThan(0);
-    expect(result.metadata.tokensByModule['context']).toBeGreaterThan(0);
     expect(result.metadata.tokensByModule['skills']).toBeGreaterThan(0);
     expect(result.metadata.tokensByModule['runtime']).toBeGreaterThan(0);
   });
@@ -79,7 +75,6 @@ describe('PromptBuilder integration', () => {
       taintRatio: 0,
       taintThreshold: 0.10,
       identityFiles: { agents: 'Bot.', soul: 'Soul.', identity: '', user: '', bootstrap: '', userBootstrap: '', heartbeat: '' },
-      contextContent: 'x'.repeat(4000), // ~1000 tokens
       contextWindow: 2000, // Very tight
       historyTokens: 500,
       // Available: 2000 - 500 - 4096 = negative! Required modules only.
@@ -92,8 +87,7 @@ describe('PromptBuilder integration', () => {
     expect(result.metadata.modules).toContain('injection-defense');
     expect(result.metadata.modules).toContain('security');
 
-    // Optional modules (context, runtime) should be dropped due to negative budget
-    expect(result.metadata.modules).not.toContain('context');
+    // Optional modules (runtime) should be dropped due to negative budget
     expect(result.metadata.modules).not.toContain('runtime');
   });
 });
