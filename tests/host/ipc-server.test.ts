@@ -766,6 +766,60 @@ describe('scheduler IPC handlers', () => {
     expect(result.jobs[0].prompt).toBe('Weekly review');
   });
 
+  test('scheduler_add_cron defaults delivery to channel/last when not specified', async () => {
+    const registry = mockRegistry();
+    const handle = createIPCHandler(registry);
+
+    const result = JSON.parse(await handle(JSON.stringify({
+      action: 'scheduler_add_cron',
+      schedule: '*/5 * * * *',
+      prompt: 'Check weather',
+    }), ctx));
+
+    expect(result.ok).toBe(true);
+
+    // Verify the stored job has delivery defaulted
+    const jobs = registry.scheduler.listJobs!();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].delivery).toEqual({ mode: 'channel', target: 'last' });
+  });
+
+  test('scheduler_add_cron preserves explicit delivery when provided', async () => {
+    const registry = mockRegistry();
+    const handle = createIPCHandler(registry);
+
+    const result = JSON.parse(await handle(JSON.stringify({
+      action: 'scheduler_add_cron',
+      schedule: '0 9 * * 1',
+      prompt: 'Weekly review',
+      delivery: { mode: 'none' },
+    }), ctx));
+
+    expect(result.ok).toBe(true);
+
+    const jobs = registry.scheduler.listJobs!();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].delivery).toEqual({ mode: 'none' });
+  });
+
+  test('scheduler_add_cron uses agentName for job agentId, not ctx.agentId', async () => {
+    const registry = mockRegistry();
+    const handle = createIPCHandler(registry, { agentName: 'main' });
+
+    const result = JSON.parse(await handle(JSON.stringify({
+      action: 'scheduler_add_cron',
+      schedule: '0 9 * * 1',
+      prompt: 'Daily standup',
+    }), { sessionId: 'test-session', agentId: 'system' }));
+
+    expect(result.ok).toBe(true);
+
+    const jobs = registry.scheduler.listJobs!();
+    expect(jobs).toHaveLength(1);
+    // Should use agentName ('main'), not ctx.agentId ('system')
+    expect(jobs[0].agentId).toBe('main');
+  });
+
   test('scheduler_add_cron is taint-gated', async () => {
     const taintBudget = new TaintBudget({ threshold: 0.10 });
     taintBudget.recordContent('test-session', 'clean', false);

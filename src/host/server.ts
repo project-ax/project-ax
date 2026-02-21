@@ -848,9 +848,9 @@ export async function createServer(
             const jobId = msg.sender.slice(5);
             const jobs = providers.scheduler.listJobs?.() ?? [];
             const job = jobs.find(j => j.id === jobId);
-            if (job?.delivery) {
-              delivery = job.delivery;
+            if (job) {
               jobAgentId = job.agentId;
+              delivery = job.delivery ?? config.scheduler.defaultDelivery;
             }
           } else if (msg.sender === 'heartbeat') {
             delivery = config.scheduler.defaultDelivery;

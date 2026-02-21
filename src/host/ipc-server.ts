@@ -325,10 +325,10 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       providers.scheduler.addCron?.({
         id: jobId,
         schedule: req.schedule,
-        agentId: ctx.agentId,
+        agentId: agentName,
         prompt: req.prompt,
         maxTokenBudget: req.maxTokenBudget,
-        delivery: req.delivery,
+        delivery: req.delivery ?? { mode: 'channel', target: 'last' },
       });
       await providers.audit.log({
         action: 'scheduler_add_cron',
