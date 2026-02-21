@@ -28,7 +28,6 @@ import {
   AuthStorage,
 } from '@mariozechner/pi-coding-agent';
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
-import { Type } from '@sinclair/typebox';
 import type { MessageParam, Tool as AnthropicTool } from '@anthropic-ai/sdk/resources/messages';
 import { IPCClient } from '../ipc-client.js';
 import { compactHistory, historyToPiMessages } from '../runner.js';
@@ -326,11 +325,18 @@ function createProxyStreamFunction(proxySocket: string) {
 
 // ── IPC tools as pi-coding-agent ToolDefinitions ────────────────────
 
+import { TOOL_CATALOG } from '../tool-catalog.js';
+
 function text(t: string) {
   return { content: [{ type: 'text' as const, text: t }], details: undefined };
 }
 
-function createIPCToolDefinitions(client: IPCClient): ToolDefinition[] {
+interface IPCToolDefsOptions {
+  /** Current user ID — included in user_write calls for per-user scoping. */
+  userId?: string;
+}
+
+function createIPCToolDefinitions(client: IPCClient, opts?: IPCToolDefsOptions): ToolDefinition[] {
   async function ipcCall(action: string, params: Record<string, unknown> = {}) {
     try {
       logger.debug('tool_ipc_call', { action });
@@ -346,88 +352,18 @@ function createIPCToolDefinitions(client: IPCClient): ToolDefinition[] {
   // resolve to unknown in this context but IPC just forwards them as-is.
   const p = (v: unknown) => v as Record<string, unknown>;
 
-  return [
-    {
-      name: 'memory_write',
-      label: 'Write Memory',
-      description: 'Store a memory entry with scope, content, and optional tags.',
-      parameters: Type.Object({
-        scope: Type.String(),
-        content: Type.String(),
-        tags: Type.Optional(Type.Array(Type.String())),
-      }),
-      async execute(_id, params) { return ipcCall('memory_write', p(params)); },
+  return TOOL_CATALOG.map(spec => ({
+    name: spec.name,
+    label: spec.label,
+    description: spec.description,
+    parameters: spec.parameters,
+    async execute(_id: string, params: unknown) {
+      const callParams = spec.injectUserId
+        ? { ...p(params), userId: opts?.userId ?? '' }
+        : p(params);
+      return ipcCall(spec.name, callParams);
     },
-    {
-      name: 'memory_query',
-      label: 'Query Memory',
-      description: 'Search memory entries by scope and optional query string.',
-      parameters: Type.Object({
-        scope: Type.String(),
-        query: Type.Optional(Type.String()),
-        limit: Type.Optional(Type.Number()),
-        tags: Type.Optional(Type.Array(Type.String())),
-      }),
-      async execute(_id, params) { return ipcCall('memory_query', p(params)); },
-    },
-    {
-      name: 'memory_read',
-      label: 'Read Memory',
-      description: 'Read a specific memory entry by ID.',
-      parameters: Type.Object({ id: Type.String() }),
-      async execute(_id, params) { return ipcCall('memory_read', p(params)); },
-    },
-    {
-      name: 'memory_delete',
-      label: 'Delete Memory',
-      description: 'Delete a memory entry by ID.',
-      parameters: Type.Object({ id: Type.String() }),
-      async execute(_id, params) { return ipcCall('memory_delete', p(params)); },
-    },
-    {
-      name: 'memory_list',
-      label: 'List Memory',
-      description: 'List memory entries in a scope.',
-      parameters: Type.Object({
-        scope: Type.String(),
-        limit: Type.Optional(Type.Number()),
-      }),
-      async execute(_id, params) { return ipcCall('memory_list', p(params)); },
-    },
-    {
-      name: 'web_fetch',
-      label: 'Fetch URL',
-      description: 'Fetch content from a URL (proxied through host with SSRF protection).',
-      parameters: Type.Object({
-        url: Type.String(),
-        method: Type.Optional(Type.Union([Type.Literal('GET'), Type.Literal('HEAD')])),
-        headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-        timeoutMs: Type.Optional(Type.Number()),
-      }),
-      async execute(_id, params) { return ipcCall('web_fetch', p(params)); },
-    },
-    {
-      name: 'web_search',
-      label: 'Web Search',
-      description: 'Search the web (proxied through host).',
-      parameters: Type.Object({
-        query: Type.String(),
-        maxResults: Type.Optional(Type.Number()),
-      }),
-      async execute(_id, params) { return ipcCall('web_search', p(params)); },
-    },
-    {
-      name: 'audit_query',
-      label: 'Query Audit Log',
-      description: 'Query the audit log with filters.',
-      parameters: Type.Object({
-        action: Type.Optional(Type.String()),
-        sessionId: Type.Optional(Type.String()),
-        limit: Type.Optional(Type.Number()),
-      }),
-      async execute(_id, params) { return ipcCall('audit_query', p(params)); },
-    },
-  ] as ToolDefinition[];
+  })) as ToolDefinition[];
 }
 
 import { PromptBuilder } from '../prompt/builder.js';
@@ -512,7 +448,7 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   const tools = createCodingTools(config.workspace);
 
   // Create IPC tool definitions for pi-coding-agent
-  const ipcToolDefs = createIPCToolDefinitions(client);
+  const ipcToolDefs = createIPCToolDefinitions(client, { userId: config.userId });
 
   logger.debug('session_config', {
     systemPromptLength: systemPrompt.length,

@@ -519,6 +519,54 @@ describe('pi-session (proxy mode — LLM via Anthropic SDK)', () => {
     expect(output).toContain('Hello from mock LLM via proxy!');
   }, 30_000);
 
+  test('LLM request includes scheduler, identity, and user_write tools', async () => {
+    const port = nextPort++;
+
+    const receivedRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+    mockApi = await createMockAnthropicApi(port, (req, body, res) => {
+      receivedRequests.push({ url: req.url!, body: JSON.parse(body) });
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.end(buildSSETextResponse('ok'));
+    });
+
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-tools-check';
+    proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${port}`);
+    await new Promise<void>((r) => proxyResult.server.on('listening', r));
+
+    const { runPiSession } = await import('../../../src/agent/runners/pi-session.js');
+
+    process.stdout.write = (() => true) as typeof process.stdout.write;
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+
+    try {
+      await runPiSession({
+        agent: 'pi-coding-agent',
+        ipcSocket: ipcSocketPath,
+        proxySocket: proxySocketPath,
+        workspace,
+        skills: skillsDir,
+        userMessage: 'hello',
+      });
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
+
+    expect(receivedRequests.length).toBeGreaterThan(0);
+    const tools = receivedRequests[0].body.tools as Array<{ name: string }>;
+    const toolNames = tools.map(t => t.name);
+
+    // Scheduler tools must be present
+    expect(toolNames).toContain('scheduler_add_cron');
+    expect(toolNames).toContain('scheduler_remove_cron');
+    expect(toolNames).toContain('scheduler_list_jobs');
+
+    // Identity and user_write tools must be present
+    expect(toolNames).toContain('identity_write');
+    expect(toolNames).toContain('user_write');
+  }, 30_000);
+
   test('proxy stream function handles tool_use responses', async () => {
     const port = nextPort++;
 

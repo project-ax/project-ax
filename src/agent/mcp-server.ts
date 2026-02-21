@@ -91,6 +91,9 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
 
       tool('web_fetch', 'Fetch content from a URL (proxied through host with SSRF protection).', {
         url: z.string(),
+        method: z.enum(['GET', 'HEAD']).optional(),
+        headers: z.record(z.string(), z.string()).optional(),
+        timeoutMs: z.number().optional(),
       }, (args) => ipcCall('web_fetch', args)),
 
       // ── Audit tool ──
