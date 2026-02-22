@@ -1,5 +1,13 @@
 # Journal
 
+## [2026-02-22 22:40] — Fix onboarding config: model selection & conditional API key
+
+**Task:** Fix two bugs in `bun configure`: (1) API key asked even when not using claude-code or when using OAuth, (2) no model selection causing LLM router crash on `bun serve`
+**What I did:** Added LLM provider selection (anthropic/openai/openrouter/groq) and model name input for non-claude-code agents. Restructured the auth/API key flow so claude-code agents get auth method selection (api-key/oauth) while router-based agents get provider→model→provider-specific API key. Updated wizard.ts to write model to ax.yaml and use correct env var name (e.g. OPENROUTER_API_KEY). Updated loadExistingConfig to read model back and derive provider.
+**Files touched:** src/onboarding/prompts.ts, src/onboarding/wizard.ts, src/onboarding/configure.ts, tests/onboarding/wizard.test.ts, tests/onboarding/configure.test.ts
+**Outcome:** Success — 45 tests pass, no TS errors in onboarding files
+**Notes:** The configure flow now has two distinct paths after agent selection: claude-code (auth method → api-key/oauth) vs router-based (LLM provider → model → provider API key). This prevents the "config.model is required" error and makes the API key prompt match the actual provider.
+
 ## [2026-02-22 00:00] — Enterprise agent architecture: paths.ts foundation
 
 **Task:** Implement enterprise agent architecture — multi-agent, multi-user, governance-controlled
