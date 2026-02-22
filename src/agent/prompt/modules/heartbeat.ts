@@ -35,7 +35,7 @@ export class HeartbeatModule extends BasePromptModule {
       '',
       'You can manage scheduled tasks:',
       '- `scheduler_add_cron` — schedule a recurring task (5-field cron expression)',
-      '- `scheduler_run_at` — schedule a **one-shot** task at a specific date/time (ISO 8601). You MUST call this tool to schedule one-time tasks — do not just say you scheduled it.',
+      '- `scheduler_run_at` — schedule a **one-shot** task at a specific date/time (ISO 8601, local time, no Z suffix). Use the **Current Time** from your Runtime section to compute the correct datetime. You MUST call this tool to schedule one-time tasks — do not just say you scheduled it.',
       '- `scheduler_remove_cron` — remove a scheduled task by ID',
       '- `scheduler_list_jobs` — list all your scheduled tasks',
       '',

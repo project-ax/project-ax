@@ -152,7 +152,7 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
     description:
       'Schedule a one-shot task at a specific date/time. The prompt executes once and the job is automatically removed.',
     parameters: Type.Object({
-      datetime: Type.String({ description: 'ISO 8601 datetime string, e.g. "2026-02-21T19:30:00"' }),
+      datetime: Type.String({ description: 'ISO 8601 datetime in local time (no Z suffix), e.g. "2026-02-21T19:30:00". Use the current time from your system prompt to compute relative times.' }),
       prompt: Type.String({ description: 'The instruction/prompt to execute' }),
       maxTokenBudget: Type.Optional(Type.Number({ description: 'Optional max token budget for execution' })),
     }),

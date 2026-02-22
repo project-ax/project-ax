@@ -86,4 +86,14 @@ describe('RuntimeModule', () => {
     expect(text).not.toContain('/home/');
     expect(text).toContain('./workspace');
   });
+
+  test('renders current time as ISO 8601 with timezone offset', () => {
+    const mod = new RuntimeModule();
+    const text = mod.render(makeContext()).join('\n');
+    expect(text).toContain('**Current Time**:');
+    // Should match ISO 8601 with offset: YYYY-MM-DDTHH:mm:ss±HH:MM
+    const match = text.match(/\*\*Current Time\*\*: (\S+)/);
+    expect(match).not.toBeNull();
+    expect(match![1]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
 });

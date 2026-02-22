@@ -23,7 +23,6 @@ import { createIPCTools } from './ipc-tools.js';
 import { convertPiMessages, emitStreamEvents, createLazyAnthropicClient, loadSkills } from './stream-utils.js';
 import { PromptBuilder } from './prompt/builder.js';
 import { loadIdentityFiles } from './identity-loader.js';
-import { detectSchedulerHallucination, CORRECTIVE_PROMPT } from './hallucination-guard.js';
 import { getLogger, truncate } from '../logger.js';
 
 const logger = getLogger().child({ component: 'runner' });
@@ -473,8 +472,6 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   let hasOutput = false;
   let eventCount = 0;
   let turnCount = 0;
-  const toolCallNames: string[] = [];
-  let textBuffer = '';
   agent.subscribe((event) => {
     eventCount++;
     if (event.type === 'message_update') {
@@ -486,11 +483,9 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
       }
       if (ame.type === 'text_delta') {
         process.stdout.write(ame.delta);
-        textBuffer += ame.delta;
         hasOutput = true;
       }
       if (ame.type === 'toolcall_end') {
-        toolCallNames.push(ame.toolCall.name);
         logger.debug('tool_call', { toolName: ame.toolCall.name, toolId: ame.toolCall.id });
         if (config.verbose) {
           process.stderr.write(`[tool] ${ame.toolCall.name}\n`);
@@ -520,23 +515,6 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   logger.debug('pi_core_prompt', { messagePreview: truncate(userMessage, 200) });
   await agent.prompt(userMessage);
   await agent.waitForIdle();
-
-  // Hallucination guard: if the model claims scheduling but used no scheduler tool, retry once
-  if (detectSchedulerHallucination(textBuffer, toolCallNames)) {
-    logger.warn('hallucination_detected', { toolCallNames, textPreview: truncate(textBuffer, 200) });
-    textBuffer = '';
-    toolCallNames.length = 0;
-    await agent.prompt(CORRECTIVE_PROMPT);
-    await agent.waitForIdle();
-
-    if (detectSchedulerHallucination(textBuffer, toolCallNames)) {
-      logger.error('hallucination_persistent', { toolCallNames, textPreview: truncate(textBuffer, 200) });
-      process.stderr.write(
-        'Warning: Model claims to have scheduled a task but did not use any scheduler tool. ' +
-        'The task was NOT scheduled.\n',
-      );
-    }
-  }
 
   logger.debug('pi_core_complete', { eventCount, hasOutput });
   client.disconnect();
