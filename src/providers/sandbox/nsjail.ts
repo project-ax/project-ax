@@ -44,6 +44,11 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         // Mount agent identity directory (read-only) — SOUL.md, BOOTSTRAP.md, etc.
         ...(config.agentDir ? ['--bindmount_ro', `${config.agentDir}:${config.agentDir}`] : []),
 
+        // Enterprise three-tier mounts
+        ...(config.agentWorkspace ? ['--bindmount_ro', `${config.agentWorkspace}:${config.agentWorkspace}`] : []),
+        ...(config.userWorkspace ? ['--bindmount', `${config.userWorkspace}:${config.userWorkspace}`] : []),
+        ...(config.scratchDir ? ['--bindmount', `${config.scratchDir}:${config.scratchDir}`] : []),
+
         // Mount IPC socket directory
         '--bindmount', `${resolve(config.ipcSocket, '..')}:${resolve(config.ipcSocket, '..')}`,
 
@@ -65,6 +70,9 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--env', `AX_IPC_SOCKET=${config.ipcSocket}`,
         '--env', `AX_WORKSPACE=${config.workspace}`,
         '--env', `AX_SKILLS=${config.skills}`,
+        ...(config.agentWorkspace ? ['--env', `AX_AGENT_WORKSPACE=${config.agentWorkspace}`] : []),
+        ...(config.userWorkspace ? ['--env', `AX_USER_WORKSPACE=${config.userWorkspace}`] : []),
+        ...(config.scratchDir ? ['--env', `AX_SCRATCH=${config.scratchDir}`] : []),
         // Redirect caches and data dirs so they don't pollute the workspace
         '--env', 'npm_config_cache=/tmp/.ax-npm-cache',
         '--env', 'XDG_CACHE_HOME=/tmp/.ax-cache',
@@ -74,6 +82,7 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--', cmd, ...args,
       ];
 
+      // nosemgrep: javascript.lang.security.detect-child-process — sandbox provider: spawning is its purpose
       const child = spawn('nsjail', nsjailArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
       });

@@ -15,6 +15,7 @@ export async function create(_config: Config): Promise<SandboxProvider> {
       }
 
       const [cmd, ...args] = config.command;
+      // nosemgrep: javascript.lang.security.detect-child-process — sandbox provider: spawning is its purpose
       const child = spawn(cmd, args, {
         cwd: config.workspace,
         env: {
@@ -22,6 +23,9 @@ export async function create(_config: Config): Promise<SandboxProvider> {
           AX_IPC_SOCKET: config.ipcSocket,
           AX_WORKSPACE: config.workspace,
           AX_SKILLS: config.skills,
+          ...(config.agentWorkspace ? { AX_AGENT_WORKSPACE: config.agentWorkspace } : {}),
+          ...(config.userWorkspace ? { AX_USER_WORKSPACE: config.userWorkspace } : {}),
+          ...(config.scratchDir ? { AX_SCRATCH: config.scratchDir } : {}),
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
