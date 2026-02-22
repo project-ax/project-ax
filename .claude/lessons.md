@@ -1,5 +1,17 @@
 # Lessons Learned
 
+### Configure wizard must set config.model for non-claude-code agents
+**Date:** 2026-02-22
+**Context:** Users running `bun serve` after configure got "config.model is required for LLM router" because the wizard never prompted for a model
+**Lesson:** The LLM router (used by pi-agent-core, pi-coding-agent) requires `config.model` as a compound `provider/model` ID (e.g. `anthropic/claude-sonnet-4-20250514`). Only claude-code agents bypass the router (they use the credential-injecting proxy). Any new agent type that uses the router must have model selection in the wizard.
+**Tags:** onboarding, config, llm-router, configure
+
+### API key env var naming follows ${PROVIDER.toUpperCase()}_API_KEY convention
+**Date:** 2026-02-22
+**Context:** The openai.ts provider uses `envKey()` to derive env var names dynamically from provider names
+**Lesson:** When writing API keys to .env, use `${llmProvider.toUpperCase()}_API_KEY` (e.g. OPENROUTER_API_KEY, GROQ_API_KEY). The ANTHROPIC_API_KEY is the special case/default. This convention matches what the provider implementations expect at runtime.
+**Tags:** onboarding, env, api-key, providers
+
 ### safePath() treats its arguments as individual path segments, not relative paths
 **Date:** 2026-02-22
 **Context:** Workspace handler was producing flat filenames like `deep_nested_file.txt` instead of nested paths
