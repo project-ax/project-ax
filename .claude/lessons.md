@@ -30,3 +30,9 @@
 **Lesson:** The AX project runs via tsx, not compiled tsc output. The 400+ tsc errors from missing @types/node are pre-existing and expected. Don't try to fix them — focus on vitest test results instead.
 **Tags:** build, typescript, tsx, tsc
 
+### New path helpers must handle colon-separated session IDs
+**Date:** 2026-02-22
+**Context:** `scratchDir()` used `validatePathSegment()` (alphanumeric/dash/underscore only), but channel session IDs like `test:thread:C02:2000.0001` contain colons and dots
+**Lesson:** When adding new path functions that accept session IDs, use `isValidSessionId()` for validation and split colons into nested directories (same pattern as `workspaceDir()`). Don't use `validatePathSegment()` for session IDs — it's only for single-segment identifiers like agent names or user IDs.
+**Tags:** paths, session-id, scratchDir, workspaceDir, validation
+
