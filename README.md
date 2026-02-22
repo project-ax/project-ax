@@ -13,7 +13,7 @@ Sound familiar? It should. **OpenClaw** proved that AI agents can be genuinely u
 
 We love what OpenClaw does. We just couldn't sleep at night running it.
 
-AX gives you the same power — **multi-channel messaging, web access, browser automation, long-term memory, extensible skills** — but with security guardrails that are actually enforced by the architecture, not just by good intentions. And at ~4,150 lines of code, it's small enough to audit in a day.
+AX gives you the same power — **multi-channel messaging, web access, browser automation, long-term memory, extensible skills** — but with security guardrails that are actually enforced by the architecture, not just by good intentions. And at ~13,500 lines of code, it's still small enough to audit in a weekend.
 
 The best part? **You decide where you sit on the spectrum.** Lock everything down, open everything up, or land somewhere in the middle. We give you the dial. We just make sure the safety net is always there, even when you crank it to 11.
 
@@ -63,6 +63,63 @@ The taint threshold controls when we pause to ask before doing something sensiti
 
 We default to Paranoid not because we think you need it, but because we think defaults should be safe. Upgrading to Standard or Power User is one line in `ax.yaml`.
 
+## What's In the Box
+
+### Multi-Provider LLM Support
+
+AX isn't locked to one AI provider. Configure any combination of Anthropic, OpenAI, Groq, OpenRouter, or any OpenAI-compatible API using compound model IDs:
+
+```yaml
+model: anthropic/claude-sonnet-4-20250514
+model_fallbacks:
+  - groq/llama-3.3-70b-versatile
+  - openrouter/google/gemini-2.0-flash-001
+```
+
+The **LLM router** handles failover automatically — if your primary model hits a rate limit or goes down, AX falls back to the next candidate with exponential backoff. You set the preference order; we handle the rest.
+
+### Conversation History
+
+AX remembers. A SQLite-backed conversation store persists turns across restarts, so your agent picks up where it left off. Configure how much context to carry:
+
+```yaml
+history:
+  max_turns: 100
+  thread_context_turns: 20
+```
+
+### Scheduling
+
+Your agent can act on its own schedule, not just when you message it:
+
+- **Cron jobs** — recurring tasks with standard 5-field cron syntax ("check my email every morning at 9am")
+- **One-shot scheduling** — "remind me about this in 2 hours" via `scheduler_run_at`
+- **Heartbeat** — periodic check-ins where the agent reviews overdue items and takes action
+
+Scheduled responses route back through the outbound delivery pipeline to the right channel — Slack, CLI, wherever you're listening.
+
+### Slack Integration
+
+Full Slack support via Socket Mode:
+
+- **Thread-aware sessions** — conversations stay in-thread, context preserved
+- **Smart reply gating** — in channels, the agent only responds when mentioned or directly addressed (no spam)
+- **Eyes emoji** — visual acknowledgment while the agent processes your message
+- **Thread history backfill** — agent loads thread context before replying
+- **DM and group DM support** — works everywhere Slack does
+
+### Skill Self-Authoring
+
+Agents can propose their own skills — persistent markdown instructions that expand their capabilities. Proposals go through safety screening: dangerous patterns are hard-rejected, capability-expanding patterns require human review, and clean content is auto-approved. You stay in the loop on anything that matters.
+
+### Config Hot Reload
+
+Change `ax.yaml` and AX picks it up live — no restart required. Send `SIGHUP` or just save the file. New config is validated before the old server tears down, so a typo won't take you offline.
+
+### Modular System Prompts
+
+The agent's system prompt is assembled from composable modules — identity, security, injection defense, skills, context, runtime, heartbeat, and reply gating. Each module is independently testable with token budget tracking, so the prompt stays within limits even as capabilities grow.
+
 ## Quick Start
 
 ```bash
@@ -83,9 +140,23 @@ npm test
 
 Edit `ax.yaml` to configure providers, security profile, and sandbox settings. The defaults are conservative — we'd rather you opt into power than accidentally leave the door open. But opting in is easy, and we won't judge.
 
-See the [architecture doc](docs/plans/ax-architecture-doc.md) for the full details, or jump straight to a channel guide:
+```yaml
+profile: paranoid
+model: anthropic/claude-sonnet-4-20250514
+providers:
+  memory: file
+  scanner: basic
+  channels: []
+  web: none
+  browser: none
+  credentials: env
+  skills: readonly
+  audit: file
+  sandbox: subprocess
+  scheduler: none
+```
 
-- [Slack](docs/slack-channel.md) — Socket Mode, DM policies, attachment filtering, thread-aware sessions
+See the [architecture doc](docs/plans/ax-architecture-doc.md) for the full details.
 
 ## Contributing
 
@@ -94,7 +165,7 @@ We'd love your help. Before diving in, please read through these so we're all on
 1. Read the [PRP](docs/plans/ax-prp.md) for our design philosophy (the "why")
 2. Read the [architecture doc](docs/plans/ax-architecture-doc.md) for implementation details (the "how")
 3. Read the [security spec](docs/plans/ax-security-hardening-spec.md) for security requirements (the "or else")
-4. All provider paths use flat naming: `src/providers/llm-anthropic.ts` — no subdirectories
+4. Providers live in category subdirectories: `src/providers/llm/anthropic.ts`, `src/providers/channel/slack.ts`, etc.
 5. All file path construction must use `safePath()` from `src/utils/safe-path.ts` — no raw `path.join()` with untrusted input
 6. All IPC actions must have Zod schemas with `.strict()` mode — no unknown fields sneaking through
 
