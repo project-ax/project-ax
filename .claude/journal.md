@@ -156,3 +156,13 @@
 **Outcome:** Success — both tests pass
 **Notes:** This factory is used by stores during migration — they create a Kysely instance, run migrations, destroy it, then open their own raw SQLite connection for queries. The PostgreSQL path is lazy-loaded since `pg` isn't installed yet.
 
+## [2026-02-22 17:57] — Add Kysely migration definitions for all 6 stores
+
+**Task:** Define Kysely migrations for messages, sessions, conversations, jobs, memory, and audit stores
+**What I did:** Created 6 migration definition files and 6 corresponding test files (12 files total). Each migration uses `.ifNotExists()` on createTable and createIndex for backwards compatibility. Memory store has two migrations (initial + add_agent_id with FTS5 virtual table via raw SQL). All migrations export a typed `MigrationSet` for use with `runMigrations()`.
+**Files touched:**
+- New: src/migrations/messages.ts, sessions.ts, conversations.ts, jobs.ts, memory.ts, audit.ts
+- New: tests/migrations/messages.test.ts, sessions.test.ts, conversations.test.ts, jobs.test.ts, memory.test.ts, audit.test.ts
+**Outcome:** Success — 16 tests pass across 6 test files
+**Notes:** FTS5 virtual tables require raw SQL since Kysely's schema builder doesn't support VIRTUAL TABLE syntax. The memory store's second migration (memory_002_add_agent_id) uses ALTER TABLE ADD COLUMN which doesn't support ifNotExists in SQLite, but the migration runner tracks applied migrations so it won't run twice.
+
