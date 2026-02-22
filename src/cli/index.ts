@@ -185,11 +185,28 @@ async function runServe(args: string[]): Promise<void> {
   const { createServer } = await import('../host/server.js');
 
   logger.info('loading_config');
-  const config = loadConfig(configPath);
+  let config = loadConfig(configPath);
   logger.info('config_loaded', { profile: config.profile });
 
-  const server = await createServer(config, { socketPath, daemon, verbose });
+  const serverOpts = { socketPath, daemon, verbose };
+  let server = await createServer(config, serverOpts);
   await server.start();
+
+  // Set up hot reload on config changes
+  const { setupConfigReload } = await import('./reload.js');
+  const reloadHandle = setupConfigReload({
+    getServer: () => server,
+    setServer: (s) => { server = s; },
+    loadConfig: () => loadConfig(configPath),
+    createServer: (cfg) => createServer(cfg, serverOpts),
+    logger,
+    configPath: resolvedConfigPath,
+  });
+
+  // Clean up file watcher on shutdown
+  const cleanupAndExit = () => { reloadHandle.cleanup(); };
+  process.on('SIGINT', cleanupAndExit);
+  process.on('SIGTERM', cleanupAndExit);
 
   if (daemon) {
     logger.info('daemon_mode');
