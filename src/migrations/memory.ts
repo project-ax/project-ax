@@ -38,10 +38,15 @@ export const memoryMigrations: MigrationSet = {
 
   memory_002_add_agent_id: {
     async up(db: Kysely<any>) {
-      await db.schema
-        .alterTable('entries')
-        .addColumn('agent_id', 'text')
-        .execute();
+      // Column may already exist on databases upgraded from pre-migration schema
+      try {
+        await db.schema
+          .alterTable('entries')
+          .addColumn('agent_id', 'text')
+          .execute();
+      } catch {
+        // Column already exists — expected for pre-migration databases
+      }
 
       await db.schema
         .createIndex('idx_entries_agent_scope')

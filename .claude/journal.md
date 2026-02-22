@@ -174,6 +174,19 @@
 **Outcome:** Success — 142 test files, 1421 tests pass, clean TypeScript build
 **Notes:** Pattern: createKyselyDb() for migration → destroy → openDatabase() for queries. For :memory: databases in tests, switched to temp files since Kysely and raw sqlite use separate connections. The TestHarness required converting from sync constructor to async factory since MessageQueue.create() is async.
 
+## [2026-02-22 18:12] — Add upgrade-path tests and guard memory migration
+
+**Task:** Add upgrade-path tests for backwards compatibility, fix memory_002_add_agent_id migration to handle pre-existing agent_id column
+**What I did:**
+- Wrapped the `addColumn('agent_id')` call in `memory_002_add_agent_id` with try-catch so it gracefully handles databases where the column already exists from the old pre-migration ALTER TABLE hack
+- Created `tests/migrations/upgrade-path.test.ts` with 3 tests:
+  1. Messages: migrates a database created by old inline SQL (no kysely_migration table) — verifies existing data is preserved
+  2. Memory: migrates a database that already has agent_id column — verifies the 002 migration is recorded without error
+  3. All stores: double migration is idempotent — runs all 6 stores' migrations twice, verifies 0 applied on second run
+**Files touched:** src/migrations/memory.ts (modified), tests/migrations/upgrade-path.test.ts (new)
+**Outcome:** Success — 3/3 new tests pass, full suite 1424/1424 pass
+**Notes:** The key insight: ALTER TABLE ADD COLUMN doesn't support IF NOT EXISTS in SQLite, so try-catch is the only portable guard. The test simulates the exact pre-migration database schema (with agent_id, indexes, and FTS5 table already present) to ensure Kysely migrations work against real upgrade scenarios.
+
 ## [2026-02-22 17:57] — Add Kysely migration definitions for all 6 stores
 
 **Task:** Define Kysely migrations for messages, sessions, conversations, jobs, memory, and audit stores
