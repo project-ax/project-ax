@@ -47,7 +47,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
   const handlers: Record<string, (req: any, ctx: IPCContext) => Promise<any>> = {
 
     llm_call: async (req) => {
-      logger.debug('llm_call_params', {
+      logger.debug('llm_call_start', {
         model: req.model,
         maxTokens: req.maxTokens,
         toolCount: req.tools?.length ?? 0,
@@ -69,11 +69,17 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
         typeCounts[t] = (typeCounts[t] ?? 0) + 1;
       }
       const toolUseChunks = chunks.filter((c: any) => c.type === 'tool_use');
+      const textChunks = chunks.filter((c: any) => c.type === 'text');
+      const textPreview = textChunks
+        .map((c: any) => c.content ?? '')
+        .join('')
+        .slice(0, 300);
       logger.debug('llm_call_result', {
         chunkCount: chunks.length,
         chunkTypes: typeCounts,
         toolUseCount: toolUseChunks.length,
         toolNames: toolUseChunks.map((c: any) => c.toolCall?.name),
+        textPreview,
       });
       return { chunks };
     },

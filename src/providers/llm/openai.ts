@@ -204,6 +204,16 @@ export async function create(config: Config, providerName?: string): Promise<LLM
           }
         }
 
+        // Log every finish_reason to catch non-standard values from providers
+        if (choice.finish_reason) {
+          logger.debug('finish_reason', {
+            provider: name,
+            finishReason: choice.finish_reason,
+            pendingToolCalls: toolCalls.size,
+            pendingToolNames: [...toolCalls.values()].map(tc => tc.name).filter(Boolean),
+          });
+        }
+
         // When the stream signals stop, yield accumulated tool calls
         if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
           for (const [, tc] of toolCalls) {
@@ -227,6 +237,16 @@ export async function create(config: Config, providerName?: string): Promise<LLM
           }
           toolCalls.clear();
         }
+      }
+
+      // Warn if tool calls were accumulated but never yielded (non-standard finish_reason)
+      if (toolCalls.size > 0) {
+        logger.warn('tool_calls_dropped', {
+          provider: name,
+          count: toolCalls.size,
+          toolNames: [...toolCalls.values()].map(tc => tc.name).filter(Boolean),
+          hint: 'Tool calls accumulated but finish_reason did not match "tool_calls" or "stop"',
+        });
       }
 
       logger.debug('chat_done', {

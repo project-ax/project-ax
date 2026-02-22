@@ -376,6 +376,7 @@ async function readStdin(): Promise<string> {
 }
 
 export async function runPiCore(config: AgentConfig): Promise<void> {
+  process.stderr.write(`[diag] runPiCore start\n`);
   const userMessage = config.userMessage ?? '';
   if (!userMessage.trim()) {
     logger.debug('pi_core_skip_empty');
@@ -512,9 +513,12 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
   });
 
   // Send the user message and wait for the agent to finish
+  process.stderr.write(`[diag] pi_core_prompt\n`);
   logger.debug('pi_core_prompt', { messagePreview: truncate(userMessage, 200) });
   await agent.prompt(userMessage);
+  process.stderr.write(`[diag] pi_core_prompt_returned events=${eventCount} hasOutput=${hasOutput}\n`);
   await agent.waitForIdle();
+  process.stderr.write(`[diag] pi_core_idle events=${eventCount} hasOutput=${hasOutput}\n`);
 
   logger.debug('pi_core_complete', { eventCount, hasOutput });
   client.disconnect();
@@ -575,6 +579,7 @@ export function parseStdinPayload(data: string): StdinPayload {
  */
 export async function run(config: AgentConfig): Promise<void> {
   const agent = config.agent ?? 'pi-agent-core';
+  process.stderr.write(`[diag] dispatch agent=${agent}\n`);
   logger.debug('dispatch', { agent, workspace: config.workspace, ipcSocket: config.ipcSocket });
   switch (agent) {
     case 'pi-agent-core':

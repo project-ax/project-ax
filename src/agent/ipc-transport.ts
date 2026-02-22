@@ -85,6 +85,7 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
           : messages;
 
         const maxTokens = options?.maxTokens ?? model?.maxTokens;
+        process.stderr.write(`[diag] ipc_llm_call model=${model?.id} messages=${allMessages.length} tools=${tools?.length ?? 0}\n`);
         logger.debug('ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0, maxTokens });
         const response = await client.call({
           action: 'llm_call',
@@ -141,6 +142,7 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
           timestamp: Date.now(),
         };
 
+        process.stderr.write(`[diag] ipc_llm_result stop=${stopReason} text=${fullText.length}chars tools=[${toolCalls.map(t => t.name).join(',')}]\n`);
         logger.debug('stream_done', {
           stopReason,
           textLength: fullText.length,
@@ -150,6 +152,7 @@ export function createIPCStreamFn(client: IPCClient): StreamFn {
         });
         emitStreamEvents(stream, msg, fullText, toolCalls, stopReason as 'stop' | 'toolUse');
       } catch (err: unknown) {
+        process.stderr.write(`[diag] ipc_llm_stream_error: ${(err as Error).message}\n`);
         logger.debug('stream_error', { error: (err as Error).message, stack: (err as Error).stack });
         const errMsg = makeErrorMessage((err as Error).message);
         stream.push({ type: 'start', partial: errMsg });

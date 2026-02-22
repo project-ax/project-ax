@@ -118,7 +118,8 @@ function createIPCStreamFunction(client: IPCClient) {
           : messages;
 
         const maxTokens = options?.maxTokens ?? model?.maxTokens;
-        logger.debug('ipc_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0, maxTokens });
+        logger.debug('ipc_llm_call', { messageCount: allMessages.length, toolCount: tools?.length ?? 0, maxTokens, model: model?.id });
+        process.stderr.write(`[diag] ipc_llm_call model=${model?.id} messages=${allMessages.length} tools=${tools?.length ?? 0}\n`);
         const response = await client.call({
           action: 'llm_call',
           model: model?.id,
@@ -128,7 +129,8 @@ function createIPCStreamFunction(client: IPCClient) {
         }, LLM_CALL_TIMEOUT_MS) as unknown as IPCResponse;
 
         if (!response.ok) {
-          logger.debug('ipc_error', { error: response.error });
+          logger.debug('ipc_llm_error', { error: response.error });
+          process.stderr.write(`[diag] ipc_llm_error: ${response.error}\n`);
           const errMsg = makeErrorMessage(response.error ?? 'LLM call failed');
           stream.push({ type: 'start', partial: errMsg });
           stream.push({ type: 'error', reason: 'error', error: errMsg });
@@ -178,16 +180,18 @@ function createIPCStreamFunction(client: IPCClient) {
           timestamp: Date.now(),
         };
 
-        logger.debug('stream_done', {
+        logger.debug('ipc_llm_result', {
           stopReason,
           textLength: fullText.length,
+          textPreview: fullText.slice(0, 200),
           toolCallCount: toolCalls.length,
           toolNames: toolCalls.map(t => t.name),
-          usage,
         });
+        process.stderr.write(`[diag] ipc_llm_result stop=${stopReason} text=${fullText.length}chars tools=[${toolCalls.map(t => t.name).join(',')}]\n`);
         emitStreamEvents(stream, msg, fullText, toolCalls, stopReason as 'stop' | 'toolUse');
       } catch (err: unknown) {
-        logger.debug('stream_error', { error: (err as Error).message, stack: (err as Error).stack });
+        logger.debug('ipc_llm_stream_error', { error: (err as Error).message, stack: (err as Error).stack });
+        process.stderr.write(`[diag] ipc_llm_stream_error: ${(err as Error).message}\n`);
         const errMsg = makeErrorMessage((err as Error).message);
         stream.push({ type: 'start', partial: errMsg });
         stream.push({ type: 'error', reason: 'error', error: errMsg });
@@ -325,7 +329,7 @@ function createProxyStreamFunction(proxySocket: string) {
 
 // ── IPC tools as pi-coding-agent ToolDefinitions ────────────────────
 
-import { TOOL_CATALOG } from '../tool-catalog.js';
+import { TOOL_CATALOG, normalizeOrigin, normalizeIdentityFile } from '../tool-catalog.js';
 
 function text(t: string) {
   return { content: [{ type: 'text' as const, text: t }], details: undefined };
@@ -352,15 +356,25 @@ function createIPCToolDefinitions(client: IPCClient, opts?: IPCToolDefsOptions):
   // resolve to unknown in this context but IPC just forwards them as-is.
   const p = (v: unknown) => v as Record<string, unknown>;
 
+  const TOOLS_WITH_ORIGIN = new Set(['identity_write', 'user_write']);
+
   return TOOL_CATALOG.map(spec => ({
     name: spec.name,
     label: spec.label,
     description: spec.description,
     parameters: spec.parameters,
     async execute(_id: string, params: unknown) {
-      const callParams = spec.injectUserId
+      process.stderr.write(`[diag] tool_execute name=${spec.name}\n`);
+      let callParams = spec.injectUserId
         ? { ...p(params), userId: opts?.userId ?? '' }
         : p(params);
+      // Normalize enum-like fields for weaker models that send free text
+      if (TOOLS_WITH_ORIGIN.has(spec.name) && 'origin' in callParams) {
+        callParams = { ...callParams, origin: normalizeOrigin(callParams.origin) };
+      }
+      if (spec.name === 'identity_write' && 'file' in callParams) {
+        callParams = { ...callParams, file: normalizeIdentityFile(callParams.file) };
+      }
       return ipcCall(spec.name, callParams);
     },
   })) as ToolDefinition[];
@@ -505,6 +519,11 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   let turnCount = 0;
   session.subscribe((event) => {
     eventCount++;
+    // Log ALL event types to stderr for diagnostics
+    if (event.type !== 'message_update') {
+      process.stderr.write(`[diag] session_event type=${event.type} ${JSON.stringify(event).slice(0, 300)}\n`);
+    }
+    logger.debug('session_event', { type: event.type, eventCount });
     if (event.type === 'message_update') {
       const ame = event.assistantMessageEvent;
       logger.debug('agent_event', { type: ame.type, eventCount });
@@ -537,10 +556,34 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
     }
   });
 
-  // Send message and wait
-  logger.debug('prompt_start', { messagePreview: truncate(userMessage, 200) });
+  // Send message and wait — log tools that are actually on the agent
+  const agentTools = (session.agent.state as any).tools ?? [];
+  const agentToolNames = agentTools.map((t: any) => t.name);
+  process.stderr.write(`[diag] agent_tools count=${agentTools.length} names=[${agentToolNames.join(',')}]\n`);
+  process.stderr.write(`[diag] prompt_start\n`);
+  logger.debug('prompt_start', { messagePreview: truncate(userMessage, 200), agentToolNames });
   await session.prompt(userMessage);
+  process.stderr.write(`[diag] prompt_returned events=${eventCount} hasOutput=${hasOutput}\n`);
+  logger.debug('prompt_returned', { eventCount, hasOutput });
   await session.agent.waitForIdle();
+  process.stderr.write(`[diag] wait_idle_returned events=${eventCount} hasOutput=${hasOutput}\n`);
+  logger.debug('wait_idle_returned', { eventCount, hasOutput });
+
+  // Log final agent state for debugging
+  const finalMessages = session.agent.state.messages;
+  const lastMsg = finalMessages[finalMessages.length - 1];
+  if (lastMsg && lastMsg.role === 'assistant') {
+    const content = (lastMsg as any).content;
+    const contentTypes = Array.isArray(content)
+      ? content.map((c: any) => c.type)
+      : [typeof content];
+    process.stderr.write(`[diag] final_assistant_message contentTypes=[${contentTypes}] stopReason=${(lastMsg as any).stopReason} totalMessages=${finalMessages.length}\n`);
+    logger.debug('final_assistant_message', {
+      contentTypes,
+      stopReason: (lastMsg as any).stopReason,
+      messageCount: finalMessages.length,
+    });
+  }
 
   logger.debug('session_complete', { eventCount, hasOutput });
   session.dispose();

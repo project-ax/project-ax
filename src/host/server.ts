@@ -592,7 +592,12 @@ export async function createServer(
           stderr += text;
           if (opts.verbose) {
             for (const line of text.split('\n').filter((l: string) => l.trim())) {
-              reqLogger.info('agent_stderr', { line });
+              const tagMatch = line.match(/^\[([\w-]+)\]\s*(.*)/);
+              if (tagMatch) {
+                reqLogger.debug(`agent_${tagMatch[1]}`, { message: tagMatch[2] });
+              } else {
+                reqLogger.info('agent_stderr', { line });
+              }
             }
           }
         }
@@ -619,7 +624,20 @@ export async function createServer(
       }
 
       if (stderr) {
-        reqLogger.warn('agent_stderr', { stderr: stderr.slice(0, 500) });
+        const stderrLines = stderr.split('\n');
+        const isDiag = (l: string) => /^\[[\w-]+\]/.test(l.trimStart());
+        const nonDiagLines: string[] = [];
+        for (const line of stderrLines) {
+          const tagMatch = line.trimStart().match(/^\[([\w-]+)\]\s*(.*)/);
+          if (tagMatch) {
+            reqLogger.debug(`agent_${tagMatch[1]}`, { message: tagMatch[2] });
+          } else if (line.trim()) {
+            nonDiagLines.push(line);
+          }
+        }
+        if (nonDiagLines.length > 0) {
+          reqLogger.warn('agent_stderr', { stderr: nonDiagLines.join('\n').slice(0, 500) });
+        }
       }
 
       // Process outbound

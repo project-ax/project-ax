@@ -10,6 +10,7 @@ import { z } from 'zod/v4';
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
 import type { IPCClient } from './ipc-client.js';
+import { normalizeOrigin } from './tool-catalog.js';
 
 function stripTaint(data: unknown): unknown {
   if (Array.isArray(data)) {
@@ -113,9 +114,9 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
           file: z.enum(['SOUL.md', 'IDENTITY.md']),
           content: z.string(),
           reason: z.string(),
-          origin: z.enum(['user_request', 'agent_initiated']),
+          origin: z.string().describe('Either "user_request" or "agent_initiated"'),
         },
-        (args) => ipcCall('identity_write', args),
+        (args) => ipcCall('identity_write', { ...args, origin: normalizeOrigin(args.origin) }),
       ),
 
       tool(
@@ -125,9 +126,9 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
         {
           content: z.string(),
           reason: z.string(),
-          origin: z.enum(['user_request', 'agent_initiated']),
+          origin: z.string().describe('Either "user_request" or "agent_initiated"'),
         },
-        (args) => ipcCall('user_write', { ...args, userId: opts?.userId ?? '' }),
+        (args) => ipcCall('user_write', { ...args, userId: opts?.userId ?? '', origin: normalizeOrigin(args.origin) }),
       ),
 
       // ── Scheduler tools ──

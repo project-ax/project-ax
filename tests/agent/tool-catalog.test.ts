@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { TOOL_CATALOG, TOOL_NAMES, getToolParamKeys } from '../../src/agent/tool-catalog.js';
+import { TOOL_CATALOG, TOOL_NAMES, getToolParamKeys, normalizeOrigin, normalizeIdentityFile } from '../../src/agent/tool-catalog.js';
 
 describe('tool-catalog', () => {
   test('exports exactly 17 tools', () => {
@@ -81,5 +81,77 @@ describe('tool-catalog', () => {
   test('skill_list has no params', () => {
     const keys = getToolParamKeys('skill_list');
     expect(keys).toEqual([]);
+  });
+
+  // Regression: weaker models (Gemini, Kimi) send free-text for enum fields,
+  // causing AJV validateToolArguments to reject before execute() runs.
+  // The tool schemas now use Type.String() and normalization coerces values.
+  test('identity_write and user_write use String type for origin (not enum)', () => {
+    for (const name of ['identity_write', 'user_write']) {
+      const spec = TOOL_CATALOG.find(s => s.name === name)!;
+      const originSchema = (spec.parameters as any).properties.origin;
+      // Should be a plain string schema, NOT a union of literals
+      expect(originSchema.type, `${name}.origin should be "string" type`).toBe('string');
+      expect(originSchema.anyOf, `${name}.origin should not have anyOf (enum)`).toBeUndefined();
+    }
+  });
+
+  test('identity_write uses String type for file (not enum)', () => {
+    const spec = TOOL_CATALOG.find(s => s.name === 'identity_write')!;
+    const fileSchema = (spec.parameters as any).properties.file;
+    expect(fileSchema.type, 'identity_write.file should be "string" type').toBe('string');
+  });
+});
+
+describe('normalizeOrigin', () => {
+  test('passes through exact enum values', () => {
+    expect(normalizeOrigin('user_request')).toBe('user_request');
+    expect(normalizeOrigin('agent_initiated')).toBe('agent_initiated');
+  });
+
+  test('normalizes free-text that contains the enum value', () => {
+    expect(normalizeOrigin('This is a user_request because...')).toBe('user_request');
+    expect(normalizeOrigin('agent_initiated by me')).toBe('agent_initiated');
+  });
+
+  test('normalizes hyphenated variants', () => {
+    expect(normalizeOrigin('user-request')).toBe('user_request');
+    expect(normalizeOrigin('agent-initiated')).toBe('agent_initiated');
+  });
+
+  test('defaults to user_request for unrecognized free text', () => {
+    expect(normalizeOrigin('The user felt too moody so I changed it')).toBe('user_request');
+    expect(normalizeOrigin('because reasons')).toBe('user_request');
+    expect(normalizeOrigin('')).toBe('user_request');
+  });
+
+  test('handles non-string values', () => {
+    expect(normalizeOrigin(undefined)).toBe('user_request');
+    expect(normalizeOrigin(null)).toBe('user_request');
+    expect(normalizeOrigin(42)).toBe('user_request');
+  });
+});
+
+describe('normalizeIdentityFile', () => {
+  test('passes through exact file names', () => {
+    expect(normalizeIdentityFile('SOUL.md')).toBe('SOUL.md');
+    expect(normalizeIdentityFile('IDENTITY.md')).toBe('IDENTITY.md');
+  });
+
+  test('normalizes case variations', () => {
+    expect(normalizeIdentityFile('soul.md')).toBe('SOUL.md');
+    expect(normalizeIdentityFile('Soul.md')).toBe('SOUL.md');
+    expect(normalizeIdentityFile('identity.md')).toBe('IDENTITY.md');
+    expect(normalizeIdentityFile('Identity.md')).toBe('IDENTITY.md');
+  });
+
+  test('normalizes names without extension', () => {
+    expect(normalizeIdentityFile('soul')).toBe('SOUL.md');
+    expect(normalizeIdentityFile('identity')).toBe('IDENTITY.md');
+  });
+
+  test('returns raw value for unrecognized names', () => {
+    expect(normalizeIdentityFile('USER.md')).toBe('USER.md');
+    expect(normalizeIdentityFile('random')).toBe('random');
   });
 });

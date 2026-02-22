@@ -112,10 +112,10 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
       'Auto-applied in clean sessions; queued for review when ' +
       'external content is present. All changes are audited.',
     parameters: Type.Object({
-      file: Type.Union([Type.Literal('SOUL.md'), Type.Literal('IDENTITY.md')]),
+      file: Type.String({ description: 'File name: "SOUL.md" or "IDENTITY.md"' }),
       content: Type.String(),
       reason: Type.String(),
-      origin: Type.Union([Type.Literal('user_request'), Type.Literal('agent_initiated')]),
+      origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
     }),
   },
   {
@@ -129,7 +129,7 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
     parameters: Type.Object({
       content: Type.String(),
       reason: Type.String(),
-      origin: Type.Union([Type.Literal('user_request'), Type.Literal('agent_initiated')]),
+      origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
     }),
     injectUserId: true,
   },
@@ -215,4 +215,35 @@ export function getToolParamKeys(name: string): string[] {
   if (!spec) throw new Error(`Unknown tool: ${name}`);
   const schema = spec.parameters as { properties?: Record<string, unknown> };
   return Object.keys(schema.properties ?? {});
+}
+
+// ── Parameter normalization for weaker models ────────────────────────
+//
+// Models like Gemini/Kimi send free-text strings for enum fields.
+// These normalizers coerce to the strict values the IPC schema expects.
+
+const ORIGIN_VALUES = ['user_request', 'agent_initiated'] as const;
+
+/** Normalize an origin value to a valid enum. Defaults to 'user_request'. */
+export function normalizeOrigin(raw: unknown): 'user_request' | 'agent_initiated' {
+  if (typeof raw === 'string') {
+    const lower = raw.toLowerCase().replace(/[\s-]/g, '_');
+    for (const v of ORIGIN_VALUES) {
+      if (lower === v || lower.includes(v)) return v;
+    }
+  }
+  return 'user_request';
+}
+
+const IDENTITY_FILE_MAP: Record<string, string> = {
+  'soul.md': 'SOUL.md', 'soul': 'SOUL.md',
+  'identity.md': 'IDENTITY.md', 'identity': 'IDENTITY.md',
+};
+
+/** Normalize a file name to 'SOUL.md' or 'IDENTITY.md'. Returns raw value if unrecognized. */
+export function normalizeIdentityFile(raw: unknown): string {
+  if (typeof raw === 'string') {
+    return IDENTITY_FILE_MAP[raw.toLowerCase()] ?? raw;
+  }
+  return String(raw);
 }
