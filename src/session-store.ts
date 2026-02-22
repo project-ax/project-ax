@@ -15,8 +15,12 @@ export class SessionStore {
 
   static async create(dbPath: string = dataFile('sessions.db')): Promise<SessionStore> {
     const kyselyDb = createKyselyDb({ type: 'sqlite', path: dbPath });
-    await runMigrations(kyselyDb, sessionsMigrations);
-    await kyselyDb.destroy();
+    try {
+      const result = await runMigrations(kyselyDb, sessionsMigrations);
+      if (result.error) throw result.error;
+    } finally {
+      await kyselyDb.destroy();
+    }
     const db = openDatabase(dbPath);
     return new SessionStore(db);
   }

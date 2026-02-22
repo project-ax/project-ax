@@ -13,8 +13,12 @@ export async function create(_config: Config): Promise<AuditProvider> {
   const dbPath = dataFile('audit.db');
 
   const kyselyDb = createKyselyDb({ type: 'sqlite', path: dbPath });
-  await runMigrations(kyselyDb, auditMigrations);
-  await kyselyDb.destroy();
+  try {
+    const result = await runMigrations(kyselyDb, auditMigrations);
+    if (result.error) throw result.error;
+  } finally {
+    await kyselyDb.destroy();
+  }
 
   const db: SQLiteDatabase = openDatabase(dbPath);
 

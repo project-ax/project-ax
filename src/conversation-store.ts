@@ -23,8 +23,12 @@ export class ConversationStore {
 
   static async create(dbPath: string = dataFile('conversations.db')): Promise<ConversationStore> {
     const kyselyDb = createKyselyDb({ type: 'sqlite', path: dbPath });
-    await runMigrations(kyselyDb, conversationsMigrations);
-    await kyselyDb.destroy();
+    try {
+      const result = await runMigrations(kyselyDb, conversationsMigrations);
+      if (result.error) throw result.error;
+    } finally {
+      await kyselyDb.destroy();
+    }
     const db = openDatabase(dbPath);
     return new ConversationStore(db);
   }

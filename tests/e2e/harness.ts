@@ -8,7 +8,7 @@
  * workspace files, identity files).
  *
  * Usage:
- *   const h = new TestHarness({ llmTurns: [...] });
+ *   const h = await TestHarness.create({ llmTurns: [...] });
  *   await h.sendMessage('Hello!');
  *   expect(h.lastChannelReply()).toBe('Hi there!');
  *   h.dispose();

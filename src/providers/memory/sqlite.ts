@@ -14,8 +14,12 @@ export async function create(_config: Config): Promise<MemoryProvider> {
   const dbPath = dataFile('memory.db');
 
   const kyselyDb = createKyselyDb({ type: 'sqlite', path: dbPath });
-  await runMigrations(kyselyDb, memoryMigrations);
-  await kyselyDb.destroy();
+  try {
+    const result = await runMigrations(kyselyDb, memoryMigrations);
+    if (result.error) throw result.error;
+  } finally {
+    await kyselyDb.destroy();
+  }
 
   const db: SQLiteDatabase = openDatabase(dbPath);
 

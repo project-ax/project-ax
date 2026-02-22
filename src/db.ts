@@ -30,8 +30,12 @@ export class MessageQueue {
 
   static async create(dbPath: string = dataFile('messages.db')): Promise<MessageQueue> {
     const kyselyDb = createKyselyDb({ type: 'sqlite', path: dbPath });
-    await runMigrations(kyselyDb, messagesMigrations);
-    await kyselyDb.destroy();
+    try {
+      const result = await runMigrations(kyselyDb, messagesMigrations);
+      if (result.error) throw result.error;
+    } finally {
+      await kyselyDb.destroy();
+    }
     const db = openDatabase(dbPath);
     return new MessageQueue(db);
   }

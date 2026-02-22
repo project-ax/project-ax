@@ -20,8 +20,12 @@ export class SqliteJobStore implements JobStore {
 
   static async create(dbPath: string = dataFile('jobs.db')): Promise<SqliteJobStore> {
     const kyselyDb = createKyselyDb({ type: 'sqlite', path: dbPath });
-    await runMigrations(kyselyDb, jobsMigrations);
-    await kyselyDb.destroy();
+    try {
+      const result = await runMigrations(kyselyDb, jobsMigrations);
+      if (result.error) throw result.error;
+    } finally {
+      await kyselyDb.destroy();
+    }
     const db = openDatabase(dbPath);
     return new SqliteJobStore(db);
   }
