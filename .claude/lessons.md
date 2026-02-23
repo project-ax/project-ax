@@ -132,6 +132,12 @@
 **Lesson:** When modifying a prompt module's `render()` output, search for all tests that assert on that text: `grep -r "the old text" tests/`. Also check sandbox-isolation.test.ts (it reads source files), integration.test.ts (full builder test with hardcoded module counts and ordering), and stream-utils.test.ts (tests for helper functions that feed the module).
 **Tags:** testing, prompt-modules, integration-tests, sandbox-isolation
 
+### Flaky tests under full suite: check timing assumptions
+**Date:** 2026-02-23
+**Context:** Dedup window test used 5s window, but first message processing took 5-10s under load, so the window expired before the retry.
+**Lesson:** Tests that depend on time windows (dedup, debounce, rate limiting) must account for the full test processing time, not just the expected fast path. If a test creates a 5s window but the action inside that window takes 5-10s under CI load, the window will expire. Use generous windows (30s+) for correctness tests, or mock the clock. Similarly, integration tests that spawn processes need longer timeouts (60s+) when running alongside 1400+ other tests.
+**Tags:** testing, flaky, timeout, dedup, CI, timing
+
 ### When adding new prompt modules, update integration test module count
 **Date:** 2026-02-23
 **Context:** Adding memory-recall and tool-style modules changed the module count from 5 to 7 in the full prompt integration test

@@ -234,3 +234,13 @@
 **Files touched:** 12 source files modified/created, 6 template files modified/created, 9 test files modified/created
 **Outcome:** Success — zero type errors, 312 tests pass (2 pre-existing timeout failures in unrelated tests)
 **Notes:** Biggest optimization is progressive skill disclosure: ~24 tokens per skill instead of potentially thousands. Module count went from 7 to 9.
+
+## [2026-02-23 11:30] — Fix flaky CI tests (dedup window + smoke timeout)
+
+**Task:** Fix 2 flaky tests that fail when running the full suite but pass in isolation, causing CI failures
+**What I did:**
+1. **Dedup window test** (`tests/host/server.test.ts`): Increased `dedupeWindowMs` from 5000 to 30000. The first `messageHandler!` call runs the full LLM pipeline and takes 5-10s under CI load, so the 5s window expired before the retry delivery, making the test non-deterministic.
+2. **No-API-key smoke test** (`tests/integration/smoke.test.ts`): Increased test timeout from 20000 to 60000. Under full suite load, 20s wasn't enough for process spawn + IPC + response.
+**Files touched:** tests/host/server.test.ts, tests/integration/smoke.test.ts
+**Outcome:** Success — full suite: 1456 passed, 0 failed, 1 skipped
+**Notes:** Both failures were pre-existing (also fail on main). The dedup test failure was not a timeout but an assertion error — `sentMessages` had length 2 instead of 1 because the dedup window had already expired.
