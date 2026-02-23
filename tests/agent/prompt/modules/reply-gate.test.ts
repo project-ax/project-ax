@@ -36,4 +36,10 @@ describe('ReplyGateModule', () => {
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.join('\n')).toContain('may choose not to reply');
   });
+
+  test('render includes SILENT_REPLY instruction', () => {
+    const text = mod.render(makeCtx({ replyOptional: true })).join('\n');
+    expect(text).toContain('SILENT_REPLY');
+    expect(text).toContain('channel tool');
+  });
 });

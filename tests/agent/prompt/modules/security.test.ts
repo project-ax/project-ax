@@ -67,4 +67,15 @@ describe('SecurityModule', () => {
     expect(text).toContain('Identity Ownership');
     expect(text).toContain('audited');
   });
+
+  test('renderMinimal produces compact output with sandbox type', () => {
+    const mod = new SecurityModule();
+    const text = mod.renderMinimal!(makeContext({ sandboxType: 'docker' })).join('\n');
+    expect(text).toContain('## Security');
+    expect(text).toContain('No independent goals');
+    expect(text).toContain('docker');
+    expect(text).toContain('host-injected');
+    expect(text).toContain('tamper-evident');
+    expect(text.length).toBeLessThan(mod.render(makeContext()).join('\n').length);
+  });
 });

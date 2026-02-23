@@ -99,6 +99,23 @@ describe('loadIdentityFiles', () => {
     expect(files.heartbeat).toBe('');
   });
 
+  test('truncates identity files exceeding 65536 characters', () => {
+    const oversized = 'x'.repeat(70000);
+    writeFileSync(join(agentDir, 'SOUL.md'), oversized);
+
+    const files = loadIdentityFiles({ agentDir });
+    expect(files.soul.length).toBe(65536);
+    expect(files.soul).toBe('x'.repeat(65536));
+  });
+
+  test('does not truncate files within the character cap', () => {
+    const content = 'y'.repeat(65536);
+    writeFileSync(join(agentDir, 'AGENTS.md'), content);
+
+    const files = loadIdentityFiles({ agentDir });
+    expect(files.agents.length).toBe(65536);
+  });
+
   test('reads all identity files from single directory', () => {
     writeFileSync(join(agentDir, 'AGENTS.md'), '# Agents');
     writeFileSync(join(agentDir, 'BOOTSTRAP.md'), '# Bootstrap');

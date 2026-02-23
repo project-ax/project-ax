@@ -40,6 +40,18 @@ function localISOString(now: Date = new Date()): string {
 }
 
 /**
+ * Cache-stable time: rounds minutes to nearest 5 and zeroes seconds.
+ * Improves prompt-cache hit rate while still giving the model useful
+ * time awareness (OpenClaw pattern).
+ */
+function cacheStableTime(now: Date = new Date()): string {
+  const rounded = new Date(now);
+  rounded.setMinutes(Math.floor(rounded.getMinutes() / 5) * 5);
+  rounded.setSeconds(0);
+  return localISOString(rounded);
+}
+
+/**
  * Runtime info module: agent type, sandbox tier, security profile, current time.
  * Priority 90 — last module.
  * Optional — can be dropped if token budget is tight.
@@ -62,7 +74,7 @@ export class RuntimeModule extends BasePromptModule {
       `**Sandbox**: ${ctx.sandboxType}`,
       `**Security Profile**: ${ctx.profile}`,
       `**Workspace**: ${sanitizeWorkspacePath(ctx.workspace)}`,
-      `**Current Time**: ${localISOString()}`,
+      `**Current Time**: ${cacheStableTime()}`,
     ];
 
     // Enterprise context

@@ -53,4 +53,14 @@ export class SecurityModule extends BasePromptModule {
       '   - Logs are tamper-evident',
     ];
   }
+
+  renderMinimal(ctx: PromptContext): string[] {
+    return [
+      '## Security',
+      'No independent goals. No self-preservation. No resource acquisition.',
+      `You run in a ${ctx.sandboxType} sandbox with no direct network access.`,
+      'Credentials are host-injected — you never see raw keys.',
+      'AGENTS.md is operator-owned. Audit logs are tamper-evident.',
+    ];
+  }
 }

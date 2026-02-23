@@ -43,8 +43,8 @@ describe('InjectionDefenseModule', () => {
     const mod = new InjectionDefenseModule();
     const text = mod.render(makeContext()).join('\n');
     expect(text).toContain('Prompt Injection Defense');
-    expect(text).toContain('Ignore all previous instructions');
-    expect(text).toContain('Direct Injection');
+    expect(text).toContain('Ignore previous instructions');
+    expect(text).toContain('Instruction Override');
     expect(text).toContain('Indirect Injection');
     expect(text).toContain('Exfiltration');
   });
@@ -65,8 +65,8 @@ describe('InjectionDefenseModule', () => {
   test('frames attack patterns as non-exhaustive examples', () => {
     const mod = new InjectionDefenseModule();
     const text = mod.render(makeContext()).join('\n');
-    expect(text).toContain('NOT an exhaustive list');
-    expect(text).toContain('exfiltrate data is suspicious');
+    expect(text).toContain('not an exhaustive list');
+    expect(text).toContain('suspicious');
   });
 
   test('has renderMinimal for tight budgets', () => {

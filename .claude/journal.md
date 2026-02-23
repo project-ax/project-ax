@@ -217,3 +217,20 @@
 - New: tests/migrations/upgrade-path.test.ts
 **Outcome:** Success — 143 files, 1424 tests pass
 **Notes:** The ifNotExists() on createTable + createIndex handles most upgrade cases. ALTER TABLE ADD COLUMN has no IF NOT EXISTS equivalent in SQLite, so try-catch is the correct approach for that specific migration.
+
+## [2026-02-23 11:00] — Copy OpenClaw prompt optimizations into AX
+
+**Task:** Adopt OpenClaw's key prompt optimizations: progressive skill disclosure, memory recall, tool call narration, SILENT_REPLY, identity file cap, minimal renders, concise wording, and workspace templates.
+**What I did:**
+1. **Skills progressive disclosure**: Changed `SkillSummary` type (name+description+path) replacing `string[]`. Updated `loadSkills()` to extract H1 title + first paragraph. Rewrote `SkillsModule` to render compact table + `skill_read` instructions. Added `renderMinimal()`.
+2. **Memory recall module** (new, priority 60): Teaches agent to search memory before answering about prior work.
+3. **Tool style module** (new, priority 12): OpenClaw-style narration rules.
+4. **SILENT_REPLY**: Added to reply-gate and heartbeat modules.
+5. **Security renderMinimal()**: Compact 5-line version.
+6. **Identity file cap**: 65536 char limit with logger warning.
+7. **Cache-stable time**: Rounds minutes to nearest 5, zeroes seconds.
+8. **Injection defense wording**: Tightened attack recognition section.
+9. **Template files**: Rewrote AGENTS.md and BOOTSTRAP.md, created SOUL.md, IDENTITY.md, USER.md, TOOLS.md from OpenClaw templates.
+**Files touched:** 12 source files modified/created, 6 template files modified/created, 9 test files modified/created
+**Outcome:** Success — zero type errors, 312 tests pass (2 pre-existing timeout failures in unrelated tests)
+**Notes:** Biggest optimization is progressive skill disclosure: ~24 tokens per skill instead of potentially thousands. Module count went from 7 to 9.
