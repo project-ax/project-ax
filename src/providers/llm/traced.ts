@@ -26,6 +26,7 @@ export class TracedLLMProvider implements LLMProvider {
         'gen_ai.system': this.inner.name,
         'gen_ai.request.model': req.model,
         ...(req.maxTokens != null && { 'gen_ai.request.max_tokens': req.maxTokens }),
+        ...(req.sessionId && { 'session.id': req.sessionId }),
         ...(req.tools?.length && {
           'gen_ai.tool.count': req.tools.length,
           'gen_ai.request.tools': JSON.stringify(
