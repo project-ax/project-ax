@@ -114,6 +114,37 @@ describe('TracedLLMProvider', () => {
     });
   });
 
+  test('includes session.id attribute when sessionId is provided', async () => {
+    const req: ChatRequest = {
+      ...baseReq,
+      sessionId: 'main:cli:default',
+    };
+    const chunks: ChatChunk[] = [
+      { type: 'text', content: 'ok' },
+      { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } },
+    ];
+    const provider = new TracedLLMProvider(makeMockProvider(chunks), mockTracer);
+    await collectChunks(provider.chat(req));
+
+    expect(mockTracer.startSpan).toHaveBeenCalledWith('gen_ai.chat', {
+      attributes: expect.objectContaining({
+        'session.id': 'main:cli:default',
+      }),
+    });
+  });
+
+  test('omits session.id attribute when sessionId is not provided', async () => {
+    const chunks: ChatChunk[] = [
+      { type: 'text', content: 'ok' },
+      { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } },
+    ];
+    const provider = new TracedLLMProvider(makeMockProvider(chunks), mockTracer);
+    await collectChunks(provider.chat(baseReq));
+
+    const callArgs = (mockTracer.startSpan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs[1].attributes).not.toHaveProperty('session.id');
+  });
+
   test('records each input message as a span event', async () => {
     const chunks: ChatChunk[] = [
       { type: 'text', content: 'ok' },

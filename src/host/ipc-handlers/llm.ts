@@ -9,7 +9,7 @@ const logger = getLogger().child({ component: 'ipc' });
 
 export function createLLMHandlers(providers: ProviderRegistry, configModel?: string) {
   return {
-    llm_call: async (req: any) => {
+    llm_call: async (req: any, ctx: import('../ipc-server.js').IPCContext) => {
       logger.debug('llm_call_start', {
         model: configModel ?? req.model,
         maxTokens: req.maxTokens,
@@ -23,6 +23,7 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
         messages: req.messages,
         tools: req.tools,
         maxTokens: req.maxTokens,
+        sessionId: ctx.sessionId,
       })) {
         chunks.push(chunk);
       }

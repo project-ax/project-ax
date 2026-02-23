@@ -203,8 +203,15 @@ async function runServe(args: string[]): Promise<void> {
     configPath: resolvedConfigPath,
   });
 
-  // Clean up file watcher on shutdown
-  const cleanupAndExit = () => { reloadHandle.cleanup(); };
+  // Graceful shutdown on Ctrl+C / kill
+  let stopping = false;
+  const cleanupAndExit = async () => {
+    if (stopping) return;
+    stopping = true;
+    reloadHandle.cleanup();
+    await server.stop();
+    process.exit(0);
+  };
   process.on('SIGINT', cleanupAndExit);
   process.on('SIGTERM', cleanupAndExit);
 

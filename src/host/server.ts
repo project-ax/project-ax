@@ -35,7 +35,7 @@ import type { OpenAIChatRequest, OpenAIChatResponse, OpenAIStreamChunk } from '.
 import { processCompletion, type CompletionDeps } from './server-completions.js';
 import { cleanStaleWorkspaces } from './server-lifecycle.js';
 import { ChannelDeduplicator, registerChannelHandler, connectChannelWithRetry } from './server-channels.js';
-import { initTracing } from '../utils/tracing.js';
+import { initTracing, shutdownTracing } from '../utils/tracing.js';
 
 // =====================================================
 // Types
@@ -549,6 +549,9 @@ export async function createServer(
     try { sessionStore.close(); } catch {
       logger.debug('session_store_close_failed');
     }
+
+    // Flush and shut down OTel tracing
+    await shutdownTracing();
 
     // Clean up sockets
     try { unlinkSync(socketPath); } catch {

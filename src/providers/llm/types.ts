@@ -13,6 +13,8 @@ export interface ChatRequest {
   tools?: ToolDef[];
   maxTokens?: number;
   stream?: boolean;
+  /** Session ID for tracing backends (e.g. Langfuse session grouping). */
+  sessionId?: string;
 }
 
 export interface ChatChunk {
