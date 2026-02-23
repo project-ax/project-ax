@@ -34,6 +34,9 @@ export class ReplyGateModule implements PromptModule {
       '',
       'When in doubt, stay silent. Only speak when you add real value.',
       'To stay silent, output nothing (empty response).',
+      '',
+      'If you have already sent a response through a channel tool (e.g. `message_send`),',
+      'respond with exactly `SILENT_REPLY` to suppress duplicate output.',
       '</reply-gate>',
     ];
   }

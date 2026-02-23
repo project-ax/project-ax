@@ -87,7 +87,7 @@ describe('RuntimeModule', () => {
     expect(text).toContain('./workspace');
   });
 
-  test('renders current time as ISO 8601 with timezone offset', () => {
+  test('renders cache-stable time as ISO 8601 with timezone offset', () => {
     const mod = new RuntimeModule();
     const text = mod.render(makeContext()).join('\n');
     expect(text).toContain('**Current Time**:');
@@ -95,5 +95,18 @@ describe('RuntimeModule', () => {
     const match = text.match(/\*\*Current Time\*\*: (\S+)/);
     expect(match).not.toBeNull();
     expect(match![1]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
+
+  test('cache-stable time has seconds set to 00 and minutes rounded to 5', () => {
+    const mod = new RuntimeModule();
+    const text = mod.render(makeContext()).join('\n');
+    const match = text.match(/\*\*Current Time\*\*: \d{4}-\d{2}-\d{2}T\d{2}:(\d{2}):(\d{2})/);
+    expect(match).not.toBeNull();
+    const minutes = parseInt(match![1], 10);
+    const seconds = match![2];
+    // Minutes should be a multiple of 5
+    expect(minutes % 5).toBe(0);
+    // Seconds should always be 00
+    expect(seconds).toBe('00');
   });
 });

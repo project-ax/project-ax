@@ -27,6 +27,10 @@ export class HeartbeatModule extends BasePromptModule {
       '2. For each overdue item, take the appropriate action',
       '3. If nothing needs attention, respond with exactly: `HEARTBEAT_OK`',
       '',
+      'If you take an action via a channel tool during the heartbeat (e.g. send a',
+      'message, post a notification), respond with `SILENT_REPLY` instead of',
+      '`HEARTBEAT_OK` to suppress duplicate output.',
+      '',
       '### Your Heartbeat Checklist',
       '',
       ctx.identityFiles.heartbeat,
@@ -49,6 +53,7 @@ export class HeartbeatModule extends BasePromptModule {
     return [
       '## Heartbeat',
       'On heartbeat messages: check the list, act on overdue items, respond HEARTBEAT_OK if nothing needed.',
+      'If you act via a channel tool, respond SILENT_REPLY instead.',
       ctx.identityFiles.heartbeat,
     ];
   }

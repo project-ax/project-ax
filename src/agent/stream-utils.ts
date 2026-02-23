@@ -141,11 +141,47 @@ export function createLazyAnthropicClient(proxySocket: string): () => Promise<an
 
 // ── Filesystem helpers ───────────────────────────────────────────────
 
-/** Read markdown skill files from a directory, or empty array if missing. */
-export function loadSkills(skillsDir: string): string[] {
+import type { SkillSummary } from './prompt/types.js';
+
+/**
+ * Extract skill metadata from a markdown file for progressive disclosure.
+ * Takes the H1 title as the name and the first non-empty paragraph as the
+ * description. Falls back to the filename (without extension) if no H1 found.
+ */
+function extractSkillMeta(content: string, filename: string): { name: string; description: string } {
+  const lines = content.split('\n');
+  let name = filename.replace(/\.md$/i, '');
+  let description = '';
+
+  for (const line of lines) {
+    const h1Match = line.match(/^#\s+(.+)/);
+    if (h1Match && !name.includes('/')) {
+      name = h1Match[1].trim();
+      continue;
+    }
+    // First non-empty, non-heading line is the description
+    if (!description && line.trim() && !line.startsWith('#')) {
+      description = line.trim();
+      break;
+    }
+  }
+
+  return { name, description: description || 'No description' };
+}
+
+/**
+ * Read markdown skill files from a directory, returning compact summaries
+ * for progressive disclosure. The agent loads full content on demand via
+ * `skill_read`.
+ */
+export function loadSkills(skillsDir: string): SkillSummary[] {
   try {
     return readdirSync(skillsDir)
       .filter(f => f.endsWith('.md'))
-      .map(f => readFileSync(join(skillsDir, f), 'utf-8'));
+      .map(f => {
+        const content = readFileSync(join(skillsDir, f), 'utf-8');
+        const { name, description } = extractSkillMeta(content, f);
+        return { name, description, path: f };
+      });
   } catch { return []; }
 }

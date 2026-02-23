@@ -205,10 +205,14 @@ describe('system prompt uses relative paths', () => {
   // All three runners now use PromptBuilder, which delegates to SkillsModule.
   // Check that the module contains the relative path pattern.
 
-  test('SkillsModule uses ./skills, not absolute path', async () => {
+  test('SkillsModule uses skill_read for progressive disclosure, not absolute paths', async () => {
     const { readFileSync } = await import('node:fs');
     const source = readFileSync(resolve('src/agent/prompt/modules/skills.ts'), 'utf-8');
-    expect(source).toContain("Skills directory: ./skills");
+    // Progressive disclosure: module renders compact summaries, agent loads via skill_read
+    expect(source).toContain('skill_read');
+    // Must not embed absolute filesystem paths
+    expect(source).not.toMatch(/\/home\//);
+    expect(source).not.toMatch(/\/Users\//);
   });
 
   test('all runners use PromptBuilder for system prompt', async () => {

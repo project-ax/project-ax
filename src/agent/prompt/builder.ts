@@ -4,6 +4,8 @@ import { allocateModules } from './budget.js';
 import { IdentityModule } from './modules/identity.js';
 import { InjectionDefenseModule } from './modules/injection-defense.js';
 import { SecurityModule } from './modules/security.js';
+import { ToolStyleModule } from './modules/tool-style.js';
+import { MemoryRecallModule } from './modules/memory-recall.js';
 import { SkillsModule } from './modules/skills.js';
 import { HeartbeatModule } from './modules/heartbeat.js';
 import { RuntimeModule } from './modules/runtime.js';
@@ -34,6 +36,8 @@ export class PromptBuilder {
       new IdentityModule(),           // 0
       new InjectionDefenseModule(),   // 5
       new SecurityModule(),           // 10
+      new ToolStyleModule(),          // 12
+      new MemoryRecallModule(),       // 60
       new SkillsModule(),             // 70
       new HeartbeatModule(),          // 80
       new RuntimeModule(),            // 90

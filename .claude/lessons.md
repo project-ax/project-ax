@@ -125,3 +125,15 @@
 **Context:** Code review caught that create() factories discarded the migration result
 **Lesson:** `runMigrations()` returns `{ error }` instead of throwing. Always check `result.error` and throw it explicitly. Also wrap the Kysely lifecycle in try/finally to ensure `kyselyDb.destroy()` runs even on failure — otherwise you leak the connection.
 **Tags:** kysely, migrations, error-handling, resource-cleanup
+
+### Changing prompt module output breaks tests in multiple locations
+**Date:** 2026-02-23
+**Context:** Changing the skills module from full content to progressive disclosure broke tests in skills.test.ts, sandbox-isolation.test.ts, integration.test.ts, and stream-utils.test.ts
+**Lesson:** When modifying a prompt module's `render()` output, search for all tests that assert on that text: `grep -r "the old text" tests/`. Also check sandbox-isolation.test.ts (it reads source files), integration.test.ts (full builder test with hardcoded module counts and ordering), and stream-utils.test.ts (tests for helper functions that feed the module).
+**Tags:** testing, prompt-modules, integration-tests, sandbox-isolation
+
+### When adding new prompt modules, update integration test module count
+**Date:** 2026-02-23
+**Context:** Adding memory-recall and tool-style modules changed the module count from 5 to 7 in the full prompt integration test
+**Lesson:** `tests/agent/prompt/integration.test.ts` has a hardcoded `moduleCount` assertion and per-module token breakdown check. When adding new modules: (1) update the count, (2) add the new module's token check, (3) verify ordering assertions include the new module.
+**Tags:** testing, prompt-modules, integration-test, builder

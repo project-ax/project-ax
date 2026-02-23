@@ -2,6 +2,17 @@
 import type { AgentType } from '../../types.js';
 
 /**
+ * Compact skill metadata for progressive disclosure.
+ * Only the summary is injected into the system prompt; the agent calls
+ * `skill_read` to load full instructions on demand.
+ */
+export interface SkillSummary {
+  name: string;
+  description: string;
+  path: string;   // relative path to the skill markdown file
+}
+
+/**
  * Context passed to prompt modules during system prompt construction.
  * Derived from AgentConfig + host-provided taint state.
  */
@@ -9,7 +20,7 @@ export interface PromptContext {
   // Agent
   agentType: AgentType;
   workspace: string;
-  skills: string[];
+  skills: SkillSummary[];
 
   // Security (from host via stdin payload)
   profile: string;       // 'paranoid' | 'balanced' | 'yolo'

@@ -241,14 +241,20 @@ describe('loadSkills', () => {
   beforeEach(() => mkdirSync(tmpDir, { recursive: true }));
   afterEach(() => rmSync(tmpDir, { recursive: true, force: true }));
 
-  test('reads .md files from skills directory', () => {
-    writeFileSync(join(tmpDir, 'skill1.md'), 'skill one');
-    writeFileSync(join(tmpDir, 'skill2.md'), 'skill two');
+  test('reads .md files from skills directory as SkillSummary[]', () => {
+    writeFileSync(join(tmpDir, 'skill1.md'), '# Safety Check\nEnsures code safety.');
+    writeFileSync(join(tmpDir, 'skill2.md'), '# Memory Mgmt\nManages memory entries.');
     writeFileSync(join(tmpDir, 'readme.txt'), 'not a skill');
     const skills = loadSkills(tmpDir);
     expect(skills).toHaveLength(2);
-    expect(skills).toContain('skill one');
-    expect(skills).toContain('skill two');
+    // Returns SkillSummary objects, not raw strings
+    expect(skills[0]).toHaveProperty('name');
+    expect(skills[0]).toHaveProperty('description');
+    expect(skills[0]).toHaveProperty('path');
+    // Extracts H1 title
+    const names = skills.map(s => s.name);
+    expect(names).toContain('Safety Check');
+    expect(names).toContain('Memory Mgmt');
   });
 
   test('returns empty array when directory does not exist', () => {
