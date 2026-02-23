@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { createServer, type AxServer } from '../../src/host/server.js';
 import { loadConfig } from '../../src/config.js';
-import { workspaceDir } from '../../src/paths.js';
+import { workspaceDir, agentSkillsDir } from '../../src/paths.js';
 import type { ChannelProvider, InboundMessage, OutboundMessage, SessionAddress } from '../../src/providers/channel/types.js';
 
 /** Send an HTTP request over a Unix socket */
@@ -269,10 +269,10 @@ describe('Server', () => {
   });
 
   it('should copy skills into workspace, not expose host path', async () => {
-    // Create a skill file in the project skills directory
-    const skillsDir = join(process.cwd(), 'skills');
-    mkdirSync(skillsDir, { recursive: true });
-    const testSkillPath = join(skillsDir, '_test-skill.md');
+    // Create a skill file in the persistent skills directory (~/.ax/agents/main/agent/workspace/skills/)
+    const persistentSkillsDir = agentSkillsDir('main');
+    mkdirSync(persistentSkillsDir, { recursive: true });
+    const testSkillPath = join(persistentSkillsDir, '_test-skill.md');
     writeFileSync(testSkillPath, '# Test Skill\nThis is a test skill.');
 
     try {
@@ -298,8 +298,7 @@ describe('Server', () => {
       const wsSkills = readdirSync(wsSkillsDir);
       expect(wsSkills).toContain('_test-skill.md');
     } finally {
-      // Cleanup test skill
-      try { unlinkSync(testSkillPath); } catch { /* ignore */ }
+      // Cleanup handled by afterEach (testAxHome removal)
     }
   });
 

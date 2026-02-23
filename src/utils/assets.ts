@@ -3,7 +3,8 @@
  * import.meta.url so commands work from any working directory.
  *
  * provider-map.ts already does this right. This module applies the same
- * pattern to templates/, skills/, node_modules/.bin/tsx, and src/agent/runner.ts.
+ * pattern to templates/, node_modules/.bin/tsx, and src/agent/runner.ts.
+ * Also provides seedSkillsDir() for first-run skill seeding from project root.
  *
  * Override with AX_TEMPLATES_DIR, AX_SKILLS_DIR, AX_TSX_BIN, or
  * AX_RUNNER_PATH environment variables for non-standard layouts.
@@ -20,8 +21,8 @@ export function templatesDir(): string {
   return process.env.AX_TEMPLATES_DIR ?? join(PROJECT_ROOT, 'templates');
 }
 
-/** Absolute path to the skills/ directory. */
-export function skillsDir(): string {
+/** Absolute path to the seed skills/ directory (project root). Used for first-run seeding only. */
+export function seedSkillsDir(): string {
   return process.env.AX_SKILLS_DIR ?? join(PROJECT_ROOT, 'skills');
 }
 
