@@ -7,6 +7,9 @@ export interface ToolDef {
   parameters: Record<string, unknown>;
 }
 
+/** Callback to resolve an image file reference to its binary data. */
+export type ResolveImageFile = (fileId: string) => Promise<{ data: Buffer; mimeType: string } | null>;
+
 export interface ChatRequest {
   model: string;
   messages: Message[];
@@ -15,6 +18,8 @@ export interface ChatRequest {
   stream?: boolean;
   /** Session ID for tracing backends (e.g. Langfuse session grouping). */
   sessionId?: string;
+  /** Resolves image fileId references to binary data for LLM vision. */
+  resolveImageFile?: ResolveImageFile;
 }
 
 export interface ChatChunk {

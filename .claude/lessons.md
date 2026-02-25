@@ -154,3 +154,15 @@
 **Context:** A test assumed writing just SOUL.md would trigger bootstrap completion and delete BOOTSTRAP.md. It was wrong — `isAgentBootstrapMode` returns true until BOTH files exist.
 **Lesson:** When writing tests for multi-step completion logic (like bootstrap), always trace through the actual condition. `isAgentBootstrapMode` checks `!existsSync(SOUL.md) || !existsSync(IDENTITY.md)` — both must exist for it to return false. Tests must create both files before asserting completion behavior.
 **Tags:** bootstrap, testing, conditions, identity
+
+### Async toAnthropicContent requires Promise.all for message arrays
+**Date:** 2026-02-25
+**Context:** Making toAnthropicContent() async to resolve image file references
+**Lesson:** When converting a content mapping function from sync to async (e.g., to resolve file references), all callers that use `.map()` must be updated to `await Promise.all(messages.map(async ...))`. In the Anthropic provider, this means the `.chat()` method's message building loop needs Promise.all for both the message-level and content-block-level mapping.
+**Tags:** async, anthropic, llm, images, promise-all
+
+### Structured content serialization — use JSON detection on load
+**Date:** 2026-02-25
+**Context:** Storing ContentBlock[] in SQLite TEXT columns alongside plain string content
+**Lesson:** For backward-compatible structured content in SQLite TEXT columns: serialize arrays with JSON.stringify, leave strings as-is. On load, detect JSON arrays by checking if the string starts with `[` and parse accordingly. This avoids schema migrations and handles both old (plain text) and new (structured) data transparently.
+**Tags:** sqlite, content-blocks, serialization, conversation-store, backward-compatibility
