@@ -175,6 +175,11 @@ export function agentWorkspaceDir(agentId: string): string {
   return join(agentIdentityDir(agentId), 'workspace');
 }
 
+/** Path to an agent's skills directory: ~/.ax/agents/<agentId>/agent/workspace/skills/ */
+export function agentSkillsDir(agentId: string): string {
+  return join(agentWorkspaceDir(agentId), 'skills');
+}
+
 /**
  * Path to a user's workspace within an agent:
  * ~/.ax/agents/<agentId>/users/<userId>/workspace/

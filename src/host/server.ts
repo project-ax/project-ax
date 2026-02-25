@@ -11,11 +11,11 @@
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Server as NetServer } from 'node:net';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { axHome, dataDir, dataFile, isValidSessionId, agentDir as agentDirPath } from '../paths.js';
+import { axHome, dataDir, dataFile, isValidSessionId, agentDir as agentDirPath, agentSkillsDir } from '../paths.js';
 import type { Config, ProviderRegistry } from '../types.js';
 import type { InboundMessage } from '../providers/channel/types.js';
 import { ConversationStore } from '../conversation-store.js';
@@ -27,7 +27,7 @@ import { TaintBudget, thresholdForProfile } from './taint-budget.js';
 import { getLogger } from '../logger.js';
 import { SessionStore } from '../session-store.js';
 import { resolveDelivery } from './delivery.js';
-import { templatesDir as resolveTemplatesDir } from '../utils/assets.js';
+import { templatesDir as resolveTemplatesDir, seedSkillsDir as resolveSeedSkillsDir } from '../utils/assets.js';
 
 // Extracted modules
 import { sendError, sendSSEChunk, readBody } from './server-http.js';
@@ -161,6 +161,24 @@ export async function createServer(
     if (!existsSync(dest) && existsSync(src)) {
       copyFileSync(src, dest);
     }
+  }
+
+  // First-run: seed skills from <project-root>/skills/ into persistent ~/.ax location
+  const persistentSkillsDir = agentSkillsDir(agentName);
+  mkdirSync(persistentSkillsDir, { recursive: true });
+  try {
+    const existingSkills = readdirSync(persistentSkillsDir).filter(f => f.endsWith('.md'));
+    if (existingSkills.length === 0) {
+      const seedDir = resolveSeedSkillsDir();
+      if (existsSync(seedDir)) {
+        const seedFiles = readdirSync(seedDir).filter(f => f.endsWith('.md'));
+        for (const f of seedFiles) {
+          copyFileSync(join(seedDir, f), join(persistentSkillsDir, f));
+        }
+      }
+    }
+  } catch {
+    // Non-fatal: skills seeding failure shouldn't block server startup
   }
 
   // Default user ID for IPC context (not used for admin seeding)

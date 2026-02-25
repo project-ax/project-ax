@@ -1,12 +1,12 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { safePath } from '../../utils/safe-path.js';
+import { agentSkillsDir } from '../../paths.js';
 import type { SkillStoreProvider, SkillMeta, SkillProposal, ProposalResult, SkillLogEntry, LogOptions } from './types.js';
 import type { Config } from '../../types.js';
 
-const DEFAULT_SKILLS_DIR = 'skills';
-
 export async function create(_config: Config): Promise<SkillStoreProvider> {
-  const skillsDir = DEFAULT_SKILLS_DIR;
+  const skillsDir = agentSkillsDir('main');
+  mkdirSync(skillsDir, { recursive: true });
 
   return {
     async list(): Promise<SkillMeta[]> {

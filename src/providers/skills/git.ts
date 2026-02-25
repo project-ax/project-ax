@@ -14,6 +14,7 @@ import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, basename } from 'node:path';
 import { safePath } from '../../utils/safe-path.js';
+import { agentSkillsDir } from '../../paths.js';
 import type {
   SkillStoreProvider,
   SkillMeta,
@@ -85,7 +86,7 @@ interface PendingProposal {
 // ═══════════════════════════════════════════════════════
 
 export async function create(config: Config): Promise<SkillStoreProvider> {
-  const skillsDir = 'skills';
+  const skillsDir = agentSkillsDir('main');
   const gitDir = skillsDir;
 
   // Ensure skills directory exists

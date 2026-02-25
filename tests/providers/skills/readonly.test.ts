@@ -1,9 +1,37 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { create } from '../../../src/providers/skills/readonly.js';
+import { agentSkillsDir } from '../../../src/paths.js';
 import type { SkillStoreProvider } from '../../../src/providers/skills/types.js';
 import type { Config } from '../../../src/types.js';
 
 const config = {} as Config;
+
+let testHome: string;
+let originalHome: string | undefined;
+
+beforeEach(() => {
+  testHome = join(tmpdir(), `ax-readonly-test-${randomUUID()}`);
+  originalHome = process.env.AX_HOME;
+  process.env.AX_HOME = testHome;
+
+  // Create skills dir and seed a test skill
+  const skillsPath = agentSkillsDir('main');
+  mkdirSync(skillsPath, { recursive: true });
+  writeFileSync(join(skillsPath, 'default.md'), '# Default Skill\n\nA test default skill.');
+});
+
+afterEach(() => {
+  if (originalHome === undefined) {
+    delete process.env.AX_HOME;
+  } else {
+    process.env.AX_HOME = originalHome;
+  }
+  rmSync(testHome, { recursive: true, force: true });
+});
 
 describe('skills-readonly', () => {
   let skills: SkillStoreProvider;
@@ -12,10 +40,9 @@ describe('skills-readonly', () => {
     skills = await create(config);
   });
 
-  test('lists skills from skills/ directory', async () => {
+  test('lists skills from persistent skills directory', async () => {
     const list = await skills.list();
     expect(Array.isArray(list)).toBe(true);
-    // We have skills/default.md from Task 0.1
     expect(list.some(s => s.name === 'default')).toBe(true);
   });
 

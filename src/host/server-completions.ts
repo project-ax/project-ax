@@ -8,7 +8,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, 
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { isValidSessionId, workspaceDir, agentWorkspaceDir, userWorkspaceDir, scratchDir } from '../paths.js';
+import { isValidSessionId, workspaceDir, agentWorkspaceDir, agentSkillsDir, userWorkspaceDir, scratchDir } from '../paths.js';
 import type { Config, ProviderRegistry } from '../types.js';
 import type { InboundMessage } from '../providers/channel/types.js';
 import type { ConversationStore } from '../conversation-store.js';
@@ -19,7 +19,7 @@ import { type Logger, truncate } from '../logger.js';
 import { startAnthropicProxy } from './proxy.js';
 import { diagnoseError } from '../errors.js';
 import { ensureOAuthTokenFresh, refreshOAuthTokenFromEnv } from '../dotenv.js';
-import { skillsDir as resolveSkillsDir, tsxBin as resolveTsxBin, runnerPath as resolveRunnerPath } from '../utils/assets.js';
+import { tsxBin as resolveTsxBin, runnerPath as resolveRunnerPath } from '../utils/assets.js';
 import type { OpenAIChatRequest } from './server-http.js';
 
 // ── Agent spawn retry ──
@@ -126,9 +126,9 @@ export async function processCompletion(
       workspace = mkdtempSync(join(tmpdir(), 'ax-ws-'));
     }
     // Refresh skills into workspace before each agent spawn.
-    // Copies from host skills dir and removes stale files (reverted/deleted skills).
+    // Copies from persistent ~/.ax skills dir and removes stale files (reverted/deleted skills).
     // Runs every turn so skill_propose auto-approvals appear on the next turn.
-    const hostSkillsDir = resolveSkillsDir();
+    const hostSkillsDir = agentSkillsDir(config.agent_name ?? 'main');
     const wsSkillsDir = join(workspace, 'skills');
     mkdirSync(wsSkillsDir, { recursive: true });
     try {

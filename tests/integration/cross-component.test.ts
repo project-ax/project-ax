@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { createIPCHandler } from '../../src/host/ipc-server.js';
+import { agentSkillsDir } from '../../src/paths.js';
 import { resolveDelivery } from '../../src/host/delivery.js';
 import { IPC_SCHEMAS, VALID_ACTIONS } from '../../src/ipc-schemas.js';
 import { TOOL_CATALOG } from '../../src/agent/tool-catalog.js';
@@ -702,16 +703,20 @@ describe('Skill Self-Authoring Flow (Git Provider)', async () => {
   const { create } = await import('../../src/providers/skills/git.js');
 
   let tmpDir: string;
-  let originalCwd: string;
+  let originalAxHome: string | undefined;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ax-skill-'));
-    originalCwd = process.cwd();
-    process.chdir(tmpDir);
+    originalAxHome = process.env.AX_HOME;
+    process.env.AX_HOME = tmpDir;
   });
 
   afterEach(() => {
-    process.chdir(originalCwd);
+    if (originalAxHome === undefined) {
+      delete process.env.AX_HOME;
+    } else {
+      process.env.AX_HOME = originalAxHome;
+    }
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -827,7 +832,7 @@ describe('Skill Self-Authoring Flow (Git Provider)', async () => {
     // Get the actual git commit OID for the most recent commit (the auto-approve of temp-skill)
     const git = await import('isomorphic-git');
     const fs = await import('node:fs');
-    const gitLog = await git.log({ fs, dir: join(tmpDir, 'skills'), depth: 5 });
+    const gitLog = await git.log({ fs, dir: agentSkillsDir('main'), depth: 5 });
 
     // The most recent commit should be the auto-approve of temp-skill
     const commitToRevert = gitLog[0]!;

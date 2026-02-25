@@ -3,12 +3,12 @@ import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { agentSkillsDir } from '../../../src/paths.js';
 import type { SkillStoreProvider } from '../../../src/providers/skills/types.js';
 import type { Config } from '../../../src/types.js';
 
-// We need to run in a temp directory so skills/ is isolated
-let testDir: string;
-let originalCwd: string;
+let testHome: string;
+let originalHome: string | undefined;
 let provider: SkillStoreProvider;
 
 function mockConfig(): Config {
@@ -30,10 +30,10 @@ function mockConfig(): Config {
 }
 
 beforeEach(async () => {
-  testDir = join(tmpdir(), `ax-skills-git-test-${randomUUID()}`);
-  mkdirSync(testDir, { recursive: true });
-  originalCwd = process.cwd();
-  process.chdir(testDir);
+  testHome = join(tmpdir(), `ax-skills-git-test-${randomUUID()}`);
+  mkdirSync(testHome, { recursive: true });
+  originalHome = process.env.AX_HOME;
+  process.env.AX_HOME = testHome;
 
   // Dynamic import to create fresh provider each test
   const { create } = await import('../../../src/providers/skills/git.js');
@@ -41,9 +41,13 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  process.chdir(originalCwd);
-  if (existsSync(testDir)) {
-    rmSync(testDir, { recursive: true, force: true });
+  if (originalHome === undefined) {
+    delete process.env.AX_HOME;
+  } else {
+    process.env.AX_HOME = originalHome;
+  }
+  if (existsSync(testHome)) {
+    rmSync(testHome, { recursive: true, force: true });
   }
 });
 
@@ -51,8 +55,8 @@ describe('skills-git provider', () => {
 
   describe('list and read', () => {
     test('lists skill files', async () => {
-      // Create a skill file
-      writeFileSync(join(testDir, 'skills', 'greeting.md'), '# Greeting\nSay hello!');
+      const skillsPath = agentSkillsDir('main');
+      writeFileSync(join(skillsPath, 'greeting.md'), '# Greeting\nSay hello!');
 
       const skills = await provider.list();
       expect(skills).toHaveLength(1);
@@ -60,7 +64,8 @@ describe('skills-git provider', () => {
     });
 
     test('reads skill content', async () => {
-      writeFileSync(join(testDir, 'skills', 'helper.md'), '# Helper Skill\n\nDo helpful things.');
+      const skillsPath = agentSkillsDir('main');
+      writeFileSync(join(skillsPath, 'helper.md'), '# Helper Skill\n\nDo helpful things.');
 
       const content = await provider.read('helper');
       expect(content).toBe('# Helper Skill\n\nDo helpful things.');
@@ -302,7 +307,8 @@ describe('skills-git provider', () => {
       // Get the commit to revert (most recent)
       const git = await import('isomorphic-git');
       const fs = await import('node:fs');
-      const commits = await git.log({ fs, dir: join(testDir, 'skills'), depth: 5 });
+      const skillsPath = agentSkillsDir('main');
+      const commits = await git.log({ fs, dir: skillsPath, depth: 5 });
       const latestOid = commits[0].oid;
 
       // Revert it
