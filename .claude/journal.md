@@ -328,3 +328,43 @@
 - Modified tests: tests/sandbox-isolation.test.ts, tests/agent/tool-catalog.test.ts, tests/agent/ipc-tools.test.ts, tests/agent/mcp-server.test.ts
 **Outcome:** Success — 150 test files, 1491 tests pass (1 pre-existing skip)
 **Notes:** Key design decisions: (1) No base64 in chat messages — file references only, resolved at LLM call time. (2) Session-scoped file storage via existing workspaceDir(). (3) HTTP API uses raw binary body (not multipart) for simplicity. (4) Structured content backward-compatible — plain strings still work everywhere. (5) Agent-side binary writes use base64 encoding through IPC. (6) Slack integration reuses existing channel attachment infrastructure.
+
+## [2026-02-25 15:30] — Implement runner-configurable agent delegation
+
+**Task:** Make agent_delegate a first-class agent tool with configurable runner and model, wire the onDelegate callback in server.ts
+**What I did:**
+1. Extended `AgentDelegateSchema` in ipc-schemas.ts with `runner` (enum) and `model` fields
+2. Added `agent_delegate` to the tool catalog (TypeBox) and MCP server (Zod) — moved it from host-internal to agent-facing
+3. Created `DelegateRequest` interface in ipc-server.ts, refactored `onDelegate` callback from `(task, context, ctx)` to `(req: DelegateRequest, ctx)`
+4. Updated delegation handler to pass runner/model/maxTokens/timeoutSec through to onDelegate, and audit-log runner/model
+5. Wired `handleDelegate` callback in server.ts using processCompletion with config overrides for runner and model
+6. Added `delegation` config section to Config type and config schema (max_concurrent, max_depth)
+7. Updated all test files: unit tests (ipc-delegation), e2e tests (agent-delegation), integration tests (phase2), sync tests (tool-catalog-sync), count tests (5 files)
+8. Added 4 new tests: runner/model passing in unit and e2e, audit logging of runner/model, defaults-without-runner
+**Files touched:**
+- Modified: src/ipc-schemas.ts, src/types.ts, src/config.ts, src/host/ipc-server.ts, src/host/ipc-handlers/delegation.ts, src/host/server.ts, src/agent/tool-catalog.ts, src/agent/mcp-server.ts
+- Modified tests: tests/host/ipc-delegation.test.ts, tests/e2e/harness.ts, tests/e2e/scenarios/agent-delegation.test.ts, tests/integration/phase2.test.ts, tests/agent/tool-catalog-sync.test.ts, tests/agent/tool-catalog.test.ts, tests/agent/ipc-tools.test.ts, tests/agent/mcp-server.test.ts, tests/sandbox-isolation.test.ts
+**Outcome:** Success — 150/151 test files pass, 1515/1518 tests pass (2 pre-existing smoke test timeouts)
+**Notes:** The key design decision was making delegation go through IPC to the host (not in-process within the agent). This means a pi-coding-agent parent can delegate to a claude-code child, or vice versa. The host controls spawning, sandbox isolation is preserved, and depth/concurrency limits are enforced server-side. The half-built infrastructure (handler + schema existed, but no tool catalog entry and no wired callback) was completed with minimal new code.
+
+## [2026-02-25 16:28] — Add DelegationModule system prompt for agent_delegate
+
+**Task:** Add system prompt guidance so the LLM knows when/how to use agent_delegate, and recommend claude-code for coding tasks
+**What I did:**
+1. Created `DelegationModule` prompt module (priority 75, optional) with runner selection table recommending claude-code for coding tasks
+2. Registered it in builder.ts between SkillsModule (70) and HeartbeatModule (80)
+3. Added sync test verifying agent_delegate and claude-code are mentioned in the module output
+4. Updated integration test: module count 7→8, ordering check includes delegation, token breakdown check includes delegation
+**Files touched:**
+- New: src/agent/prompt/modules/delegation.ts
+- Modified: src/agent/prompt/builder.ts, tests/agent/tool-catalog-sync.test.ts, tests/agent/prompt/integration.test.ts
+**Outcome:** Success — 151/151 test files pass, 1518/1518 tests pass
+**Notes:** Module includes a runner selection table, parameter reference, and graceful error handling guidance. renderMinimal() provides a compact 4-line version for tight budgets.
+
+## [2026-02-25 16:33] — Add minimal-context guidance to DelegationModule
+
+**Task:** Tell the LLM to keep delegation context lean — no dumping SOUL.md or full conversation history
+**What I did:** Added "Writing good delegation calls" section to DelegationModule explaining that sub-agents only see task+context, with explicit "Do NOT paste your entire SOUL.md, IDENTITY.md, or conversation history" guidance and good/bad examples. Added sync test assertion.
+**Files touched:** src/agent/prompt/modules/delegation.ts, tests/agent/tool-catalog-sync.test.ts
+**Outcome:** Success — all tests pass
+**Notes:** Key insight: sub-agents go through processCompletion which rebuilds the full prompt (identity, security, etc.) from the child config. The parent doesn't need to re-inject any of that — just the task-specific context.

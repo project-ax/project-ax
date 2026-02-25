@@ -13,6 +13,7 @@ import { createIPCMcpServer } from '../../src/agent/mcp-server.js';
 import { HeartbeatModule } from '../../src/agent/prompt/modules/heartbeat.js';
 import { IdentityModule } from '../../src/agent/prompt/modules/identity.js';
 import { SkillsModule } from '../../src/agent/prompt/modules/skills.js';
+import { DelegationModule } from '../../src/agent/prompt/modules/delegation.js';
 import { IPC_SCHEMAS } from '../../src/ipc-schemas.js';
 import type { PromptContext } from '../../src/agent/prompt/types.js';
 import type { IPCClient } from '../../src/agent/ipc-client.js';
@@ -106,6 +107,17 @@ describe('tool-catalog ↔ system prompt sync', () => {
     expect(rendered, 'skill_propose missing from SkillsModule system prompt').toContain('skill_propose');
   });
 
+  test('agent_delegate tool is documented in DelegationModule', () => {
+    const mod = new DelegationModule();
+    const ctx = makePromptContext();
+    const rendered = mod.render(ctx).join('\n');
+    expect(rendered, 'agent_delegate missing from DelegationModule system prompt').toContain('agent_delegate');
+    // Should recommend claude-code for coding tasks
+    expect(rendered, 'DelegationModule should recommend claude-code for coding').toContain('claude-code');
+    // Should tell the LLM to keep context minimal
+    expect(rendered, 'DelegationModule should warn against dumping full identity').toContain('Do NOT paste');
+  });
+
   test('every identity/user tool in catalog is documented in IdentityModule', () => {
     const identityTools = TOOL_CATALOG.filter(t =>
       t.name === 'identity_write' || t.name === 'user_write'
@@ -133,7 +145,7 @@ describe('tool-catalog ↔ IPC schemas sync', () => {
 
   test('every IPC_SCHEMAS action has a corresponding tool in TOOL_CATALOG or is an internal-only action', () => {
     // Some IPC actions exist only in IPC_SCHEMAS without a tool catalog entry
-    // because they're host-internal (e.g. browser_*, skill_*, agent_delegate, llm_call).
+    // because they're host-internal (e.g. browser_*, llm_call).
     // The catalog contains agent-facing tools; IPC schemas cover all actions.
     // This test verifies that every CATALOG tool has a schema (no gaps in the other direction).
     const schemaActions = new Set(Object.keys(IPC_SCHEMAS));
@@ -145,12 +157,11 @@ describe('tool-catalog ↔ IPC schemas sync', () => {
     }
 
     // Every schema action should either be in the catalog OR be a known internal action
-    // (browser_*, skill_*, agent_delegate, llm_call are not agent-exposed tools)
+    // (browser_*, llm_call are not agent-exposed tools)
     const knownInternalActions = new Set([
       'llm_call',
       'browser_launch', 'browser_navigate', 'browser_snapshot',
       'browser_click', 'browser_type', 'browser_screenshot', 'browser_close',
-      'agent_delegate',
       // Enterprise admin-only actions (not in tool catalog, used via direct IPC)
       'proposal_review', 'agent_registry_get',
     ]);
