@@ -285,3 +285,12 @@
 **Context:** Manual 3-step Slack file upload (getUploadURLExternal → HTTP PUT → completeUploadExternal) silently failed — files uploaded but not shared to channel (mimetype: "", shares: {}, channels: []).
 **Lesson:** Slack's upload URL expects HTTP POST, not PUT. Using PUT causes the file to be created but not properly processed — no mimetype detection, no channel sharing. This is a known issue (bolt-js #2326). Always use the Slack SDK's `files.uploadV2()` method instead of implementing the 3-step flow manually. It handles POST correctly and wraps the entire flow. Use `initial_comment` to combine text + file as a single message.
 **Tags:** slack, file-upload, uploadV2, http-method, put-vs-post
+
+### AX has two separate workspace directories — session vs enterprise user
+**Date:** 2026-02-26
+**Context:** User reported generated image not found in workspace at `~/.ax/agents/main/users/vinay@canopyworks.com/workspace/`, but the `/v1/files/` URL was correct.
+**Lesson:** AX has TWO distinct workspace directories:
+1. **Session workspace** (`~/.ax/data/workspaces/<session-id-path>/`) — used by `workspaceDir(sessionId)` for file API, image persistence, and file download. Colon-separated IDs are split into nested dirs (e.g., `main:http:vinay@canopyworks.com:conv-001` → `main/http/vinay@canopyworks.com/conv-001/`).
+2. **Enterprise user workspace** (`~/.ax/agents/<name>/users/<userId>/workspace/`) — used by `agentUserDir()` for per-user agent state.
+Generated images from `image_generate` are persisted to the **session workspace**, NOT the enterprise user workspace. When debugging missing files, always check which workspace directory is being examined.
+**Tags:** workspaces, paths, session-id, images, debugging, file-api

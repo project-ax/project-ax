@@ -457,12 +457,12 @@ export async function createServer(
     const userId = chatReq.user?.split('/')[0] || undefined;
 
     // Process completion — pass structured content through
-    let { responseContent, contentBlocks, finishReason } = await processCompletion(
+    let { responseContent, contentBlocks, agentName: resultAgent, userId: resultUser, finishReason } = await processCompletion(
       completionDeps, content, requestId, chatReq.messages, sessionId,
       undefined, userId,
     );
-    if (contentBlocks?.some(b => b.type === 'image')) {
-      responseContent = rewriteImageUrls(responseContent, contentBlocks, sessionId);
+    if (contentBlocks?.some(b => b.type === 'image') && resultAgent && resultUser) {
+      responseContent = rewriteImageUrls(responseContent, contentBlocks, resultAgent, resultUser);
     }
 
     if (chatReq.stream) {

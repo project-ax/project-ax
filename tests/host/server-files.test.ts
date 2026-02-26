@@ -8,8 +8,7 @@ import { handleFileUpload, handleFileDownload } from '../../src/host/server-file
 let tmpDir: string;
 
 vi.mock('../../src/paths.js', () => ({
-  isValidSessionId: (id: string) => /^[a-zA-Z0-9_.:/-]+$/.test(id) && id.length > 0,
-  workspaceDir: (sessionId: string) => join(tmpDir, 'workspaces', sessionId.replace(/:/g, '_')),
+  userWorkspaceDir: (agent: string, user: string) => join(tmpDir, 'agents', agent, 'users', user, 'workspace'),
 }));
 
 // Helper: create a mock request
@@ -52,7 +51,7 @@ describe('File upload/download API', () => {
   describe('handleFileUpload', () => {
     test('uploads a PNG image and returns fileId', async () => {
       const imageData = Buffer.from('fake-png-data');
-      const req = mockRequest('POST', '/v1/files?session_id=test:cli:default', {
+      const req = mockRequest('POST', '/v1/files?agent=main&user=testuser', {
         'content-type': 'image/png',
       }, imageData);
       const res = mockResponse();
@@ -69,7 +68,7 @@ describe('File upload/download API', () => {
       expect(responseBody.size).toBe(imageData.length);
 
       // Verify file was actually written to disk
-      const wsDir = join(tmpDir, 'workspaces', 'test_cli_default');
+      const wsDir = join(tmpDir, 'agents', 'main', 'users', 'testuser', 'workspace');
       const filePath = join(wsDir, responseBody.fileId);
       expect(existsSync(filePath)).toBe(true);
       expect(readFileSync(filePath)).toEqual(imageData);
@@ -77,7 +76,7 @@ describe('File upload/download API', () => {
 
     test('uploads a JPEG image', async () => {
       const imageData = Buffer.from('fake-jpeg-data');
-      const req = mockRequest('POST', '/v1/files?session_id=test:cli:default', {
+      const req = mockRequest('POST', '/v1/files?agent=main&user=testuser', {
         'content-type': 'image/jpeg',
       }, imageData);
       const res = mockResponse();
@@ -89,7 +88,7 @@ describe('File upload/download API', () => {
       expect(responseBody.mimeType).toBe('image/jpeg');
     });
 
-    test('rejects missing session_id', async () => {
+    test('rejects missing agent/user params', async () => {
       const req = mockRequest('POST', '/v1/files', {
         'content-type': 'image/png',
       }, Buffer.from('data'));
@@ -101,7 +100,7 @@ describe('File upload/download API', () => {
     });
 
     test('rejects unsupported MIME type', async () => {
-      const req = mockRequest('POST', '/v1/files?session_id=test:cli:default', {
+      const req = mockRequest('POST', '/v1/files?agent=main&user=testuser', {
         'content-type': 'application/pdf',
       }, Buffer.from('data'));
       const res = mockResponse();
@@ -112,7 +111,7 @@ describe('File upload/download API', () => {
     });
 
     test('rejects empty body', async () => {
-      const req = mockRequest('POST', '/v1/files?session_id=test:cli:default', {
+      const req = mockRequest('POST', '/v1/files?agent=main&user=testuser', {
         'content-type': 'image/png',
       });
       const res = mockResponse();
@@ -127,7 +126,7 @@ describe('File upload/download API', () => {
     test('downloads an uploaded file', async () => {
       // First upload
       const imageData = Buffer.from('test-image-content');
-      const uploadReq = mockRequest('POST', '/v1/files?session_id=test:cli:default', {
+      const uploadReq = mockRequest('POST', '/v1/files?agent=main&user=testuser', {
         'content-type': 'image/png',
       }, imageData);
       const uploadRes = mockResponse();
@@ -136,7 +135,7 @@ describe('File upload/download API', () => {
       const { fileId } = JSON.parse(uploadRes.end.mock.calls[0][0]);
 
       // Now download
-      const downloadReq = mockRequest('GET', `/v1/files/${fileId}?session_id=test:cli:default`, {});
+      const downloadReq = mockRequest('GET', `/v1/files/${fileId}?agent=main&user=testuser`, {});
       const downloadRes = mockResponse();
       await handleFileDownload(downloadReq, downloadRes);
 
@@ -148,7 +147,7 @@ describe('File upload/download API', () => {
     });
 
     test('returns 404 for non-existent file', async () => {
-      const req = mockRequest('GET', '/v1/files/files/nonexistent.png?session_id=test:cli:default', {});
+      const req = mockRequest('GET', '/v1/files/files/nonexistent.png?agent=main&user=testuser', {});
       const res = mockResponse();
 
       await handleFileDownload(req, res);
@@ -156,7 +155,7 @@ describe('File upload/download API', () => {
       expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
     });
 
-    test('rejects missing session_id', async () => {
+    test('rejects missing agent/user params', async () => {
       const req = mockRequest('GET', '/v1/files/files/test.png', {});
       const res = mockResponse();
 
@@ -166,7 +165,7 @@ describe('File upload/download API', () => {
     });
 
     test('rejects missing file ID', async () => {
-      const req = mockRequest('GET', '/v1/files/?session_id=test:cli:default', {});
+      const req = mockRequest('GET', '/v1/files/?agent=main&user=testuser', {});
       const res = mockResponse();
 
       await handleFileDownload(req, res);

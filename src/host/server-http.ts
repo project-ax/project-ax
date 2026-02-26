@@ -66,22 +66,23 @@ export function sendSSEChunk(res: ServerResponse, chunk: OpenAIStreamChunk): voi
  *
  * Agents emit markdown like `![alt](generated-xxx.png)` but the bare filename
  * doesn't resolve over HTTP. This rewrites them to
- * `![alt](/v1/files/generated-xxx.png?session_id=...)` so clients can render
- * images in both streaming and non-streaming modes.
+ * `![alt](/v1/files/generated-xxx.png?agent=...&user=...)` so clients can
+ * render images in both streaming and non-streaming modes.
  *
  * Also normalises `[alt](file)` → `![alt](file)` (missing `!` prefix).
  */
 export function rewriteImageUrls(
   text: string,
   contentBlocks: ContentBlock[],
-  sessionId: string,
+  agentName: string,
+  userId: string,
 ): string {
   let result = text;
   for (const block of contentBlocks) {
     if (block.type === 'image') {
       const basename = block.fileId.split('/').pop() ?? block.fileId;
       const escaped = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const fileUrl = `/v1/files/${encodeURIComponent(block.fileId)}?session_id=${encodeURIComponent(sessionId)}`;
+      const fileUrl = `/v1/files/${encodeURIComponent(block.fileId)}?agent=${encodeURIComponent(agentName)}&user=${encodeURIComponent(userId)}`;
       // Match both ![alt](file) and [alt](file), normalise to ![alt](url)
       result = result.replace(
         new RegExp(`(!?\\[[^\\]]*\\])\\(${escaped}\\)`, 'g'),

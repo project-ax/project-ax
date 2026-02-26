@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { extractImageDataBlocks } from '../../src/host/server-completions.js';
 import { rewriteImageUrls } from '../../src/host/server-http.js';
 import { safePath } from '../../src/utils/safe-path.js';
+import { userWorkspaceDir } from '../../src/paths.js';
 import type { ContentBlock } from '../../src/types.js';
 
 describe('extractImageDataBlocks', () => {
@@ -91,9 +92,9 @@ describe('rewriteImageUrls', () => {
       { type: 'text', text: 'Here is the image:' },
       { type: 'image', fileId: 'generated-9ae8a563.png', mimeType: 'image/png' },
     ];
-    const result = rewriteImageUrls(text, blocks, 'sess-123');
+    const result = rewriteImageUrls(text, blocks, 'main', 'testuser');
     expect(result).toBe(
-      'Here is the image:\n\n![A cow sailing](/v1/files/generated-9ae8a563.png?session_id=sess-123)\n\nEnjoy!',
+      'Here is the image:\n\n![A cow sailing](/v1/files/generated-9ae8a563.png?agent=main&user=testuser)\n\nEnjoy!',
     );
   });
 
@@ -102,8 +103,8 @@ describe('rewriteImageUrls', () => {
     const blocks: ContentBlock[] = [
       { type: 'image', fileId: 'generated-9ae8a563.png', mimeType: 'image/png' },
     ];
-    const result = rewriteImageUrls(text, blocks, 'sess-123');
-    expect(result).toBe('![A cow sailing](/v1/files/generated-9ae8a563.png?session_id=sess-123)');
+    const result = rewriteImageUrls(text, blocks, 'main', 'testuser');
+    expect(result).toBe('![A cow sailing](/v1/files/generated-9ae8a563.png?agent=main&user=testuser)');
   });
 
   test('handles fileId with subdirectory prefix (files/xxx.png)', () => {
@@ -111,8 +112,8 @@ describe('rewriteImageUrls', () => {
     const blocks: ContentBlock[] = [
       { type: 'image', fileId: 'files/chart-001.png', mimeType: 'image/png' },
     ];
-    const result = rewriteImageUrls(text, blocks, 'sid');
-    expect(result).toBe('![chart](/v1/files/files%2Fchart-001.png?session_id=sid)');
+    const result = rewriteImageUrls(text, blocks, 'main', 'user1');
+    expect(result).toBe('![chart](/v1/files/files%2Fchart-001.png?agent=main&user=user1)');
   });
 
   test('rewrites multiple image references', () => {
@@ -121,9 +122,9 @@ describe('rewriteImageUrls', () => {
       { type: 'image', fileId: 'a.png', mimeType: 'image/png' },
       { type: 'image', fileId: 'b.jpg', mimeType: 'image/jpeg' },
     ];
-    const result = rewriteImageUrls(text, blocks, 's');
-    expect(result).toContain('![first](/v1/files/a.png?session_id=s)');
-    expect(result).toContain('![second](/v1/files/b.jpg?session_id=s)');
+    const result = rewriteImageUrls(text, blocks, 'main', 'user1');
+    expect(result).toContain('![first](/v1/files/a.png?agent=main&user=user1)');
+    expect(result).toContain('![second](/v1/files/b.jpg?agent=main&user=user1)');
   });
 
   test('leaves text unchanged when no image blocks', () => {
@@ -131,7 +132,7 @@ describe('rewriteImageUrls', () => {
     const blocks: ContentBlock[] = [
       { type: 'text', text: 'No images here.' },
     ];
-    const result = rewriteImageUrls(text, blocks, 'sess');
+    const result = rewriteImageUrls(text, blocks, 'main', 'user1');
     expect(result).toBe(text);
   });
 
@@ -140,10 +141,22 @@ describe('rewriteImageUrls', () => {
     const blocks: ContentBlock[] = [
       { type: 'image', fileId: 'generated-abc.png', mimeType: 'image/png' },
     ];
-    const result = rewriteImageUrls(text, blocks, 's');
+    const result = rewriteImageUrls(text, blocks, 'main', 'user1');
     // Should have exactly one !
-    expect(result).toBe('![cow](/v1/files/generated-abc.png?session_id=s)');
+    expect(result).toBe('![cow](/v1/files/generated-abc.png?agent=main&user=user1)');
     expect(result).not.toContain('!![');
+  });
+
+  test('encodes @ in userId for URL safety', () => {
+    const text = '![ocean](generated-xyz.png)';
+    const blocks: ContentBlock[] = [
+      { type: 'image', fileId: 'generated-xyz.png', mimeType: 'image/png' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 'main', 'vinay@canopyworks.com');
+    // @ should be percent-encoded in the user query param
+    expect(result).toBe(
+      '![ocean](/v1/files/generated-xyz.png?agent=main&user=vinay%40canopyworks.com)',
+    );
   });
 });
 
@@ -214,6 +227,46 @@ describe('generated image workspace persistence', () => {
       expect(readFileSync(downloadPath)).toEqual(imageData);
     } finally {
       rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test('persist + download paths align for enterprise user workspace with email userId', () => {
+    // This tests the exact scenario: user field "vinay@canopyworks.com/conv-001"
+    // Both persist and download resolve via userWorkspaceDir() to the same directory.
+    const originalAxHome = process.env.AX_HOME;
+    const testAxHome = mkdtempSync(join(tmpdir(), 'ax-test-'));
+    process.env.AX_HOME = testAxHome;
+    try {
+      const agentName = 'main';
+      const userId = 'vinay@canopyworks.com';
+      const imageData = Buffer.from('test-png-bytes');
+      const fileId = 'generated-a341d7ac.png';
+
+      // Persist path (from processCompletion — writes to userWorkspaceDir)
+      const workspace = userWorkspaceDir(agentName, userId);
+      mkdirSync(workspace, { recursive: true });
+      const persistPath = safePath(workspace, ...fileId.split('/').filter(Boolean));
+      mkdirSync(join(persistPath, '..'), { recursive: true });
+      writeFileSync(persistPath, imageData);
+
+      // Download path (from handleFileDownload — reads from userWorkspaceDir)
+      const downloadWsDir = userWorkspaceDir(agentName, userId);
+      const downloadPath = safePath(downloadWsDir, ...fileId.split('/').filter(Boolean));
+
+      // Both paths must be identical
+      expect(persistPath).toBe(downloadPath);
+      expect(existsSync(downloadPath)).toBe(true);
+      expect(readFileSync(downloadPath)).toEqual(imageData);
+
+      // Verify the enterprise user workspace directory structure
+      expect(workspace).toContain(join('agents', 'main', 'users', 'vinay@canopyworks.com', 'workspace'));
+    } finally {
+      if (originalAxHome !== undefined) {
+        process.env.AX_HOME = originalAxHome;
+      } else {
+        delete process.env.AX_HOME;
+      }
+      rmSync(testAxHome, { recursive: true, force: true });
     }
   });
 

@@ -56,6 +56,10 @@ export interface CompletionResult {
   contentBlocks?: ContentBlock[];
   /** Raw file buffers extracted from image_data blocks, keyed by fileId. */
   extractedFiles?: ExtractedFile[];
+  /** Agent name that processed this request (for file URL construction). */
+  agentName?: string;
+  /** User ID that owns the workspace (for file URL construction). */
+  userId?: string;
   finishReason: 'stop' | 'content_filter';
 }
 
@@ -523,7 +527,7 @@ export async function processCompletion(
         if (b.type === 'text') return { ...b, text: outbound.content };
         return b;
       });
-      const extracted = extractImageDataBlocks(withScannedText, workspace, reqLogger);
+      const extracted = extractImageDataBlocks(withScannedText, enterpriseUserWs, reqLogger);
       responseBlocks = extracted.blocks;
       if (extracted.extractedFiles.length > 0) {
         extractedFiles = extracted.extractedFiles;
@@ -535,6 +539,7 @@ export async function processCompletion(
     // The agent injects its session ID into IPC requests via _sessionId, so
     // images are stored under the real session ID (e.g. 'ch-d81c057a').
     const generatedImages = drainGeneratedImages(queued.session_id);
+    reqLogger.debug('image_drain', { sessionKey: queued.session_id, count: generatedImages.length });
     if (generatedImages.length > 0) {
       if (!extractedFiles) extractedFiles = [];
       if (!responseBlocks) responseBlocks = [{ type: 'text', text: outbound.content }];
@@ -542,15 +547,16 @@ export async function processCompletion(
         extractedFiles.push({ fileId: img.fileId, mimeType: img.mimeType, data: img.data });
         responseBlocks.push({ type: 'image', fileId: img.fileId, mimeType: img.mimeType as ImageMimeType });
       }
-      // Persist generated images to workspace so /v1/files/ can serve them later.
+      // Persist generated images to user workspace so /v1/files/ can serve them later.
       // Without this, image URLs return 404 after the in-memory drain.
       for (const img of generatedImages) {
         try {
-          const filePath = safePath(workspace, ...img.fileId.split('/').filter(Boolean));
+          const filePath = safePath(enterpriseUserWs, ...img.fileId.split('/').filter(Boolean));
           mkdirSync(join(filePath, '..'), { recursive: true });
           writeFileSync(filePath, img.data);
+          reqLogger.info('image_persisted', { fileId: img.fileId, path: filePath, bytes: img.data.length });
         } catch (err) {
-          reqLogger.warn('image_persist_failed', { fileId: img.fileId, error: (err as Error).message });
+          reqLogger.warn('image_persist_failed', { fileId: img.fileId, workspace: enterpriseUserWs, error: (err as Error).message });
         }
       }
     }
@@ -597,7 +603,7 @@ export async function processCompletion(
       scanVerdict: outbound.scanResult.verdict,
       hasContentBlocks: !!responseBlocks,
     });
-    return { responseContent: outbound.content, contentBlocks: responseBlocks, extractedFiles, finishReason };
+    return { responseContent: outbound.content, contentBlocks: responseBlocks, extractedFiles, agentName, userId: currentUserId, finishReason };
 
   } catch (err) {
     reqLogger.error('completion_error', {

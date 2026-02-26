@@ -9,7 +9,7 @@ import type { ChannelProvider, InboundMessage, Attachment } from '../providers/c
 import { canonicalize } from '../providers/channel/types.js';
 import type { ContentBlock, ImageMimeType } from '../types.js';
 import { IMAGE_MIME_TYPES } from '../types.js';
-import { workspaceDir } from '../paths.js';
+import { userWorkspaceDir } from '../paths.js';
 import { safePath } from '../utils/safe-path.js';
 import type { ConversationStore } from '../conversation-store.js';
 import type { SessionStore } from '../session-store.js';
@@ -238,7 +238,7 @@ export function registerChannelHandler(
       // Determine if reply is optional (LLM can choose not to respond)
       const replyOptional = !msg.isMention;
 
-      const { responseContent, contentBlocks, extractedFiles } = await processCompletion(
+      const { responseContent, contentBlocks, extractedFiles, agentName: resultAgent, userId: resultUser } = await processCompletion(
         completionDeps, messageContent, `ch-${randomUUID().slice(0, 8)}`, [], sessionId,
         { sessionId: result.sessionId, messageId: result.messageId!, canaryToken: result.canaryToken },
         msg.sender,
@@ -268,10 +268,10 @@ export function registerChannelHandler(
                   size: extracted.data.length,
                   content: extracted.data,
                 });
-              } else {
+              } else if (resultAgent && resultUser) {
                 // Fallback: read from disk (e.g. agent wrote file via workspace_write_file)
                 try {
-                  const wsDir = workspaceDir(sessionId);
+                  const wsDir = userWorkspaceDir(resultAgent, resultUser);
                   const segments = block.fileId.split('/').filter(Boolean);
                   const filePath = safePath(wsDir, ...segments);
                   const data = readFileSync(filePath);

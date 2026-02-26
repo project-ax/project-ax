@@ -614,3 +614,26 @@ Updated provider-map to point `openrouter` to the new provider instead of `opena
 **Files touched:** src/host/server-completions.ts, tests/host/server-completions-images.test.ts
 **Outcome:** Success — 278 host tests pass, TypeScript build clean
 **Notes:** The `image_data` path (inline agent output via `extractImageDataBlocks`) already wrote to workspace. Only the `image_generate` path was missing disk persistence.
+
+## [2026-02-26 10:35] — Migrate file storage from session workspace to enterprise user workspace
+
+**Task:** Move image persistence and file upload/download from session workspace (`workspaceDir(sessionId)`) to enterprise user workspace (`userWorkspaceDir(agentName, userId)`) so files are durable, discoverable across conversations, and tied to users rather than ephemeral session IDs.
+**What I did:**
+1. Updated `rewriteImageUrls` in server-http.ts: changed signature from `(text, blocks, sessionId)` to `(text, blocks, agentName, userId)`, URL template from `?session_id=` to `?agent=&user=`
+2. Updated server-completions.ts: added `agentName`/`userId` to `CompletionResult`, changed `extractImageDataBlocks` and generated image persistence to write to `enterpriseUserWs` instead of `workspace`
+3. Updated server.ts: destructure `agentName`/`userId` from processCompletion result, pass to `rewriteImageUrls`
+4. Updated server-files.ts: replaced `session_id` query param with `agent`+`user`, validate with `SAFE_NAME_RE`, use `userWorkspaceDir()` instead of `workspaceDir()`
+5. Updated server-channels.ts: fallback disk read uses `userWorkspaceDir(resultAgent, resultUser)` from processCompletion result
+6. Updated ipc-handlers/llm.ts: image resolver checks `userWorkspaceDir(ctx.agentId, ctx.userId)` first, falls back to `workspaceDir(ctx.sessionId)` for sandbox CWD files
+7. Updated 3 test files: assertions for new URL format, mock `userWorkspaceDir` instead of `workspaceDir`
+**Files touched:** src/host/server-http.ts, src/host/server-completions.ts, src/host/server.ts, src/host/server-files.ts, src/host/server-channels.ts, src/host/ipc-handlers/llm.ts, tests/host/server-completions-images.test.ts, tests/host/server-multimodal.test.ts, tests/host/server-files.test.ts
+**Outcome:** Success — 289 host tests pass, TypeScript build clean
+**Notes:** The `data/workspaces/` directory remains as agent sandbox CWD. The image resolver fallback ensures files written by agents to sandbox CWD during a session are still resolvable.
+
+## [2026-02-26 09:30] — Investigate missing generated images + add diagnostic logging
+
+**Task:** User reported generated images not appearing in workspace despite correct URL. The `/v1/files/` URL looked correct: `http://localhost:3000/v1/files/generated-a341d7ac.png?session_id=main%3Ahttp%3Avinay%40canopyworks.com%3A__LOCALID_syXRd79`
+**What I did:** Exhaustively traced the entire image pipeline from `image_generate` IPC through `pendingImages` storage, drain, persistence, to download handler. Verified that `safePath()` allows `@` and `.` characters, `workspaceDir()` correctly splits colon-separated IDs into nested directories, and the persist + download paths resolve to the same location. Root cause: user was looking in the enterprise user workspace (`~/.ax/agents/main/users/vinay@canopyworks.com/workspace/`) instead of the session workspace (`~/.ax/data/workspaces/main/http/vinay@canopyworks.com/__LOCALID_syXRd79/`). Added diagnostic logging: `image_drain` (count), `image_persisted` (fileId, path, bytes), `image_persist_failed` (workspace, error), `file_not_found` (fileId, sessionId, wsDir, filePath). Added 2 new tests: persist+download path alignment for colon-separated session IDs with email userId, and URL encoding of `@` and `:` in session IDs. Rewrote stale `server-multimodal.test.ts` to test current `rewriteImageUrls` behavior instead of old ContentPart[] approach.
+**Files touched:** src/host/server-completions.ts (logging), src/host/server-files.ts (logging), tests/host/server-completions-images.test.ts (2 new tests), tests/host/server-multimodal.test.ts (rewritten)
+**Outcome:** Success — all tests pass (17 image tests, 22 path tests, 4 multimodal tests), TypeScript build clean
+**Notes:** Two separate workspace directories exist in AX: session workspace (`workspaceDir()`) and enterprise user workspace (`agentUserDir()`). Images are persisted to session workspace. The code is correct — the user was checking the wrong directory.

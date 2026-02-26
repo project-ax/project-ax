@@ -6,7 +6,7 @@ import { extname } from 'node:path';
 import type { ProviderRegistry } from '../../types.js';
 import type { IPCContext } from '../ipc-server.js';
 import type { ResolveImageFile } from '../../providers/llm/types.js';
-import { workspaceDir } from '../../paths.js';
+import { userWorkspaceDir, workspaceDir } from '../../paths.js';
 import { safePath } from '../../utils/safe-path.js';
 import { getLogger } from '../../logger.js';
 
@@ -21,11 +21,24 @@ const EXT_TO_MIME: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-/** Create a file resolver that reads images from a session workspace. */
-function createImageResolver(sessionId: string): ResolveImageFile {
+/** Create a file resolver that reads images from user workspace (primary) or session workspace (fallback). */
+function createImageResolver(ctx: IPCContext): ResolveImageFile {
   return async (fileId: string) => {
-    const wsDir = workspaceDir(sessionId);
     const segments = fileId.split('/').filter(Boolean);
+
+    // Primary: check enterprise user workspace
+    if (ctx.agentId && ctx.userId) {
+      const userWsDir = userWorkspaceDir(ctx.agentId, ctx.userId);
+      const userPath = safePath(userWsDir, ...segments);
+      if (existsSync(userPath)) {
+        const ext = extname(userPath).toLowerCase();
+        const mimeType = EXT_TO_MIME[ext] ?? 'application/octet-stream';
+        return { data: readFileSync(userPath), mimeType };
+      }
+    }
+
+    // Fallback: session workspace (agent sandbox CWD)
+    const wsDir = workspaceDir(ctx.sessionId);
     const filePath = safePath(wsDir, ...segments);
     if (!existsSync(filePath)) return null;
     const ext = extname(filePath).toLowerCase();
@@ -45,7 +58,7 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
         toolNames: req.tools?.map((t: { name: string }) => t.name),
         messageCount: req.messages?.length ?? 0,
       });
-      const resolveImageFile = createImageResolver(ctx.sessionId);
+      const resolveImageFile = createImageResolver(ctx);
       const chunks: unknown[] = [];
       for await (const chunk of providers.llm.chat({
         model: req.model ?? 'claude-sonnet-4-20250514',

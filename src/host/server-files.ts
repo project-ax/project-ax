@@ -1,24 +1,27 @@
 /**
  * File upload/download API for the web UI.
  *
- * Stores files in the session workspace under a `files/` subdirectory.
+ * Stores files in the enterprise user workspace under a `files/` subdirectory.
  * Images referenced in chat messages use fileId values relative to the
  * workspace root (e.g. "files/abc123.png").
  *
  * Endpoints:
- *   POST /v1/files?session_id=<id>   — upload a file (raw binary body)
- *   GET  /v1/files/<fileId>?session_id=<id> — download a file
+ *   POST /v1/files?agent=<name>&user=<id>   — upload a file (raw binary body)
+ *   GET  /v1/files/<fileId>?agent=<name>&user=<id> — download a file
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { isValidSessionId, workspaceDir } from '../paths.js';
+import { userWorkspaceDir } from '../paths.js';
 import { safePath } from '../utils/safe-path.js';
 import { sendError } from './server-http.js';
 import type { ImageMimeType } from '../types.js';
 import { IMAGE_MIME_TYPES } from '../types.js';
+import { getLogger } from '../logger.js';
+
+const logger = getLogger().child({ component: 'files' });
 
 /** Max upload size: 10 MB. */
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -52,6 +55,9 @@ async function readBinaryBody(req: IncomingMessage, maxSize: number): Promise<Bu
   return Buffer.concat(chunks);
 }
 
+/** Valid name segment: alphanumeric, underscore, hyphen, dot, @ — same as paths.ts validatePathSegment. */
+const SAFE_NAME_RE = /^[a-zA-Z0-9_.@-]+$/;
+
 /** Extract a query parameter from a URL string. */
 function getQueryParam(url: string, name: string): string | undefined {
   const idx = url.indexOf('?');
@@ -61,7 +67,7 @@ function getQueryParam(url: string, name: string): string | undefined {
 }
 
 /**
- * Handle POST /v1/files — upload a file to the session workspace.
+ * Handle POST /v1/files — upload a file to the user workspace.
  *
  * Expects raw binary body with Content-Type header indicating MIME type.
  * Returns JSON: { fileId, mimeType, size }
@@ -71,10 +77,11 @@ export async function handleFileUpload(
   res: ServerResponse,
 ): Promise<void> {
   const url = req.url ?? '';
-  const sessionId = getQueryParam(url, 'session_id');
+  const agent = getQueryParam(url, 'agent');
+  const user = getQueryParam(url, 'user');
 
-  if (!sessionId || !isValidSessionId(sessionId)) {
-    sendError(res, 400, 'Missing or invalid session_id query parameter');
+  if (!agent || !SAFE_NAME_RE.test(agent) || !user || !SAFE_NAME_RE.test(user)) {
+    sendError(res, 400, 'Missing or invalid agent/user query parameters');
     return;
   }
 
@@ -102,7 +109,7 @@ export async function handleFileUpload(
   // Generate unique filename and store
   const ext = MIME_TO_EXT[contentType] ?? '.bin';
   const filename = `${randomUUID()}${ext}`;
-  const wsDir = workspaceDir(sessionId);
+  const wsDir = userWorkspaceDir(agent, user);
   const filesDir = safePath(wsDir, 'files');
   mkdirSync(filesDir, { recursive: true });
   const filePath = safePath(filesDir, filename);
@@ -118,19 +125,20 @@ export async function handleFileUpload(
 }
 
 /**
- * Handle GET /v1/files/<fileId> — download a file from the session workspace.
+ * Handle GET /v1/files/<fileId> — download a file from the user workspace.
  *
- * Requires session_id query parameter. Serves the file with correct Content-Type.
+ * Requires agent and user query parameters. Serves the file with correct Content-Type.
  */
 export async function handleFileDownload(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   const url = req.url ?? '';
-  const sessionId = getQueryParam(url, 'session_id');
+  const agent = getQueryParam(url, 'agent');
+  const user = getQueryParam(url, 'user');
 
-  if (!sessionId || !isValidSessionId(sessionId)) {
-    sendError(res, 400, 'Missing or invalid session_id query parameter');
+  if (!agent || !SAFE_NAME_RE.test(agent) || !user || !SAFE_NAME_RE.test(user)) {
+    sendError(res, 400, 'Missing or invalid agent/user query parameters');
     return;
   }
 
@@ -148,11 +156,12 @@ export async function handleFileDownload(
   }
 
   // Resolve file path safely
-  const wsDir = workspaceDir(sessionId);
+  const wsDir = userWorkspaceDir(agent, user);
   const segments = fileId.split('/').filter(Boolean);
   const filePath = safePath(wsDir, ...segments);
 
   if (!existsSync(filePath)) {
+    logger.debug('file_not_found', { fileId, agent, user, wsDir, filePath });
     sendError(res, 404, 'File not found');
     return;
   }
