@@ -490,6 +490,14 @@
 **Outcome:** Success — comprehensive summary produced covering all 7 requested research areas
 **Notes:** Key finding for AX: Claude Code's skill system is purely prompt-based (no code execution in the skill itself — scripts are run via Bash tool), while OpenClaw's ClawHub had catastrophic supply chain issues (341-1,184 malicious skills, 12-20% of registry). The Agent Skills open standard (agentskills.io) is cross-platform and worth tracking for AX compatibility. Claude Code's plugin system (.claude-plugin/plugin.json) handles distribution — something AX doesn't have yet.
 
+## [2026-02-26 03:27] — Make models.default optional for claude-code agents
+
+**Task:** Config validation rejected `models: { image: [...] }` without `models.default` — but claude-code agents don't use the LLM router and don't need default models
+**What I did:** Made `models.default` optional in both the Zod schema (`config.ts`) and the TypeScript type (`ModelMap` in `types.ts`). The LLM router already has a runtime check that throws if `models.default` is missing, and it's only loaded for non-claude-code agents (registry.ts loads 'anthropic' stub for claude-code, 'router' for others).
+**Files touched:** src/config.ts, src/types.ts
+**Outcome:** Success — all 1618 tests pass, TypeScript build clean
+**Notes:** `config.models?.default?.[0]` was already used with optional chaining in server.ts. The router's runtime check at router.ts:82 provides the safety net for non-claude-code agents.
+
 ## [2026-02-26 03:20] — Expose image_generate tool to agents
 
 **Task:** Agents couldn't generate images — the IPC handler existed but the tool wasn't exposed to any agent runner

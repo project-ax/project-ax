@@ -33,7 +33,7 @@ const ChannelAccessConfigSchema = z.object({
 const ConfigSchema = z.strictObject({
   agent: z.enum(AGENT_TYPES).optional().default('pi-agent-core'),
   models: z.strictObject({
-    default: z.array(z.string().min(1)).min(1),
+    default: z.array(z.string().min(1)).min(1).optional(),
     fast: z.array(z.string().min(1)).min(1).optional(),
     thinking: z.array(z.string().min(1)).min(1).optional(),
     coding: z.array(z.string().min(1)).min(1).optional(),

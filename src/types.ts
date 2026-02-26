@@ -51,9 +51,9 @@ export type ModelTaskType = typeof MODEL_TASK_TYPES[number];
 export const LLM_TASK_TYPES = ['default', 'fast', 'thinking', 'coding'] as const;
 export type LLMTaskType = typeof LLM_TASK_TYPES[number];
 
-/** Per-task-type model map. 'default' is required; all others fall back to it when missing. */
+/** Per-task-type model map. 'default' is required for router-based agents; optional for claude-code. */
 export interface ModelMap {
-  default: string[];
+  default?: string[];
   fast?: string[];
   thinking?: string[];
   coding?: string[];
