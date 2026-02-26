@@ -77,7 +77,7 @@ export function dataFile(...segments: string[]): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Valid segment: alphanumeric, underscore, hyphen, dot — all filesystem-safe. */
-const SEGMENT_RE = /^[a-zA-Z0-9_.\-]+$/;
+const SEGMENT_RE = /^[a-zA-Z0-9_.@\-]+$/;
 
 /**
  * Validate that a string is a valid session ID.
@@ -127,11 +127,11 @@ export function parseSessionId(id: string): string[] | null {
   return parts;
 }
 
-const SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+const SAFE_NAME_RE = /^[a-zA-Z0-9_.@-]+$/;
 
 function validatePathSegment(value: string, label: string): void {
   if (!value || !SAFE_NAME_RE.test(value)) {
-    throw new Error(`Invalid ${label}: must be alphanumeric/dash/underscore, got "${value}"`);
+    throw new Error(`Invalid ${label}: must be alphanumeric, dash, underscore, dot, or @, got "${value}"`);
   }
 }
 

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { extractImageDataBlocks } from '../../src/host/server-completions.js';
+import { rewriteImageUrls } from '../../src/host/server-http.js';
 import { safePath } from '../../src/utils/safe-path.js';
 import type { ContentBlock } from '../../src/types.js';
 
@@ -80,6 +81,69 @@ describe('extractImageDataBlocks', () => {
     } finally {
       rmSync(wsDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('rewriteImageUrls', () => {
+  test('rewrites ![alt](filename) to ![alt](/v1/files/...)', () => {
+    const text = 'Here is the image:\n\n![A cow sailing](generated-9ae8a563.png)\n\nEnjoy!';
+    const blocks: ContentBlock[] = [
+      { type: 'text', text: 'Here is the image:' },
+      { type: 'image', fileId: 'generated-9ae8a563.png', mimeType: 'image/png' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 'sess-123');
+    expect(result).toBe(
+      'Here is the image:\n\n![A cow sailing](/v1/files/generated-9ae8a563.png?session_id=sess-123)\n\nEnjoy!',
+    );
+  });
+
+  test('normalises [alt](filename) to ![alt](/v1/files/...) (missing ! prefix)', () => {
+    const text = '[A cow sailing](generated-9ae8a563.png)';
+    const blocks: ContentBlock[] = [
+      { type: 'image', fileId: 'generated-9ae8a563.png', mimeType: 'image/png' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 'sess-123');
+    expect(result).toBe('![A cow sailing](/v1/files/generated-9ae8a563.png?session_id=sess-123)');
+  });
+
+  test('handles fileId with subdirectory prefix (files/xxx.png)', () => {
+    const text = '![chart](chart-001.png)';
+    const blocks: ContentBlock[] = [
+      { type: 'image', fileId: 'files/chart-001.png', mimeType: 'image/png' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 'sid');
+    expect(result).toBe('![chart](/v1/files/files%2Fchart-001.png?session_id=sid)');
+  });
+
+  test('rewrites multiple image references', () => {
+    const text = '![first](a.png)\n\n![second](b.jpg)';
+    const blocks: ContentBlock[] = [
+      { type: 'image', fileId: 'a.png', mimeType: 'image/png' },
+      { type: 'image', fileId: 'b.jpg', mimeType: 'image/jpeg' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 's');
+    expect(result).toContain('![first](/v1/files/a.png?session_id=s)');
+    expect(result).toContain('![second](/v1/files/b.jpg?session_id=s)');
+  });
+
+  test('leaves text unchanged when no image blocks', () => {
+    const text = 'No images here. [a link](https://example.com)';
+    const blocks: ContentBlock[] = [
+      { type: 'text', text: 'No images here.' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 'sess');
+    expect(result).toBe(text);
+  });
+
+  test('does not double-prefix ! on already-correct syntax', () => {
+    const text = '![cow](generated-abc.png)';
+    const blocks: ContentBlock[] = [
+      { type: 'image', fileId: 'generated-abc.png', mimeType: 'image/png' },
+    ];
+    const result = rewriteImageUrls(text, blocks, 's');
+    // Should have exactly one !
+    expect(result).toBe('![cow](/v1/files/generated-abc.png?session_id=s)');
+    expect(result).not.toContain('!![');
   });
 });
 

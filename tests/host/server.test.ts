@@ -46,6 +46,46 @@ function sendRequest(
   });
 }
 
+/** Send an HTTP request over TCP to the server's TCP port */
+function sendTcpRequest(
+  server: AxServer,
+  path: string,
+  opts: { method?: string; body?: unknown } = {},
+): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+  const addr = server.tcpAddress;
+  if (!addr) throw new Error('Server has no TCP address');
+  return new Promise((resolve, reject) => {
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const req = httpRequest(
+      {
+        hostname: addr.host,
+        port: addr.port,
+        path,
+        method: opts.method ?? 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf-8'),
+            headers: res.headers,
+          });
+        });
+        res.on('error', reject);
+      },
+    );
+    req.on('error', reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
 describe('Server', () => {
   let server: AxServer;
   let socketPath: string;
@@ -87,6 +127,24 @@ describe('Server', () => {
     server = await createServer(config, { socketPath });
     await server.start();
     expect(server.listening).toBe(true);
+  });
+
+  it('should listen on TCP port when --port is specified', async () => {
+    const config = loadConfig('tests/integration/ax-test.yaml');
+    // Use port 0 to let the OS pick a free port
+    server = await createServer(config, { socketPath, port: 0 });
+    await server.start();
+    expect(server.listening).toBe(true);
+
+    // Also verify the Unix socket works
+    const socketRes = await sendRequest(socketPath, '/v1/models', { method: 'GET' });
+    expect(socketRes.status).toBe(200);
+
+    // Verify TCP endpoint works via the address on the server
+    const tcpRes = await sendTcpRequest(server, '/v1/models', { method: 'GET' });
+    expect(tcpRes.status).toBe(200);
+    const data = JSON.parse(tcpRes.body);
+    expect(data.object).toBe('list');
   });
 
   it('should remove stale socket on startup', async () => {
@@ -245,6 +303,26 @@ describe('Server', () => {
     expect(res.status).toBe(400);
     const data = JSON.parse(res.body);
     expect(data.error.message).toContain('session_id');
+  });
+
+  it('should derive persistent workspace from user field', async () => {
+    const config = loadConfig('tests/integration/ax-test.yaml');
+    server = await createServer(config, { socketPath });
+    await server.start();
+
+    const res = await sendRequest(socketPath, '/v1/chat/completions', {
+      body: {
+        messages: [{ role: 'user', content: 'hello' }],
+        model: 'agent:main',
+        user: 'alice/conv-001',
+      },
+    });
+
+    expect(res.status).toBe(200);
+
+    // Workspace should be created under the derived session ID: main:http:alice:conv-001
+    const wsDir = workspaceDir('main:http:alice:conv-001');
+    expect(existsSync(wsDir)).toBe(true);
   });
 
   it('should create persistent workspace when session_id is provided', async () => {

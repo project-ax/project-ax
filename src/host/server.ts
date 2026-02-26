@@ -5,7 +5,7 @@
  * (server-completions.ts), channel ingestion (server-channels.ts), and
  * lifecycle management (server-lifecycle.ts).
  *
- * Exposes OpenAI-compatible API over Unix socket.
+ * Exposes OpenAI-compatible API over Unix socket (and optionally TCP).
  */
 
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
@@ -30,7 +30,7 @@ import { resolveDelivery } from './delivery.js';
 import { templatesDir as resolveTemplatesDir, seedSkillsDir as resolveSeedSkillsDir } from '../utils/assets.js';
 
 // Extracted modules
-import { sendError, sendSSEChunk, readBody } from './server-http.js';
+import { sendError, sendSSEChunk, readBody, rewriteImageUrls } from './server-http.js';
 import type { OpenAIChatRequest, OpenAIChatResponse, OpenAIStreamChunk } from './server-http.js';
 import { processCompletion, type CompletionDeps } from './server-completions.js';
 import { cleanStaleWorkspaces } from './server-lifecycle.js';
@@ -44,6 +44,7 @@ import { handleFileUpload, handleFileDownload } from './server-files.js';
 
 export interface ServerOptions {
   socketPath?: string;
+  port?: number;
   daemon?: boolean;
   verbose?: boolean;
   channels?: import('../providers/channel/types.js').ChannelProvider[];
@@ -52,6 +53,8 @@ export interface ServerOptions {
 
 export interface AxServer {
   listening: boolean;
+  /** TCP address when --port is used (null otherwise). */
+  tcpAddress: { host: string; port: number } | null;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -277,6 +280,7 @@ export async function createServer(
   logger.info('ipc_server_started', { socket: ipcSocketPath });
 
   let httpServer: HttpServer | null = null;
+  let tcpServer: HttpServer | null = null;
   let listening = false;
   let draining = false;
 
@@ -424,14 +428,42 @@ export async function createServer(
 
     const requestModel = chatReq.model ?? modelId;
 
+    // Derive a stable session ID for the workspace.
+    // Priority: explicit session_id > user field (userId/conversationId) > random UUID.
+    // The user field follows the OpenAI convention: "<userId>/<conversationId>".
+    let sessionId = chatReq.session_id;
+    if (!sessionId && chatReq.user) {
+      const parts = chatReq.user.split('/');
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        // Extract agent name from model field (e.g. "agent:main" → "main")
+        const agentPrefix = chatReq.model?.startsWith('agent:')
+          ? chatReq.model.slice(6)
+          : 'main';
+        const candidate = `${agentPrefix}:http:${parts[0]}:${parts[1]}`;
+        if (isValidSessionId(candidate)) {
+          sessionId = candidate;
+        }
+      }
+    }
+    if (!sessionId) {
+      sessionId = randomUUID();
+    }
+
     // Extract last user message content (may be string or ContentBlock[])
     const lastMsg = chatReq.messages[chatReq.messages.length - 1];
     const content = lastMsg?.content ?? '';
 
+    // Extract userId from user field (first segment before /)
+    const userId = chatReq.user?.split('/')[0] || undefined;
+
     // Process completion — pass structured content through
-    const { responseContent, finishReason } = await processCompletion(
-      completionDeps, content, requestId, chatReq.messages, chatReq.session_id,
+    let { responseContent, contentBlocks, finishReason } = await processCompletion(
+      completionDeps, content, requestId, chatReq.messages, sessionId,
+      undefined, userId,
     );
+    if (contentBlocks?.some(b => b.type === 'image')) {
+      responseContent = rewriteImageUrls(responseContent, contentBlocks, sessionId);
+    }
 
     if (chatReq.stream) {
       // Streaming mode -- SSE
@@ -501,6 +533,18 @@ export async function createServer(
       });
       httpServer!.on('error', rejectP);
     });
+
+    // Optionally listen on a TCP port (for external clients like LM Studio)
+    if (opts.port != null) {
+      tcpServer = createHttpServer(handleRequest);
+      await new Promise<void>((resolveP, rejectP) => {
+        tcpServer!.listen(opts.port, '127.0.0.1', () => {
+          logger.info('server_listening_tcp', { port: opts.port });
+          resolveP();
+        });
+        tcpServer!.on('error', rejectP);
+      });
+    }
 
     // Start scheduler
     await providers.scheduler.start(async (msg: InboundMessage) => {
@@ -613,7 +657,15 @@ export async function createServer(
     // Stop scheduler
     await providers.scheduler.stop();
 
-    // Stop HTTP server
+    // Stop TCP server
+    if (tcpServer) {
+      await new Promise<void>((resolveP) => {
+        tcpServer!.close(() => resolveP());
+      });
+      tcpServer = null;
+    }
+
+    // Stop HTTP server (Unix socket)
     if (httpServer) {
       await new Promise<void>((resolveP) => {
         httpServer!.close(() => resolveP());
@@ -653,6 +705,12 @@ export async function createServer(
 
   return {
     get listening() { return listening; },
+    get tcpAddress() {
+      if (!tcpServer) return null;
+      const addr = tcpServer.address();
+      if (!addr || typeof addr === 'string') return null;
+      return { host: addr.address, port: addr.port };
+    },
     start: startServer,
     stop: stopServer,
   };

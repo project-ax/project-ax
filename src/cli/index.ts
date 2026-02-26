@@ -59,6 +59,7 @@ Usage:
 Server Options:
   --daemon               Run server in background
   --socket <path>        Unix socket path (default: ~/.ax/ax.sock)
+  --port <number>        Also listen on a TCP port (for external clients)
   --config <path>        Config file path (default: ~/.ax/ax.yaml)
   --verbose              Show tool calls and LLM turns in real-time
 
@@ -148,6 +149,7 @@ async function runServe(args: string[]): Promise<void> {
   let configPath: string | undefined;
   let daemon = false;
   let socketPath: string | undefined;
+  let port: number | undefined;
   let verbose = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -157,6 +159,13 @@ async function runServe(args: string[]): Promise<void> {
       daemon = true;
     } else if (args[i] === '--socket') {
       socketPath = args[++i];
+    } else if (args[i] === '--port' || args[i] === '-p') {
+      const raw = args[++i];
+      port = parseInt(raw, 10);
+      if (!Number.isFinite(port) || port < 1 || port > 65535) {
+        console.error(`Invalid port: ${raw}`);
+        process.exit(1);
+      }
     } else if (args[i] === '--verbose') {
       verbose = true;
     }
@@ -188,7 +197,7 @@ async function runServe(args: string[]): Promise<void> {
   let config = loadConfig(configPath);
   logger.info('config_loaded', { profile: config.profile });
 
-  const serverOpts = { socketPath, daemon, verbose };
+  const serverOpts = { socketPath, port, daemon, verbose };
   let server = await createServer(config, serverOpts);
   await server.start();
 

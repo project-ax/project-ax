@@ -111,6 +111,7 @@ describe('paths', () => {
     expect(isValidSessionId('main:slack:group:G12345')).toBe(true);
     expect(isValidSessionId('main:cli:project-x')).toBe(true);
     expect(isValidSessionId('agent_2:cli:my.project')).toBe(true);
+    expect(isValidSessionId('main:http:vinay@canopyworks.com:conv-001')).toBe(true);
   });
 
   test('isValidSessionId rejects invalid colon-separated IDs', () => {
@@ -134,6 +135,12 @@ describe('paths', () => {
   test('agentUserDir returns ~/.ax/agents/<name>/users/<userId>', () => {
     expect(agentUserDir('assistant', 'U12345')).toBe(
       join(axHome(), 'agents', 'assistant', 'users', 'U12345'),
+    );
+  });
+
+  test('agentUserDir accepts email addresses as userId', () => {
+    expect(agentUserDir('assistant', 'vinay@canopyworks.com')).toBe(
+      join(axHome(), 'agents', 'assistant', 'users', 'vinay@canopyworks.com'),
     );
   });
 
