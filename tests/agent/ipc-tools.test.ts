@@ -171,10 +171,10 @@ describe('ipc-tools', () => {
     expect(tools.find((t) => t.name === 'scheduler_list_jobs')).toBeDefined();
   });
 
-  test('total tool count is 25 without filter', () => {
+  test('total tool count is 27 without filter', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    expect(tools.length).toBe(25);
+    expect(tools.length).toBe(27);
   });
 
   test('filter excludes scheduler tools when hasHeartbeat is false', () => {

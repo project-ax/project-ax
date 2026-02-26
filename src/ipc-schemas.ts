@@ -54,6 +54,7 @@ const contentBlock = z.union([
 
 export const LlmCallSchema = ipcAction('llm_call', {
   model: safeString(128).optional(),
+  taskType: z.enum(['default', 'fast', 'thinking', 'coding']).optional(),
   messages: z.array(z.strictObject({
     role: z.enum(['user', 'assistant', 'system']),
     content: z.union([safeString(200_000), z.array(contentBlock)]),
@@ -65,6 +66,15 @@ export const LlmCallSchema = ipcAction('llm_call', {
   })).max(50).optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(200_000).optional(),
+});
+
+// ── Image Generation ────────────────────────────────
+
+export const ImageGenerateSchema = ipcAction('image_generate', {
+  prompt: safeString(10_000),
+  model: safeString(128).optional(),
+  size: safeString(32).optional(),
+  quality: safeString(32).optional(),
 });
 
 // ── Memory ───────────────────────────────────────────
@@ -148,6 +158,16 @@ export const SkillProposeSchema = ipcAction('skill_propose', {
   skill: safeString(200),
   content: safeString(100_000),
   reason: safeString(2000).optional(),
+});
+
+export const SkillImportSchema = ipcAction('skill_import', {
+  source: safeString(2048),
+  autoApprove: z.boolean().optional(),
+});
+
+export const SkillSearchSchema = ipcAction('skill_search', {
+  query: safeString(500),
+  limit: z.number().int().min(1).max(50).optional(),
 });
 
 // ── Audit ────────────────────────────────────────────

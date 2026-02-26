@@ -1,6 +1,8 @@
 profile: paranoid
 agent: pi-coding-agent
-model: mock/default
+models:
+  default:
+    - mock/default
 providers:
   memory: file
   scanner: basic

@@ -1,5 +1,35 @@
 # Lessons Learned
 
+### pi-agent-core only supports text — image blocks must bypass it
+**Date:** 2026-02-26
+**Context:** Debugging why Slack image attachments weren't visible to the LLM despite being downloaded and stored correctly.
+**Lesson:** pi-agent-core (`@mariozechner/pi-agent-core`) only handles text user messages. When the user message includes non-text content blocks (images), they must be extracted before entering pi-agent-core and injected into the IPC/LLM call messages separately. The injection point is in `createIPCStreamFn()` after `convertPiMessages()` runs — find the last user message with string content (the prompt, not tool results) and convert it to structured content with text + image blocks.
+**Tags:** pi-agent-core, images, ipc-transport, slack, vision
+
+### Popular OpenClaw skills use clawdbot alias, not openclaw
+**Date:** 2026-02-26
+**Context:** Implementing AgentSkills SKILL.md parser for gog, nano-banana-pro, and mcporter
+**Lesson:** Real-world SKILL.md files use `metadata.clawdbot` (not `metadata.openclaw`) for their requirements blocks. Always check all three aliases (openclaw, clawdbot, clawdis) when resolving metadata. The parser must handle all of them or it will miss requirements from the most popular skills.
+**Tags:** skills, parser, openclaw, clawdbot, compatibility
+
+### Many skills have no metadata block — static analysis is essential
+**Date:** 2026-02-26
+**Context:** Parsing nano-banana-pro SKILL.md which only has name+description in frontmatter
+**Lesson:** A significant fraction of real-world skills declare ZERO requirements in their YAML frontmatter. Their dependencies (binaries like `uv`, env vars like `GEMINI_API_KEY`, scripts like `scripts/generate_image.py`) are only mentioned in the markdown body or code blocks. The manifest generator's static analysis (regex scanning of body text and code blocks) is not optional — without it, these skills get empty manifests and are useless.
+**Tags:** skills, manifest-generator, static-analysis, nano-banana-pro
+
+### Tool count tests are scattered across many test files
+**Date:** 2026-02-26
+**Context:** Adding skill_import and skill_search tools caused failures in 5 different test files
+**Lesson:** When adding new IPC tools, expect to update hardcoded tool counts in: tests/agent/tool-catalog.test.ts, tests/agent/ipc-tools.test.ts, tests/agent/mcp-server.test.ts, tests/sandbox-isolation.test.ts, and tests/agent/tool-catalog-sync.test.ts. Search for the old count (e.g. "25") across all test files before committing.
+**Tags:** tools, testing, ipc, tool-catalog
+
+### OpenClaw's security failures validate AX's zero-trust architecture
+**Date:** 2026-02-25
+**Context:** Researching OpenClaw's ClawHavoc supply chain attack for skills architecture comparison
+**Lesson:** The ClawHavoc attack (824+ malicious skills on ClawHub) succeeded because: 1) no sandbox (skills run on host with full privileges), 2) no screening at upload time, 3) skills can bundle binaries added to PATH with no integrity verification, 4) no capability narrowing. AX's existing sandbox + IPC proxy + capabilities.yaml already prevents all of these attack vectors. When designing executable skills for AX, the sandbox is the runtime — binaries run inside it, not on the host. Untrusted skills must never be allowed to execute.
+**Tags:** skills, security, openclaw, sandbox, supply-chain, architecture
+
 ### Node.js fetch body does not accept Buffer in strict TypeScript
 **Date:** 2026-02-25
 **Context:** Passing `att.content` (a Buffer) as `body` to `fetch()` in the Slack provider caused TS2769 — `Buffer` is not assignable to `BodyInit`.
@@ -190,3 +220,21 @@
 **Context:** Changed onDelegate from `(task, context, ctx)` to `(req: DelegateRequest, ctx)` — tests broke in 4 locations
 **Lesson:** When changing an IPC handler callback signature, update: (1) ipc-server.ts (type definition), (2) delegation.ts (handler implementation), (3) harness.ts (HarnessOptions type), (4) all test files that pass the callback: unit tests, e2e tests, and integration tests. Grep for the old function name across all test directories.
 **Tags:** ipc, delegation, testing, callback-signatures, refactoring
+
+### Renaming a Config field has massive blast radius — check YAML fixtures too
+**Date:** 2026-02-26
+**Context:** Renamed `config.model` + `config.model_fallbacks` to `config.models` array. First test run after updating source had 8 test file failures because 6 YAML test fixtures and 2 inline test configs still used the old `model:` field. Zod strict mode rejected the unrecognized key.
+**Lesson:** When renaming a Config field: (1) grep all `.yaml` files under tests/ for the old field name, (2) grep all `.test.ts` files for inline config objects using the old name, (3) remember that Zod `.strict()` mode means any unrecognized key causes a hard failure — there's no graceful fallback. The YAML fixtures are especially easy to miss because they're data files, not code.
+**Tags:** config, testing, yaml, zod, strict-mode, rename-blast-radius
+
+### AgentConfig.model is NOT the same as Config.model — check the type before renaming
+**Date:** 2026-02-26
+**Context:** When renaming `Config.model` to `Config.models`, initially thought ALL `config.model` references needed updating. But `AgentConfig` in runner.ts has its own `model` field (agent-side model from CLI args) that is a completely different type.
+**Lesson:** Before bulk-renaming a field across the codebase, verify which TYPE each `config.model` reference belongs to. `Config` (from ax.yaml, host-side) and `AgentConfig` (from CLI args, agent-side) are different types with different `model` fields. Use TypeScript's type system or grep for the import to disambiguate.
+**Tags:** config, types, rename, agent-config, disambiguation
+
+### Mock LLM provider doesn't echo model names — use provider failures to verify routing
+**Date:** 2026-02-26
+**Context:** Writing tests for task-type model routing in the LLM router. Tried to verify which model chain was used by checking the mock provider's response text, but it returns static "Hello from mock LLM." regardless of model name.
+**Lesson:** To test that the router selects the correct model chain for a task type, set the "wrong" chain to a provider that will fail (e.g., `openai/gpt-4` without API key) and the "right" chain to mock. If routing is correct, the call succeeds; if wrong, it throws. This is more robust than trying to inspect response content.
+**Tags:** testing, llm-router, mock-provider, task-type-routing

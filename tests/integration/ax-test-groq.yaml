@@ -1,6 +1,8 @@
 profile: paranoid
 agent: pi-coding-agent
-model: groq/test-model
+models:
+  default:
+    - groq/test-model
 providers:
   memory: file
   scanner: basic

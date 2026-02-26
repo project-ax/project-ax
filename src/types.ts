@@ -1,6 +1,7 @@
 // src/types.ts — Shared cross-cutting types
 import type { ProfileName } from './onboarding/prompts.js';
 import type { LLMProvider } from './providers/llm/types.js';
+import type { ImageProvider } from './providers/image/types.js';
 import type { MemoryProvider } from './providers/memory/types.js';
 import type { ScannerProvider } from './providers/scanner/types.js';
 import type { ChannelProvider, ChannelAccessConfig } from './providers/channel/types.js';
@@ -42,12 +43,28 @@ export interface TaintTag {
 
 export type AgentType = 'pi-agent-core' | 'pi-coding-agent' | 'claude-code';
 
+/** Task types for model routing. All except 'default' are optional and fall back to 'default'. */
+export const MODEL_TASK_TYPES = ['default', 'fast', 'thinking', 'coding', 'image'] as const;
+export type ModelTaskType = typeof MODEL_TASK_TYPES[number];
+
+/** LLM-only task types (everything except 'image', which goes to the image router). */
+export const LLM_TASK_TYPES = ['default', 'fast', 'thinking', 'coding'] as const;
+export type LLMTaskType = typeof LLM_TASK_TYPES[number];
+
+/** Per-task-type model map. 'default' is required; all others fall back to it when missing. */
+export interface ModelMap {
+  default: string[];
+  fast?: string[];
+  thinking?: string[];
+  coding?: string[];
+  image?: string[];
+}
+
 export interface Config {
   agent?: AgentType;
   /** Enterprise agent name — used for registry and workspace paths. Defaults to 'main'. */
   agent_name?: string;
-  model?: string;
-  model_fallbacks?: string[];
+  models?: ModelMap;
   max_tokens?: number;
   profile: ProfileName;
   providers: {
@@ -93,6 +110,7 @@ export interface Config {
 
 export interface ProviderRegistry {
   llm: LLMProvider;
+  image?: ImageProvider;
   memory: MemoryProvider;
   scanner: ScannerProvider;
   channels: ChannelProvider[];
