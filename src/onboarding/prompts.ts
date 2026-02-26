@@ -141,6 +141,32 @@ export const DEFAULT_MODELS: Record<LLMProviderChoice, string> = {
   groq: 'llama-3.3-70b-versatile',
 };
 
+// ── Image Provider ──
+
+export const IMAGE_PROVIDERS = ['openai', 'openrouter', 'gemini', 'groq'] as const;
+export type ImageProviderChoice = (typeof IMAGE_PROVIDERS)[number];
+
+export const IMAGE_PROVIDER_DISPLAY_NAMES: Record<ImageProviderChoice, string> = {
+  openai: 'OpenAI',
+  openrouter: 'OpenRouter',
+  gemini: 'Google Gemini',
+  groq: 'Groq',
+};
+
+export const IMAGE_PROVIDER_DESCRIPTIONS: Record<ImageProviderChoice, string> = {
+  openai: 'DALL-E and GPT Image models',
+  openrouter: 'Image generation via OpenRouter (Gemini, Flux, etc.)',
+  gemini: 'Gemini image generation models',
+  groq: 'Image generation via Groq',
+};
+
+export const DEFAULT_IMAGE_MODELS: Record<ImageProviderChoice, string> = {
+  openai: 'gpt-image-1',
+  openrouter: 'google/gemini-3-pro-image-preview',
+  gemini: 'gemini-2.0-flash-exp',
+  groq: 'playai/play-image-gen-large',
+};
+
 /** Available provider choices per category, derived from the provider map. */
 export const PROVIDER_CHOICES = {
   memory: ['file', 'sqlite'],

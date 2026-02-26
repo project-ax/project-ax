@@ -129,6 +129,18 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
     }
 
     const actionName = envelope.data.action;
+
+    // If the agent included a _sessionId, use it to scope this request
+    // (e.g. for per-session image generation tracking).
+    // Strip _sessionId before schema validation — strictObject schemas reject unknown fields.
+    const requestSessionId = (parsed as Record<string, unknown>)._sessionId;
+    if (requestSessionId !== undefined) {
+      delete (parsed as Record<string, unknown>)._sessionId;
+    }
+    const effectiveCtx = typeof requestSessionId === 'string'
+      ? { ...ctx, sessionId: requestSessionId }
+      : ctx;
+
     logger.debug('action_parsed', { action: actionName });
 
     // Step 3: Validate action-specific schema (strict mode)
@@ -138,7 +150,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       logger.debug('validation_failed', { action: actionName, errors: validated.error?.message });
       await providers.audit.log({
         action: 'ipc_validation_failure',
-        sessionId: ctx.sessionId,
+        sessionId: effectiveCtx.sessionId,
         args: { ipcAction: actionName, rawPreview: raw.slice(0, 500) },
         result: 'blocked',
       });
@@ -151,12 +163,12 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
     // Step 3.5: Taint budget check (SC-SEC-003)
     // identity_write has custom taint handling (queues instead of hard-blocking)
     if (taintBudget && actionName !== 'identity_write' && actionName !== 'user_write' && actionName !== 'identity_propose') {
-      const taintCheck = taintBudget.checkAction(ctx.sessionId, actionName);
+      const taintCheck = taintBudget.checkAction(effectiveCtx.sessionId, actionName);
       if (!taintCheck.allowed) {
         logger.debug('taint_blocked', { action: actionName, taintRatio: taintCheck.taintRatio });
         await providers.audit.log({
           action: 'ipc_taint_blocked',
-          sessionId: ctx.sessionId,
+          sessionId: effectiveCtx.sessionId,
           args: {
             ipcAction: actionName,
             taintRatio: taintCheck.taintRatio,
@@ -185,7 +197,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
 
       // Race the handler against a timeout to prevent hung handlers from
       // blocking the IPC server indefinitely (safety net).
-      const handlerPromise = handler(validated.data, ctx);
+      const handlerPromise = handler(validated.data, effectiveCtx);
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`IPC handler "${actionName}" timed out after ${IPC_HANDLER_TIMEOUT_MS}ms`)), IPC_HANDLER_TIMEOUT_MS);
       });
@@ -200,7 +212,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       });
       await providers.audit.log({
         action: actionName,
-        sessionId: ctx.sessionId,
+        sessionId: effectiveCtx.sessionId,
         args: {},
         result: 'success',
         durationMs,
@@ -216,7 +228,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       });
       await providers.audit.log({
         action: 'ipc_handler_error',
-        sessionId: ctx.sessionId,
+        sessionId: effectiveCtx.sessionId,
         args: { ipcAction: actionName, error: String(err) },
         result: 'error',
       });

@@ -33,6 +33,7 @@ export interface OnboardingAnswers {
   webSearchApiKey?: string;
   slackBotToken?: string;
   slackAppToken?: string;
+  imageModel?: string;
 }
 
 export interface OnboardingOptions {
@@ -81,7 +82,12 @@ export async function runOnboarding(opts: OnboardingOptions): Promise<void> {
   // Build full config
   const config: Record<string, unknown> = {
     agent: answers.agent ?? defaults.agent,
-    ...(answers.model ? { models: { default: [answers.model] } } : {}),
+    ...(() => {
+      const models: Record<string, string[]> = {};
+      if (answers.model) models.default = [answers.model];
+      if (answers.imageModel) models.image = [answers.imageModel];
+      return Object.keys(models).length > 0 ? { models } : {};
+    })(),
     profile: answers.profile,
     providers,
     ...(Object.keys(channelConfig).length > 0 ? { channel_config: channelConfig } : {}),
@@ -155,6 +161,9 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
     const model: string | undefined = defaultModels?.[0];
     const llmProvider: string | undefined = model ? model.split('/')[0] : undefined;
 
+    // Read image model (stored as "provider/model-name" in models.image)
+    const imageModel: string | undefined = parsed.models?.image?.[0];
+
     // Read secrets from .env if it exists
     let apiKey = '';
     let credsPassphrase: string | undefined;
@@ -211,6 +220,7 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
       webSearchApiKey,
       slackBotToken,
       slackAppToken,
+      imageModel,
     };
   } catch {
     return null;

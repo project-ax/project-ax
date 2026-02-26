@@ -16,7 +16,6 @@ const logger = getLogger().child({ component: 'openai-images' });
 const DEFAULT_BASE_URLS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
   groq: 'https://api.groq.com/openai/v1',
-  openrouter: 'https://openrouter.ai/api/v1',
   fireworks: 'https://api.fireworks.ai/inference/v1',
 };
 

@@ -291,14 +291,36 @@ export function registerChannelHandler(
             }
           }
         }
+        // Strip markdown image references for files being uploaded as attachments.
+        // Agents emit ![alt](generated-xxx.png) but Slack/channels don't render markdown
+        // images — the actual file is uploaded separately via the attachment flow.
+        let finalContent = responseContent;
+        if (outboundAttachments.length > 0) {
+          const attachedFilenames = new Set(outboundAttachments.map(a => a.filename));
+          finalContent = finalContent.replace(
+            /!\[[^\]]*\]\(([^)]+)\)/g,
+            (_match, src: string) => {
+              const basename = src.split('/').pop() ?? src;
+              return attachedFilenames.has(basename) ? '' : _match;
+            },
+          );
+          // Clean up leftover blank lines from stripped references
+          finalContent = finalContent.replace(/\n{3,}/g, '\n\n').trim();
+        }
         await channel.send(msg.session, {
-          content: responseContent,
+          content: finalContent,
           ...(outboundAttachments.length > 0 ? { attachments: outboundAttachments } : {}),
         });
       }
 
       // Track last channel session for "last" delivery target resolution
       sessionStore.trackSession(agentName, msg.session);
+    } catch (err) {
+      logger.error('channel_response_failed', {
+        provider: channel.name,
+        error: (err as Error).message,
+        stack: (err as Error).stack,
+      });
     } finally {
       // Remove eyes emoji regardless of outcome
       if (channel.removeReaction) {

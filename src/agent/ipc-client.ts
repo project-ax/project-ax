@@ -12,12 +12,15 @@ export interface IPCClientOptions {
   timeoutMs?: number;
   /** Maximum reconnection attempts on connection loss. Default: 3. */
   maxReconnectAttempts?: number;
+  /** Session ID included in every IPC request for host-side scoping. */
+  sessionId?: string;
 }
 
 export class IPCClient {
   private socketPath: string;
   private timeoutMs: number;
   private maxReconnectAttempts: number;
+  private sessionId?: string;
   private socket: Socket | null = null;
   private connected = false;
 
@@ -25,6 +28,7 @@ export class IPCClient {
     this.socketPath = opts.socketPath;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxReconnectAttempts = opts.maxReconnectAttempts ?? MAX_RECONNECT_ATTEMPTS;
+    this.sessionId = opts.sessionId;
   }
 
   async connect(): Promise<void> {
@@ -102,7 +106,8 @@ export class IPCClient {
     const action = request.action as string ?? 'unknown';
     const callStart = Date.now();
     const socket = this.socket!;
-    const payload = Buffer.from(JSON.stringify(request), 'utf-8');
+    const enriched = this.sessionId ? { ...request, _sessionId: this.sessionId } : request;
+    const payload = Buffer.from(JSON.stringify(enriched), 'utf-8');
     const lenBuf = Buffer.alloc(4);
     lenBuf.writeUInt32BE(payload.length, 0);
 

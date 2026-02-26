@@ -710,6 +710,133 @@ describe('Onboarding Wizard', () => {
     expect(existing!.llmProvider).toBe('groq');
   });
 
+  // ── Image model selection ──
+
+  test('writes image model to ax.yaml models.image array', async () => {
+    const dir = setup();
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        agent: 'pi-agent-core',
+        model: 'anthropic/claude-sonnet-4-20250514',
+        imageModel: 'openai/gpt-image-1',
+        apiKey: 'sk-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const config = parseYaml(readFileSync(join(dir, 'ax.yaml'), 'utf-8'));
+    expect(config.models.image).toEqual(['openai/gpt-image-1']);
+    expect(config.models.default).toEqual(['anthropic/claude-sonnet-4-20250514']);
+  });
+
+  test('writes image model alongside default model (both present)', async () => {
+    const dir = setup();
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        agent: 'pi-agent-core',
+        model: 'openrouter/anthropic/claude-sonnet-4',
+        imageModel: 'openrouter/google/gemini-2.5-flash-preview-image-generation',
+        llmProvider: 'openrouter',
+        apiKey: 'or-key-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const config = parseYaml(readFileSync(join(dir, 'ax.yaml'), 'utf-8'));
+    expect(config.models).toEqual({
+      default: ['openrouter/anthropic/claude-sonnet-4'],
+      image: ['openrouter/google/gemini-2.5-flash-preview-image-generation'],
+    });
+  });
+
+  test('writes image model only (no default, for claude-code)', async () => {
+    const dir = setup();
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        agent: 'claude-code',
+        imageModel: 'openai/gpt-image-1',
+        apiKey: 'sk-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const config = parseYaml(readFileSync(join(dir, 'ax.yaml'), 'utf-8'));
+    expect(config.models).toEqual({ image: ['openai/gpt-image-1'] });
+  });
+
+  test('omits models when neither default nor image model set', async () => {
+    const dir = setup();
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        agent: 'claude-code',
+        apiKey: 'sk-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const config = parseYaml(readFileSync(join(dir, 'ax.yaml'), 'utf-8'));
+    expect(config.models).toBeUndefined();
+  });
+
+  test('loadExistingConfig reads back image model', async () => {
+    const { loadExistingConfig } = await import('../../src/onboarding/wizard.js');
+    const dir = setup();
+
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        agent: 'pi-agent-core',
+        model: 'anthropic/claude-sonnet-4-20250514',
+        imageModel: 'gemini/gemini-2.0-flash-exp',
+        apiKey: 'sk-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const existing = loadExistingConfig(dir);
+    expect(existing).not.toBeNull();
+    expect(existing!.imageModel).toBe('gemini/gemini-2.0-flash-exp');
+    expect(existing!.model).toBe('anthropic/claude-sonnet-4-20250514');
+  });
+
+  test('generated config with image model passes loadConfig validation', async () => {
+    const { loadConfig } = await import('../../src/config.js');
+    const dir = setup();
+
+    await runOnboarding({
+      outputDir: dir,
+      answers: {
+        profile: 'balanced',
+        agent: 'pi-agent-core',
+        model: 'anthropic/claude-sonnet-4-20250514',
+        imageModel: 'openai/gpt-image-1',
+        apiKey: 'sk-test',
+        channels: [],
+        skipSkills: true,
+      },
+    });
+
+    const config = loadConfig(join(dir, 'ax.yaml'));
+    expect(config.models).toEqual({
+      default: ['anthropic/claude-sonnet-4-20250514'],
+      image: ['openai/gpt-image-1'],
+    });
+  });
+
   test('generated config with model passes loadConfig validation', async () => {
     const { loadConfig } = await import('../../src/config.js');
     const dir = setup();

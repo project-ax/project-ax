@@ -1,13 +1,14 @@
 /**
  * IPC handler: Image generation.
+ *
+ * Generated images are held in memory (per session) rather than written to
+ * disk. After the agent finishes, the host calls drainGeneratedImages() to
+ * retrieve them for the outbound channel (e.g. Slack upload) and conversation
+ * history persistence.
  */
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ProviderRegistry } from '../../types.js';
 import type { IPCContext } from '../ipc-server.js';
-import { workspaceDir } from '../../paths.js';
-import { safePath } from '../../utils/safe-path.js';
 import { getLogger } from '../../logger.js';
 
 const logger = getLogger().child({ component: 'ipc' });
@@ -19,6 +20,26 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/webp': '.webp',
 };
 
+export interface GeneratedImage {
+  fileId: string;
+  mimeType: string;
+  data: Buffer;
+}
+
+/** Session → list of images generated during that session's completion. */
+const pendingImages = new Map<string, GeneratedImage[]>();
+
+/**
+ * Retrieve and remove all images generated during a session's completion.
+ * Called by processCompletion after the agent finishes so images can be
+ * attached to the outbound channel message without a disk round-trip.
+ */
+export function drainGeneratedImages(sessionId: string): GeneratedImage[] {
+  const images = pendingImages.get(sessionId);
+  pendingImages.delete(sessionId);
+  return images ?? [];
+}
+
 export function createImageHandlers(providers: ProviderRegistry) {
   return {
     image_generate: async (req: any, ctx: IPCContext) => {
@@ -29,11 +50,6 @@ export function createImageHandlers(providers: ProviderRegistry) {
         );
       }
 
-      logger.debug('image_generate_start', {
-        model: req.model,
-        promptLength: req.prompt?.length,
-      });
-
       const result = await providers.image.generate({
         prompt: req.prompt,
         model: req.model ?? 'gpt-image-1.5',
@@ -41,18 +57,25 @@ export function createImageHandlers(providers: ProviderRegistry) {
         quality: req.quality,
       });
 
-      // Write generated image to session workspace and return a fileId
+      // Keep generated image in memory — drainGeneratedImages() retrieves it
+      // after the agent finishes so the channel handler can upload directly.
       const ext = MIME_TO_EXT[result.mimeType] ?? '.png';
       const fileId = `generated-${randomUUID().slice(0, 8)}${ext}`;
-      const wsDir = workspaceDir(ctx.sessionId);
-      const filePath = safePath(wsDir, fileId);
-      writeFileSync(filePath, result.image);
 
-      logger.debug('image_generate_done', {
-        model: result.model,
-        bytes: result.image.length,
+      const entry: GeneratedImage = {
         fileId,
-      });
+        mimeType: result.mimeType,
+        data: result.image,
+      };
+
+      const list = pendingImages.get(ctx.sessionId);
+      if (list) {
+        list.push(entry);
+      } else {
+        pendingImages.set(ctx.sessionId, [entry]);
+      }
+
+      logger.debug('image_generate', { fileId, model: result.model, bytes: result.image.length });
 
       return {
         fileId,

@@ -12,6 +12,18 @@
 **Lesson:** `resolveProviderPath()` currently resolves relative paths via `new URL(relativePath, import.meta.url)`. For npm packages, it can use `import('@ax/provider-llm-anthropic')` instead — this is still a static allowlist (hardcoded package names, not config-derived), so SC-SEC-002 is preserved. The key invariant is "no dynamic path construction from config values," not "paths must be relative."
 **Tags:** security, SC-SEC-002, provider-map, npm-packages, static-allowlist
 
+### Node.js Buffer → fetch body: use standalone ArrayBuffer to avoid detached buffer errors
+**Date:** 2026-02-25
+**Context:** Slack file upload failed with "fetch failed" / "Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer"
+**Lesson:** Node.js Buffers share an internal memory pool. When passing binary data to `fetch()` as a body, `new Uint8Array(buffer)` still references the pool's shared ArrayBuffer, which undici detaches during send. The fix is to create a standalone ArrayBuffer: `const ab = new ArrayBuffer(buf.byteLength); new Uint8Array(ab).set(buf);` then pass `ab` as the body. This ensures the ArrayBuffer is independent of the Buffer pool and won't be detached prematurely.
+**Tags:** node, buffer, fetch, undici, arraybuffer, detached, slack, upload
+
+### IPC schemas use z.strictObject — extra fields cause silent validation failures
+**Date:** 2026-02-25
+**Context:** Adding `_sessionId` to IPC requests for session-scoped image generation. All server/integration tests started failing with empty responses.
+**Lesson:** All IPC schemas in `src/ipc-schemas.ts` use `z.strictObject()` which rejects any unknown fields. When adding metadata fields to IPC requests (like `_sessionId`), you MUST strip them from the parsed object BEFORE passing it to schema validation. The pattern is: extract the field, delete it from parsed, then validate. This is easy to miss because the validation failure is caught and returns a generic error, making the agent produce empty output with exit code 0.
+**Tags:** ipc, zod, strictObject, validation, image-generation, session-id
+
 ### Slack url_private URLs require Authorization header — plain fetch fails silently
 **Date:** 2026-02-25
 **Context:** Debugging why Slack image attachments resulted in "I don't see any image" from the LLM
@@ -261,3 +273,15 @@
 **Context:** Writing tests for task-type model routing in the LLM router. Tried to verify which model chain was used by checking the mock provider's response text, but it returns static "Hello from mock LLM." regardless of model name.
 **Lesson:** To test that the router selects the correct model chain for a task type, set the "wrong" chain to a provider that will fail (e.g., `openai/gpt-4` without API key) and the "right" chain to mock. If routing is correct, the call succeeds; if wrong, it throws. This is more robust than trying to inspect response content.
 **Tags:** testing, llm-router, mock-provider, task-type-routing
+
+### OpenRouter image generation uses /chat/completions, not /images/generations
+**Date:** 2026-02-26
+**Context:** User got a 404 HTML page when generating images via OpenRouter. The `openai-images.ts` provider was hitting `/api/v1/images/generations`, which doesn't exist on OpenRouter.
+**Lesson:** OpenRouter, Gemini, and OpenAI each use different endpoints and request/response formats for image generation. OpenRouter uses `/chat/completions` with `modalities: ["image", "text"]` and returns images in `message.images[].image_url.url` as data URLs. Don't assume all providers implement the same image generation API — check their docs. Each distinct API shape needs its own provider implementation.
+**Tags:** openrouter, image-generation, api-endpoints, provider-differences
+
+### Slack file upload: use SDK's files.uploadV2(), not manual 3-step flow
+**Date:** 2026-02-26
+**Context:** Manual 3-step Slack file upload (getUploadURLExternal → HTTP PUT → completeUploadExternal) silently failed — files uploaded but not shared to channel (mimetype: "", shares: {}, channels: []).
+**Lesson:** Slack's upload URL expects HTTP POST, not PUT. Using PUT causes the file to be created but not properly processed — no mimetype detection, no channel sharing. This is a known issue (bolt-js #2326). Always use the Slack SDK's `files.uploadV2()` method instead of implementing the 3-step flow manually. It handles POST correctly and wraps the entire flow. Use `initial_comment` to combine text + file as a single message.
+**Tags:** slack, file-upload, uploadV2, http-method, put-vs-post

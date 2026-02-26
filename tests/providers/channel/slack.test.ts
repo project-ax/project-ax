@@ -23,8 +23,6 @@ function testConfig(channelConfig?: Record<string, unknown>): Config {
 // Mock Slack Bolt App
 const mockPostMessage = vi.fn().mockResolvedValue({ ok: true });
 const mockFilesUploadV2 = vi.fn().mockResolvedValue({ ok: true });
-const mockGetUploadURLExternal = vi.fn().mockResolvedValue({ ok: true, upload_url: 'https://files.slack.com/upload/test', file_id: 'F_TEST' });
-const mockCompleteUploadExternal = vi.fn().mockResolvedValue({ ok: true });
 const mockAuthTest = vi.fn().mockResolvedValue({ user_id: 'UBOT', team_id: 'T01' });
 const mockReactionsAdd = vi.fn().mockResolvedValue({ ok: true });
 const mockReactionsRemove = vi.fn().mockResolvedValue({ ok: true });
@@ -49,11 +47,7 @@ vi.mock('@slack/bolt', () => ({
     client = {
       auth: { test: mockAuthTest },
       chat: { postMessage: mockPostMessage },
-      files: {
-        uploadV2: mockFilesUploadV2,
-        getUploadURLExternal: mockGetUploadURLExternal,
-        completeUploadExternal: mockCompleteUploadExternal,
-      },
+      files: { uploadV2: mockFilesUploadV2 },
       reactions: { add: mockReactionsAdd, remove: mockReactionsRemove },
       conversations: { replies: mockConversationsReplies },
     };
@@ -474,15 +468,11 @@ describe('Slack channel provider', () => {
       expect(mockPostMessage).toHaveBeenCalledTimes(2);
     });
 
-    test('uploads attachments via external upload flow', async () => {
+    test('uploads attachments via files.uploadV2 with initial_comment', async () => {
       process.env.SLACK_BOT_TOKEN = 'xoxb-test';
       process.env.SLACK_APP_TOKEN = 'xapp-test';
       const { create } = await import('../../../src/providers/channel/slack.js');
       const provider = await create(testConfig());
-
-      // Mock global fetch for the PUT step
-      const origFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockResolvedValue({ ok: true }) as any;
 
       const session: SessionAddress = {
         provider: 'slack',
@@ -500,37 +490,80 @@ describe('Slack channel provider', () => {
         }],
       });
 
-      // Step 1: getUploadURLExternal called
-      expect(mockGetUploadURLExternal).toHaveBeenCalledWith(
+      // files.uploadV2 called with correct params including initial_comment
+      expect(mockFilesUploadV2).toHaveBeenCalledWith(
         expect.objectContaining({
-          filename: 'chart.png',
-          length: imageData.length,
-        }),
-      );
-
-      // Step 2: PUT to the upload URL
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'https://files.slack.com/upload/test',
-        expect.objectContaining({
-          method: 'PUT',
-          body: new Uint8Array(imageData),
-        }),
-      );
-
-      // Step 3: completeUploadExternal called
-      expect(mockCompleteUploadExternal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          files: [{ id: 'F_TEST', title: 'chart.png' }],
+          token: 'xoxb-test',
           channel_id: 'C01',
+          file: imageData,
+          filename: 'chart.png',
+          initial_comment: 'Here is the chart',
         }),
       );
 
-      // Text still sent
-      expect(mockPostMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ channel: 'C01', text: 'Here is the chart' }),
-      );
+      // Text was sent as initial_comment — no separate postMessage
+      expect(mockPostMessage).not.toHaveBeenCalled();
+    });
 
-      globalThis.fetch = origFetch;
+    test('uploads attachments in thread with thread_ts', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      const provider = await create(testConfig());
+
+      const session: SessionAddress = {
+        provider: 'slack',
+        scope: 'thread',
+        identifiers: { channel: 'C01', thread: '1234.5678' },
+      };
+      const imageData = Buffer.from('fake-png-data');
+      await provider.send(session, {
+        content: 'Threaded image',
+        attachments: [{
+          filename: 'img.png',
+          mimeType: 'image/png',
+          size: imageData.length,
+          content: imageData,
+        }],
+      });
+
+      expect(mockFilesUploadV2).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel_id: 'C01',
+          thread_ts: '1234.5678',
+          file: imageData,
+          filename: 'img.png',
+          initial_comment: 'Threaded image',
+        }),
+      );
+      expect(mockPostMessage).not.toHaveBeenCalled();
+    });
+
+    test('falls back to postMessage when attachment has no content', async () => {
+      process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      const { create } = await import('../../../src/providers/channel/slack.js');
+      const provider = await create(testConfig());
+
+      const session: SessionAddress = {
+        provider: 'slack',
+        scope: 'channel',
+        identifiers: { channel: 'C01' },
+      };
+      await provider.send(session, {
+        content: 'Text only',
+        attachments: [{
+          filename: 'missing.png',
+          mimeType: 'image/png',
+          size: 0,
+          // no content — nothing to upload
+        }],
+      });
+
+      expect(mockFilesUploadV2).not.toHaveBeenCalled();
+      expect(mockPostMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'C01', text: 'Text only' }),
+      );
     });
 
     test('throws when session has no channel or peer', async () => {

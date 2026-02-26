@@ -8,6 +8,30 @@
 **Outcome:** Success — design document ready for review
 **Notes:** The codebase has grown 4.5x past the original LOC target. The provider pattern is already a plugin framework — the gap is packaging, not architecture. Key tension: SC-SEC-002 prevents dynamic loading, but a static allowlist pointing to npm packages instead of relative paths preserves the invariant while enabling the split.
 
+## [2026-02-26 05:52] — Strip markdown image references from Slack messages
+
+**Task:** Generated images upload to Slack successfully but the message text still contains raw `![alt](generated-xxx.png)` markdown that Slack doesn't render
+**What I did:** Added markdown image reference stripping in `server-channels.ts` before sending outbound messages. When `outboundAttachments` are present, regex matches `![...](filename)` where filename is in the attachment set, replaces with empty string, and cleans up leftover blank lines. Only strips references whose filenames match uploaded attachments — other image refs are left intact.
+**Files touched:** src/host/server-channels.ts
+**Outcome:** Success — all tests pass (5 server-channels, 38 slack), TypeScript clean
+**Notes:** The fix is channel-agnostic — it strips markdown image refs for any channel provider, not just Slack. The regex `!\[[^\]]*\]\(([^)]+)\)` captures the `src` from markdown image syntax and compares the basename against uploaded attachment filenames.
+
+## [2026-02-25 23:21] — Fix Slack file upload "detached ArrayBuffer" error
+
+**Task:** Slack file upload failed with "fetch failed" / "Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer"
+**What I did:** Root cause: `new Uint8Array(buffer)` passed to `fetch()` body still references Node.js's shared Buffer pool ArrayBuffer. Undici (Node.js fetch) detaches the ArrayBuffer during send, but the pool may have already reclaimed it. Fixed by creating a standalone ArrayBuffer via `new ArrayBuffer()` + `.set()` before passing to fetch. Also improved error logging to capture `err.cause`, `code`, and `contentLength`.
+**Files touched:** src/providers/channel/slack.ts, tests/providers/channel/slack.test.ts
+**Outcome:** Success — all 1633 tests pass
+**Notes:** Always create standalone ArrayBuffers when passing binary data to Node.js fetch. Never rely on Buffer's shared pool memory for async operations that may detach the underlying ArrayBuffer.
+
+## [2026-02-25 23:12] — Concurrent-safe session ID propagation for image generation
+
+**Task:** Make image generation concurrent-safe by propagating session ID from host through IPC to image handler
+**What I did:** Added `sessionId` to StdinPayload/AgentConfig/parseStdinPayload. Passed it through stdin payload from processCompletion. Updated all 3 runners (pi-core, pi-session, claude-code) to pass `sessionId` to IPCClient. IPCClient injects `_sessionId` into every IPC request. IPC server extracts it, strips it before strict Zod validation, and creates `effectiveCtx` with the real session ID. Updated all `ctx` references (audit, taint) to use `effectiveCtx`. Changed `drainGeneratedImages('server')` to `drainGeneratedImages(queued.session_id)`.
+**Files touched:** src/agent/runner.ts, src/agent/ipc-client.ts, src/agent/runners/pi-session.ts, src/agent/runners/claude-code.ts, src/host/ipc-server.ts, src/host/server-completions.ts
+**Outcome:** Success — all 1633 tests pass, concurrent sessions can now generate images without cross-session leaks
+**Notes:** Critical bug found: IPC schemas use `z.strictObject` which rejects unknown fields. The `_sessionId` field caused all IPC calls to fail with validation errors. Fixed by deleting `_sessionId` from the parsed object before schema validation.
+
 ## [2026-02-25 21:53] — Fix Slack image download missing auth header
 
 **Task:** Users sending images via Slack got "I don't see any image" — images silently failed to download
@@ -534,3 +558,43 @@
 **Files touched:** src/types.ts, src/config.ts, src/providers/llm/types.ts, src/providers/llm/router.ts, src/ipc-schemas.ts, src/host/ipc-handlers/llm.ts, src/host/ipc-handlers/image.ts, src/providers/image/router.ts, src/host/registry.ts, src/host/server.ts, src/agent/runner.ts, src/onboarding/wizard.ts, ax.yaml, README.md, tests/integration/ax-test*.yaml (6 files), tests/config.test.ts, tests/providers/llm/router.test.ts, tests/providers/image/router.test.ts, tests/onboarding/wizard.test.ts, tests/integration/phase1.test.ts
 **Outcome:** Success — build clean, all 1600 tests pass
 **Notes:** The `DEFAULT_MODEL_ID` in runner.ts is still used as a fallback for the pi-session Model object constructor — that's separate from the config-driven routing. The mock LLM provider doesn't echo back model names, so the task-type routing test verifies by setting default to a failing provider and fast to mock — if routing is wrong, the test fails.
+
+## [2026-02-26 03:35] — Add image model selection to `ax configure`
+
+**Task:** Add optional image model prompt to the configure wizard so users don't have to manually edit ax.yaml
+**What I did:**
+1. Added `IMAGE_PROVIDERS`, `IMAGE_PROVIDER_DISPLAY_NAMES`, `IMAGE_PROVIDER_DESCRIPTIONS`, `DEFAULT_IMAGE_MODELS` constants to prompts.ts
+2. Added `imageModel?: string` to `OnboardingAnswers`, updated config generation to build `models` object with both `default` and `image` keys conditionally, updated `loadExistingConfig` to read back `imageModel` from `parsed.models?.image?.[0]`
+3. Added image generation prompt flow to configure.ts: confirm → select provider → input model name, with pre-fill from existing config
+4. Added 6 new tests: image model to yaml, both models present, image-only (claude-code), omits models when neither set, loadExistingConfig reads back image model, loadConfig validation passes
+**Files touched:** src/onboarding/prompts.ts, src/onboarding/wizard.ts, src/onboarding/configure.ts, tests/onboarding/wizard.test.ts
+**Outcome:** Success — 157 test files, 1624 tests pass, TypeScript build clean
+**Notes:** The config schema already supported `models.image` — this was purely a wizard/UI gap. The IIFE pattern for building the models object keeps the config construction readable.
+
+## [2026-02-26 03:42] — Fix OpenRouter image generation: create dedicated provider
+
+**Task:** OpenRouter image generation returned 404 HTML — was hitting `/images/generations` which doesn't exist on OpenRouter
+**What I did:** OpenRouter uses `/chat/completions` with `modalities: ["image", "text"]` for image generation, not the `/images/generations` endpoint used by OpenAI. Created a dedicated `src/providers/image/openrouter.ts` provider that:
+1. POSTs to `/api/v1/chat/completions` with `modalities: ["image", "text"]`
+2. Parses the response from `choices[0].message.images[0].image_url.url` (base64 data URL)
+3. Extracts MIME type and image buffer from the `data:image/png;base64,...` format
+Updated provider-map to point `openrouter` to the new provider instead of `openai-images.js`. Updated default model to `google/gemini-2.5-flash-preview-image-generation`. Added 5 tests.
+**Files touched:** src/providers/image/openrouter.ts (new), src/host/provider-map.ts, src/onboarding/prompts.ts, tests/providers/image/openrouter.test.ts (new)
+**Outcome:** Success — 158 test files, 1629 tests pass, TypeScript build clean
+**Notes:** Three distinct image generation API shapes: OpenAI (`/images/generations`, b64_json response), Gemini (`/generateContent`, inlineData parts), OpenRouter (`/chat/completions` with modalities, data URL in message.images). Each needs its own provider.
+
+## [2026-02-26 03:51] — Eliminate disk round-trip for generated images
+
+**Task:** `image_generate` handler wrote images to disk (ENOENT if workspace didn't exist), then channel handler read them back. Unnecessary — bytes are already in memory on the host.
+**What I did:** Replaced disk writes in `image_generate` handler with an in-memory session-scoped map (`pendingImages`). Added `drainGeneratedImages(sessionId)` export that `processCompletion` calls after the agent finishes. Drained images become `ExtractedFile` entries + `image` content blocks in the response — the same path the channel handler already uses for direct Slack upload. Removed `fs`, `paths`, and `safe-path` imports from image handler.
+**Files touched:** src/host/ipc-handlers/image.ts, src/host/server-completions.ts, tests/host/ipc-handlers/image.test.ts
+**Outcome:** Success — 159 test files, 1633 tests pass, TypeScript build clean
+**Notes:** The image bytes now flow: provider → handler memory → processCompletion drain → ExtractedFile → channel upload. No disk write at all for the Slack path. The `extractedFiles` mechanism already existed for `image_data` blocks — generated images just reuse it.
+
+## [2026-02-26 06:24] — Switch Slack file upload to files.uploadV2 SDK method
+
+**Task:** Fix Slack file upload silently failing — files uploaded but not shared to channel (mimetype: "", shares: {}, channels: [])
+**What I did:** Root cause: the manual 3-step upload flow used HTTP PUT for the upload step, but Slack expects HTTP POST (known issue: bolt-js #2326). The Slack SDK's `files.uploadV2()` method wraps the 3-step flow correctly using POST. Replaced the entire manual upload flow (httpsPut helper, node:https import, getUploadURLExternal → PUT → completeUploadExternal) with a single `app.client.files.uploadV2()` call. Used `initial_comment` on the first upload to combine text + image as a single Slack message. Updated tests: removed node:https mock, replaced 3-step upload assertions with uploadV2 assertions, added tests for thread_ts passing and fallback when attachment has no content.
+**Files touched:** src/providers/channel/slack.ts, tests/providers/channel/slack.test.ts
+**Outcome:** Success — 40 Slack tests pass, 5 server-channels tests pass, TypeScript build clean
+**Notes:** The SDK's `FilesUploadV2Arguments` type uses `thread_ts: string` (not optional), so conditional spread doesn't work — use a mutable Record<string,unknown> object with `as any` cast instead.

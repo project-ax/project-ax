@@ -18,6 +18,7 @@ import type { MessageQueue } from '../db.js';
 import type { Router } from './router.js';
 import { TaintBudget, thresholdForProfile } from './taint-budget.js';
 import { type Logger, truncate } from '../logger.js';
+import { drainGeneratedImages } from './ipc-handlers/image.js';
 import { startAnthropicProxy } from './proxy.js';
 import { diagnoseError } from '../errors.js';
 import { ensureOAuthTokenFresh, refreshOAuthTokenFromEnv } from '../dotenv.js';
@@ -380,6 +381,7 @@ export async function processCompletion(
       sandboxType: config.providers.sandbox,
       userId: currentUserId,
       replyOptional: replyOptional ?? false,
+      sessionId: queued.session_id,
       // Enterprise fields
       agentId: agentName,
       agentWorkspace: enterpriseAgentWs,
@@ -525,6 +527,20 @@ export async function processCompletion(
       responseBlocks = extracted.blocks;
       if (extracted.extractedFiles.length > 0) {
         extractedFiles = extracted.extractedFiles;
+      }
+    }
+
+    // Drain images generated via image_generate tool during this completion.
+    // These are held in memory by the image handler — no disk round-trip needed.
+    // The agent injects its session ID into IPC requests via _sessionId, so
+    // images are stored under the real session ID (e.g. 'ch-d81c057a').
+    const generatedImages = drainGeneratedImages(queued.session_id);
+    if (generatedImages.length > 0) {
+      if (!extractedFiles) extractedFiles = [];
+      if (!responseBlocks) responseBlocks = [{ type: 'text', text: outbound.content }];
+      for (const img of generatedImages) {
+        extractedFiles.push({ fileId: img.fileId, mimeType: img.mimeType, data: img.data });
+        responseBlocks.push({ type: 'image', fileId: img.fileId, mimeType: img.mimeType as ImageMimeType });
       }
     }
 

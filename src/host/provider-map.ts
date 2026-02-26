@@ -20,7 +20,7 @@ const _PROVIDER_MAP = {
   },
   image: {
     openai:     '../providers/image/openai-images.js',
-    openrouter: '../providers/image/openai-images.js',
+    openrouter: '../providers/image/openrouter.js',
     groq:       '../providers/image/openai-images.js',
     gemini:     '../providers/image/gemini.js',
     router:     '../providers/image/router.js',

@@ -70,6 +70,8 @@ export interface AgentConfig {
   profile?: string;
   sandboxType?: string;
   replyOptional?: boolean;
+  /** Session ID from host — used to scope IPC requests (e.g. image generation). */
+  sessionId?: string;
   // Enterprise fields
   agentId?: string;
   agentWorkspace?: string;
@@ -286,7 +288,7 @@ export async function runPiCore(config: AgentConfig): Promise<void> {
     logger.debug('proxy_unavailable', { reason: 'config.proxySocket not set, falling back to IPC for LLM calls' });
   }
 
-  const client = new IPCClient({ socketPath: config.ipcSocket });
+  const client = new IPCClient({ socketPath: config.ipcSocket, sessionId: config.sessionId });
   await client.connect();
 
   const { systemPrompt, toolFilter } = buildSystemPrompt(config);
@@ -362,6 +364,8 @@ export interface StdinPayload {
   sandboxType: string;
   userId?: string;
   replyOptional?: boolean;
+  /** Session ID from host — used to scope IPC requests (e.g. image generation). */
+  sessionId?: string;
   // Enterprise fields
   agentId?: string;
   agentWorkspace?: string;
@@ -401,6 +405,7 @@ export function parseStdinPayload(data: string): StdinPayload {
         sandboxType: typeof parsed.sandboxType === 'string' ? parsed.sandboxType : 'subprocess',
         userId: typeof parsed.userId === 'string' ? parsed.userId : undefined,
         replyOptional: parsed.replyOptional === true,
+        sessionId: typeof parsed.sessionId === 'string' ? parsed.sessionId : undefined,
         // Enterprise fields
         agentId: typeof parsed.agentId === 'string' ? parsed.agentId : undefined,
         agentWorkspace: typeof parsed.agentWorkspace === 'string' ? parsed.agentWorkspace : undefined,
@@ -463,6 +468,7 @@ if (isMain) {
     config.sandboxType = payload.sandboxType;
     config.userId = payload.userId;
     config.replyOptional = payload.replyOptional;
+    config.sessionId = payload.sessionId;
     // Enterprise fields
     config.agentId = payload.agentId;
     config.agentWorkspace = payload.agentWorkspace;
