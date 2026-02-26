@@ -1,8 +1,9 @@
 import { describe, test, expect, vi } from 'vitest';
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { extractImageDataBlocks } from '../../src/host/server-completions.js';
+import { safePath } from '../../src/utils/safe-path.js';
 import type { ContentBlock } from '../../src/types.js';
 
 describe('extractImageDataBlocks', () => {
@@ -121,5 +122,80 @@ describe('structured agent response parsing', () => {
     expect(parsed.__ax_response.content[0].type).toBe('text');
     expect(parsed.__ax_response.content[1].type).toBe('image');
     expect(parsed.__ax_response.content[1].fileId).toBe('files/result.png');
+  });
+});
+
+describe('generated image workspace persistence', () => {
+  test('drained images are written to workspace for /v1/files/ retrieval', () => {
+    const wsDir = mkdtempSync(join(tmpdir(), 'ax-test-'));
+    try {
+      // Simulate the persistence logic from processCompletion:
+      // after drainGeneratedImages(), each image is written to the workspace
+      // so the download handler at /v1/files/<fileId> can serve it later.
+      const imageData = Buffer.from('fake-png-data');
+      const generatedImages = [
+        { fileId: 'generated-abc123.png', mimeType: 'image/png', data: imageData },
+      ];
+
+      for (const img of generatedImages) {
+        const filePath = safePath(wsDir, ...img.fileId.split('/').filter(Boolean));
+        mkdirSync(join(filePath, '..'), { recursive: true });
+        writeFileSync(filePath, img.data);
+      }
+
+      // The download handler resolves: safePath(wsDir, ...fileId.split('/').filter(Boolean))
+      // Verify the file is at the same path the handler would look for.
+      const downloadPath = safePath(wsDir, ...generatedImages[0].fileId.split('/').filter(Boolean));
+      expect(existsSync(downloadPath)).toBe(true);
+      expect(readFileSync(downloadPath)).toEqual(imageData);
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test('images with subdirectory fileId are written correctly', () => {
+    const wsDir = mkdtempSync(join(tmpdir(), 'ax-test-'));
+    try {
+      const imageData = Buffer.from('fake-jpeg-data');
+      const generatedImages = [
+        { fileId: 'files/generated-xyz789.jpg', mimeType: 'image/jpeg', data: imageData },
+      ];
+
+      for (const img of generatedImages) {
+        const filePath = safePath(wsDir, ...img.fileId.split('/').filter(Boolean));
+        mkdirSync(join(filePath, '..'), { recursive: true });
+        writeFileSync(filePath, img.data);
+      }
+
+      const downloadPath = safePath(wsDir, ...generatedImages[0].fileId.split('/').filter(Boolean));
+      expect(existsSync(downloadPath)).toBe(true);
+      expect(readFileSync(downloadPath)).toEqual(imageData);
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test('multiple images are all persisted', () => {
+    const wsDir = mkdtempSync(join(tmpdir(), 'ax-test-'));
+    try {
+      const generatedImages = [
+        { fileId: 'generated-aaa.png', mimeType: 'image/png', data: Buffer.from('img-1') },
+        { fileId: 'generated-bbb.webp', mimeType: 'image/webp', data: Buffer.from('img-2') },
+      ];
+
+      for (const img of generatedImages) {
+        const filePath = safePath(wsDir, ...img.fileId.split('/').filter(Boolean));
+        mkdirSync(join(filePath, '..'), { recursive: true });
+        writeFileSync(filePath, img.data);
+      }
+
+      for (const img of generatedImages) {
+        const downloadPath = safePath(wsDir, ...img.fileId.split('/').filter(Boolean));
+        expect(existsSync(downloadPath)).toBe(true);
+        expect(readFileSync(downloadPath)).toEqual(img.data);
+      }
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
   });
 });

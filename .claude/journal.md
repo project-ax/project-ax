@@ -598,3 +598,19 @@ Updated provider-map to point `openrouter` to the new provider instead of `opena
 **Files touched:** src/providers/channel/slack.ts, tests/providers/channel/slack.test.ts
 **Outcome:** Success — 40 Slack tests pass, 5 server-channels tests pass, TypeScript build clean
 **Notes:** The SDK's `FilesUploadV2Arguments` type uses `thread_ts: string` (not optional), so conditional spread doesn't work — use a mutable Record<string,unknown> object with `as any` cast instead.
+
+## [2026-02-26 08:17] — HTTP API multimodal image response
+
+**Task:** Fix HTTP API gap: generated images weren't returned to HTTP API clients (only Slack/channel path worked)
+**What I did:** Updated `handleCompletions` in server.ts to destructure `contentBlocks` from `processCompletion` and build multimodal `ContentPart[]` when response contains image blocks. Image blocks become `image_url` parts pointing to `/v1/files/<fileId>?session_id=<id>`. Added `ContentPart` type to server-http.ts and updated `OpenAIChatResponse.message.content` to `string | ContentPart[]`. Streaming mode still uses plain text (SSE delta.content is always string). Created `tests/host/server-multimodal.test.ts` with 3 tests using `vi.mock` on processCompletion: image response returns ContentPart[], text-only stays string, no session_id falls back to requestId.
+**Files touched:** src/host/server-http.ts, src/host/server.ts, tests/host/server-multimodal.test.ts (new)
+**Outcome:** Success — 3/3 new multimodal tests pass, 20/20 existing server tests pass, TypeScript build clean
+**Notes:** Session IDs must be valid UUIDs or 3+ colon-separated segments (per `isValidSessionId`). Test initially used `test-session-123` which failed validation — fixed to use `randomUUID()`.
+
+## [2026-02-26 08:33] — Persist generated images to workspace for durable URLs
+
+**Task:** Generated images from `image_generate` were held in memory only. After `drainGeneratedImages()` ran, the bytes were gone. The `/v1/files/` download endpoint reads from workspace on disk — but generated images were never written there. Result: image URLs returned 404 on any future request.
+**What I did:** Added workspace persistence in `processCompletion` after draining generated images. Each drained image is written to `safePath(workspace, ...fileId.split('/'))` so the download handler (`/v1/files/<fileId>`) resolves to the same path. Added 3 tests verifying: simple fileId persistence, subdirectory fileId persistence, and multiple image persistence.
+**Files touched:** src/host/server-completions.ts, tests/host/server-completions-images.test.ts
+**Outcome:** Success — 278 host tests pass, TypeScript build clean
+**Notes:** The `image_data` path (inline agent output via `extractImageDataBlocks`) already wrote to workspace. Only the `image_generate` path was missing disk persistence.

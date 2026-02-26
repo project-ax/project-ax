@@ -542,6 +542,17 @@ export async function processCompletion(
         extractedFiles.push({ fileId: img.fileId, mimeType: img.mimeType, data: img.data });
         responseBlocks.push({ type: 'image', fileId: img.fileId, mimeType: img.mimeType as ImageMimeType });
       }
+      // Persist generated images to workspace so /v1/files/ can serve them later.
+      // Without this, image URLs return 404 after the in-memory drain.
+      for (const img of generatedImages) {
+        try {
+          const filePath = safePath(workspace, ...img.fileId.split('/').filter(Boolean));
+          mkdirSync(join(filePath, '..'), { recursive: true });
+          writeFileSync(filePath, img.data);
+        } catch (err) {
+          reqLogger.warn('image_persist_failed', { fileId: img.fileId, error: (err as Error).message });
+        }
+      }
     }
 
     // Memorize if provider supports it (text only for memory)
