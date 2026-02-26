@@ -21,13 +21,6 @@ export interface OpenAIChatRequest {
   user?: string;
 }
 
-/** File metadata returned alongside text content when images are present. */
-export interface AxFilePart {
-  type: 'file';
-  url: string;
-  mediaType: string;
-}
-
 export interface OpenAIChatResponse {
   id: string;
   object: 'chat.completion';
@@ -35,7 +28,7 @@ export interface OpenAIChatResponse {
   model: string;
   choices: {
     index: number;
-    message: { role: 'assistant'; content: string; files?: AxFilePart[] };
+    message: { role: 'assistant'; content: string };
     finish_reason: 'stop' | 'length' | 'content_filter';
   }[];
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };

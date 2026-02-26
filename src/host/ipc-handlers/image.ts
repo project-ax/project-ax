@@ -79,6 +79,7 @@ export function createImageHandlers(providers: ProviderRegistry) {
 
       return {
         fileId,
+        url: `/v1/files/${fileId}`,
         mimeType: result.mimeType,
         text: result.text,
         model: result.model,

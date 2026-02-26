@@ -11,13 +11,7 @@ vi.mock('../../src/host/server-completions.js', async (importOriginal) => {
   return {
     ...mod,
     processCompletion: vi.fn().mockResolvedValue({
-      responseContent: 'Here is the image:\n\n![A cow sailing](generated-abc123.png)\n\nEnjoy!',
-      contentBlocks: [
-        { type: 'text', text: 'Here is the image:\n\n![A cow sailing](generated-abc123.png)\n\nEnjoy!' },
-        { type: 'image', fileId: 'generated-abc123.png', mimeType: 'image/png' },
-      ],
-      agentName: 'main',
-      userId: 'default',
+      responseContent: 'Here is the image:\n\n![A cow sailing](/v1/files/generated-abc123.png)\n\nEnjoy!',
       finishReason: 'stop',
     }),
   };
@@ -91,7 +85,7 @@ describe('Server multimodal responses', () => {
   });
 
   describe('non-streaming', () => {
-    it('returns text content with files array when response includes images', async () => {
+    it('returns markdown image refs as plain text content', async () => {
       const config = loadConfig('tests/integration/ax-test.yaml');
       server = await createServer(config, { socketPath });
       await server.start();
@@ -106,22 +100,15 @@ describe('Server multimodal responses', () => {
       expect(res.status).toBe(200);
       const data = JSON.parse(res.body);
 
-      // Content stays as the text string
+      // Content is plain text with markdown image refs — no separate files array
       expect(typeof data.choices[0].message.content).toBe('string');
-      expect(data.choices[0].message.content).toContain('A cow sailing');
-
-      // Files returned as a separate array on the message
-      const { files } = data.choices[0].message;
-      expect(files).toHaveLength(1);
-      expect(files[0]).toEqual({ type: 'file', url: '/ax/generated-abc123.png', mediaType: 'image/png' });
+      expect(data.choices[0].message.content).toContain('![A cow sailing]');
+      expect(data.choices[0].message.files).toBeUndefined();
     });
 
-    it('returns plain string content with no files when text-only', async () => {
+    it('returns plain string content for text-only responses', async () => {
       mockedProcessCompletion.mockResolvedValueOnce({
         responseContent: 'Just a text reply.',
-        contentBlocks: [
-          { type: 'text', text: 'Just a text reply.' },
-        ],
         finishReason: 'stop',
       });
 
@@ -140,41 +127,10 @@ describe('Server multimodal responses', () => {
       expect(data.choices[0].message.content).toBe('Just a text reply.');
       expect(data.choices[0].message.files).toBeUndefined();
     });
-
-    it('returns multiple files in files array', async () => {
-      mockedProcessCompletion.mockResolvedValueOnce({
-        responseContent: 'Two images:',
-        contentBlocks: [
-          { type: 'text', text: 'Two images:' },
-          { type: 'image', fileId: 'first.png', mimeType: 'image/png' },
-          { type: 'image', fileId: 'second.jpg', mimeType: 'image/jpeg' },
-        ],
-        agentName: 'main',
-        userId: 'default',
-        finishReason: 'stop',
-      });
-
-      const config = loadConfig('tests/integration/ax-test.yaml');
-      server = await createServer(config, { socketPath });
-      await server.start();
-
-      const res = await sendRequest(socketPath, '/v1/chat/completions', {
-        body: { messages: [{ role: 'user', content: 'generate images' }] },
-      });
-
-      expect(res.status).toBe(200);
-      const data = JSON.parse(res.body);
-
-      expect(typeof data.choices[0].message.content).toBe('string');
-      const { files } = data.choices[0].message;
-      expect(files).toHaveLength(2);
-      expect(files[0]).toEqual({ type: 'file', url: '/ax/first.png', mediaType: 'image/png' });
-      expect(files[1]).toEqual({ type: 'file', url: '/ax/second.jpg', mediaType: 'image/jpeg' });
-    });
   });
 
   describe('streaming', () => {
-    it('streams text content and includes files on finish chunk', async () => {
+    it('streams markdown image refs as plain text content', async () => {
       const config = loadConfig('tests/integration/ax-test.yaml');
       server = await createServer(config, { socketPath });
       await server.start();
@@ -191,23 +147,20 @@ describe('Server multimodal responses', () => {
       const lines = res.body.split('\n').filter((l: string) => l.startsWith('data: '));
       expect(lines.length).toBeGreaterThanOrEqual(4);
 
-      // Content chunk is plain text, not a stringified array
+      // Content chunk is plain text with markdown image refs
       const contentChunk = JSON.parse(lines[1].replace('data: ', ''));
       expect(typeof contentChunk.choices[0].delta.content).toBe('string');
-      expect(contentChunk.choices[0].delta.content).toContain('A cow sailing');
-      expect(contentChunk.choices[0].delta.content).not.toContain('"type":"file"');
+      expect(contentChunk.choices[0].delta.content).toContain('![A cow sailing]');
 
-      // Finish chunk carries files
+      // Finish chunk has no files field
       const finishChunk = JSON.parse(lines[2].replace('data: ', ''));
       expect(finishChunk.choices[0].finish_reason).toBe('stop');
-      expect(finishChunk.files).toHaveLength(1);
-      expect(finishChunk.files[0]).toEqual({ type: 'file', url: '/ax/generated-abc123.png', mediaType: 'image/png' });
+      expect(finishChunk.files).toBeUndefined();
     });
 
     it('no files field on finish chunk for text-only responses', async () => {
       mockedProcessCompletion.mockResolvedValueOnce({
         responseContent: 'Just text.',
-        contentBlocks: [{ type: 'text', text: 'Just text.' }],
         finishReason: 'stop',
       });
 
