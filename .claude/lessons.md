@@ -1,5 +1,10 @@
 # Lessons Learned
 
+### pi-coding-agent does NOT re-export pi-agent-core types
+**Date:** 2026-02-27
+**Context:** Removing pi-agent-core as a user-facing agent type — expected to also drop the npm dep
+**Lesson:** `@mariozechner/pi-coding-agent` does not re-export `Agent`, `AgentTool`, `StreamFn`, or `AgentMessage` from `@mariozechner/pi-agent-core`. If you need these types, you must either keep pi-agent-core as a direct dep or create a local barrel re-export. Check package exports (`dist/index.d.ts`) before assuming transitive deps surface their types.
+**Tags:** pi-agent-core, pi-coding-agent, npm, types, dependencies
 ### Promise.race timeouts MUST be cleared in finally blocks
 **Date:** 2026-02-27
 **Context:** Diagnosing server crashes under 3 concurrent delegation agents
