@@ -349,3 +349,70 @@ For reference, the 13 provider categories and their current implementations:
 | **screener** | static, none | @ax/provider-screener-{name} |
 
 **Total: ~35 packages** (including @ax/core and @ax/provider-sdk).
+
+## Resolved Questions
+
+Answers to the open questions raised above, based on codebase analysis conducted 2026-02-27.
+
+### 1. Monorepo tooling: pnpm workspaces
+
+**Decision:** pnpm workspaces + `@changesets/cli`. No Nx. No Turborepo.
+
+AX's build is a single `tsc` call. There is no bundling, no multi-target compilation, no
+task graph that would benefit from Nx's computation caching or Turborepo's pipeline
+orchestration. pnpm workspaces provide the three things we actually need: local package
+symlinking, a single lockfile, and workspace-aware commands. The migration from npm is
+straightforward (add `pnpm-workspace.yaml`, convert `npm ci` to `pnpm install --frozen-lockfile`
+in CI). If we ever outgrow pnpm workspaces — unlikely at ~35 packages — adding Turborepo
+on top is a non-breaking upgrade. Nx's ~20 config files and plugin system conflict with
+"small enough to audit."
+
+### 2. Versioning strategy: hybrid (lockstep core, independent providers)
+
+**Decision:** Lockstep versioning for `@ax/core` + `@ax/provider-sdk`. Independent
+versioning for all `@ax/provider-*` packages.
+
+Core packages (host, agent, IPC schemas, shared types) are tightly coupled — an IPC
+schema change affects both sides of the socket. These must always be release-compatible,
+so they share a version number. Provider implementations are leaf nodes: they depend on
+`@ax/provider-sdk` interfaces but not on each other. Bumping `@ax/provider-channel-slack`
+because `@ax/provider-memory-sqlite` got a patch erodes version semantics. Changesets
+supports this natively via `fixed` groups (core packages) with independent versioning for
+everything else.
+
+### 3. Plugin worker sandboxing: child processes (not a real question)
+
+**Decision:** Child processes. Worker threads are architecturally incompatible with AX.
+
+This turned out not to be a trade-off. Worker threads share process memory, which means
+a plugin could read host-process credentials from the heap — violating our core security
+invariant. Additionally, worker threads cannot be wrapped by nsjail, bwrap, or Docker,
+making them invisible to our entire sandboxing infrastructure. The static screener and
+skills provider both explicitly ban `worker_threads` imports as dangerous patterns. The
+existing IPC mechanism (length-prefixed JSON over Unix sockets, Zod-validated) is reused
+directly by the Phase 3 PluginHost. Spawn overhead is irrelevant because plugins are
+long-lived processes started once at boot, not per-request.
+
+### 4. Core vs. extra providers: core ships with noop/mock only
+
+**Decision:** `@ax/core` includes only noop/mock providers. All real implementations
+are separate `@ax/provider-*` packages. Starter metapackages bundle common configurations.
+
+**What ships in `@ax/core`:** The `none` providers (web-none, browser-none, scheduler-none,
+screener-none) and `mock` providers needed for testing. These are zero-dependency
+implementations that satisfy the `ProviderRegistry` contract without bloating core.
+
+**What doesn't:** Every real provider — anthropic LLM, sqlite memory, nsjail sandbox,
+Slack channel, etc. These carry heavy dependencies (`@anthropic-ai/sdk` ~2MB,
+`better-sqlite3` ~5MB native, `openai` ~1.5MB, `@slack/bolt`, `playwright`) that not
+every deployment needs.
+
+**Starter metapackages** (dependency-only, no code) provide convenience:
+
+- `@ax/starter-default` — anthropic LLM + sqlite memory + file audit + basic scanner +
+  env credentials + subprocess sandbox
+- `@ax/starter-secure` — adds nsjail sandbox + encrypted credentials + patterns scanner
+
+This achieves the stated goal: `@ax/core` shrinks back to ~3K LOC, auditable again. A
+deployment that only needs Claude Code with file-based memory doesn't pull in the OpenAI
+SDK or Playwright.

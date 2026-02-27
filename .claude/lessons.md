@@ -1,5 +1,11 @@
 # Lessons Learned
 
+### Worker threads are banned by static screener — not just convention
+**Date:** 2026-02-27
+**Context:** Evaluating worker threads vs child processes for Phase 3 plugin host
+**Lesson:** Worker threads are explicitly banned in AX. The static screener (`src/providers/screener/static.ts`) and git skills provider (`src/providers/skills/git.ts`) both flag `worker_threads` imports as dangerous patterns. Beyond the ban, worker threads share process memory (credential leak risk) and can't be wrapped by nsjail/bwrap/docker. Never propose worker_threads for any trust boundary in AX — child processes with IPC are the only option.
+**Tags:** security, worker-threads, sandbox, child-process, screener, plugin-host
+
 ### Provider contract pattern IS the plugin framework — packaging is the missing piece
 **Date:** 2026-02-26
 **Context:** Evaluating whether AX needs a plugin framework for extensibility

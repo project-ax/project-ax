@@ -1,5 +1,13 @@
 # Journal
 
+## [2026-02-27 09:00] — Resolve plugin framework open questions
+
+**Task:** Answer the four open questions in the plugin framework design doc
+**What I did:** Researched codebase build setup (tsconfig, CI, package.json), provider dependencies (external npm deps per category, ProviderRegistry type requirements), and sandbox architecture (worker_threads bans, existing IPC patterns). Resolved all four questions: (1) pnpm workspaces + changesets, (2) hybrid versioning (lockstep core, independent providers), (3) child processes only (worker threads violate security model), (4) core ships noop/mock only with starter metapackages for convenience.
+**Files touched:** Modified: docs/plans/2026-02-26-plugin-framework-design.md
+**Outcome:** Success — all four open questions resolved with concrete decisions and rationale
+**Notes:** Q3 (worker threads vs child processes) turned out not to be a real trade-off — worker threads are architecturally incompatible (memory sharing breaks credential isolation, can't be wrapped by nsjail/bwrap/docker, explicitly banned by static screener patterns).
+
 ## [2026-02-26 15:00] — AI SDK format for image content blocks
 
 **Task:** Map internal image content blocks to AI SDK UI message stream schema.
