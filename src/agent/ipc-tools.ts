@@ -16,9 +16,9 @@ export interface IPCToolsOptions {
 
 /** Create tools that route through IPC to the host process. */
 export function createIPCTools(client: IPCClient, opts?: IPCToolsOptions): AgentTool[] {
-  async function ipcCall(action: string, params: Record<string, unknown> = {}) {
+  async function ipcCall(action: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
     try {
-      const result = await client.call({ action, ...params });
+      const result = await client.call({ action, ...params }, timeoutMs);
       return text(JSON.stringify(result));
     } catch (err: unknown) {
       return text(`Error: ${(err as Error).message}`);
@@ -37,7 +37,7 @@ export function createIPCTools(client: IPCClient, opts?: IPCToolsOptions): Agent
       const callParams = spec.injectUserId
         ? { ...p, userId: opts?.userId ?? '' }
         : p;
-      return ipcCall(spec.name, callParams);
+      return ipcCall(spec.name, callParams, spec.timeoutMs);
     },
   }));
 }

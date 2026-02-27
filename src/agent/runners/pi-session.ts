@@ -225,10 +225,10 @@ interface IPCToolDefsOptions {
 }
 
 function createIPCToolDefinitions(client: IPCClient, opts?: IPCToolDefsOptions): ToolDefinition[] {
-  async function ipcCall(action: string, params: Record<string, unknown> = {}) {
+  async function ipcCall(action: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
     try {
       logger.debug('tool_ipc_call', { action });
-      const result = await client.call({ action, ...params });
+      const result = await client.call({ action, ...params }, timeoutMs);
       return text(JSON.stringify(result));
     } catch (err: unknown) {
       logger.debug('tool_ipc_error', { action, error: (err as Error).message });
@@ -260,7 +260,7 @@ function createIPCToolDefinitions(client: IPCClient, opts?: IPCToolDefsOptions):
       if (spec.name === 'identity_write' && 'file' in callParams) {
         callParams = { ...callParams, file: normalizeIdentityFile(callParams.file) };
       }
-      return ipcCall(spec.name, callParams);
+      return ipcCall(spec.name, callParams, spec.timeoutMs);
     },
   })) as ToolDefinition[];
 }
