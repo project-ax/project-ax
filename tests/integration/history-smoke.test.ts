@@ -6,13 +6,12 @@
  * real config loading, real registry, real subprocess sandbox, real scanner,
  * real router, real IPC, real conversation store (SQLite).
  *
- * These tests verify that:
- * 1. Multi-turn persistent sessions accumulate history without crashing
- * 2. Different session_ids don't cross-contaminate
- * 3. Ephemeral sessions (no session_id) work independently
+ * All three tests share a single server process to avoid redundant cold
+ * starts under parallel CI load. Session isolation is guaranteed by using
+ * random UUIDs for each session_id.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve, join } from 'node:path';
 import { rmSync, mkdirSync, existsSync } from 'node:fs';
@@ -24,18 +23,24 @@ const PROJECT_ROOT = resolve(import.meta.dirname, '../..');
 const TEST_CONFIG = resolve(import.meta.dirname, 'ax-test.yaml');
 const IS_BUN = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined';
 
-let smokeTestHome: string;
-let socketPath: string;
+/**
+ * How long to wait for `server_listening` before giving up.
+ * 45 s accommodates tsx cold-start under heavy parallel CI load.
+ */
+const READY_TIMEOUT_MS = 45_000;
 
-function startServer(): ChildProcess {
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function spawnServer(home: string, socket: string): ChildProcess {
   const hostScript = resolve(PROJECT_ROOT, 'src/main.ts');
+  const baseArgs = ['--config', TEST_CONFIG, '--socket', socket];
   const args = IS_BUN
-    ? ['run', hostScript, '--config', TEST_CONFIG]
-    : ['tsx', hostScript, '--config', TEST_CONFIG];
+    ? ['run', hostScript, ...baseArgs]
+    : ['tsx', hostScript, ...baseArgs];
   const cmd = IS_BUN ? 'bun' : 'npx';
   return spawn(cmd, args, {
     cwd: PROJECT_ROOT,
-    env: { ...process.env, NODE_NO_WARNINGS: '1', AX_HOME: smokeTestHome },
+    env: { ...process.env, NODE_NO_WARNINGS: '1', AX_HOME: home },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 }
@@ -47,26 +52,53 @@ function collectOutput(proc: ChildProcess): { stdout: string[]; stderr: string[]
   return out;
 }
 
+/**
+ * Wait for the server to log `server_listening` via pino.
+ * Uses event listeners (not polling) so we react immediately.
+ */
 function waitForReady(proc: ChildProcess, output: { stdout: string[]; stderr: string[] }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(
-      `Server did not become ready in time\nstdout: ${output.stdout.join('')}\nstderr: ${output.stderr.join('')}`
-    )), 15_000);
+    let settled = false;
 
-    const check = setInterval(() => {
-      const combined = output.stdout.join('') + output.stderr.join('');
-      if (combined.includes('server_listening')) {
-        clearInterval(check);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(
+        `Server did not become ready within ${READY_TIMEOUT_MS / 1000}s\n` +
+        `stdout: ${output.stdout.join('')}\nstderr: ${output.stderr.join('')}`
+      ));
+    }, READY_TIMEOUT_MS);
+
+    function onData(data: Buffer) {
+      if (settled) return;
+      if (data.toString().includes('server_listening')) {
+        settled = true;
         clearTimeout(timeout);
         resolve();
       }
-    }, 100);
+    }
 
-    proc.on('exit', (code) => {
-      clearInterval(check);
+    function onExit(code: number | null) {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
-      reject(new Error(`Server exited early with code ${code}\nstdout: ${output.stdout.join('')}\nstderr: ${output.stderr.join('')}`));
-    });
+      reject(new Error(
+        `Server exited with code ${code}\n` +
+        `stdout: ${output.stdout.join('')}\nstderr: ${output.stderr.join('')}`
+      ));
+    }
+
+    proc.stdout?.on('data', onData);
+    proc.stderr?.on('data', onData);
+    proc.on('exit', onExit);
+
+    // Check output that was already buffered before we attached listeners
+    const combined = output.stdout.join('') + output.stderr.join('');
+    if (combined.includes('server_listening')) {
+      settled = true;
+      clearTimeout(timeout);
+      resolve();
+    }
   });
 }
 
@@ -116,32 +148,33 @@ function sendRequest(
   });
 }
 
+// ── Tests ────────────────────────────────────────────────────────────
+
 describe('History Smoke Test', () => {
-  let proc: ChildProcess | null = null;
+  let proc: ChildProcess;
+  let output: { stdout: string[]; stderr: string[] };
+  let home: string;
+  let socket: string;
 
-  beforeEach(() => {
-    smokeTestHome = resolve(tmpdir(), `ax-hsm-${randomUUID()}`);
-    mkdirSync(smokeTestHome, { recursive: true });
-    socketPath = join(smokeTestHome, 'ax.sock');
-  });
+  beforeAll(async () => {
+    home = resolve(tmpdir(), `ax-hsm-${randomUUID()}`);
+    mkdirSync(home, { recursive: true });
+    socket = join(home, 'ax.sock');
+    proc = spawnServer(home, socket);
+    output = collectOutput(proc);
+    await waitForReady(proc, output);
+  }, 60_000);
 
-  afterEach(() => {
-    if (proc && !proc.killed) {
-      proc.kill('SIGTERM');
-    }
-    proc = null;
-    try { rmSync(smokeTestHome, { recursive: true, force: true }); } catch {}
+  afterAll(() => {
+    if (proc && !proc.killed) proc.kill('SIGTERM');
+    try { rmSync(home, { recursive: true, force: true }); } catch {}
   });
 
   test('multi-turn persistent session accumulates history without crashing', async () => {
-    proc = startServer();
-    const output = collectOutput(proc);
-    await waitForReady(proc, output);
-
     const sessionId = randomUUID();
 
     // Turn 1: first message
-    const res1 = await sendRequest(socketPath, [
+    const res1 = await sendRequest(socket, [
       { role: 'user', content: 'hello, this is turn one' },
     ], sessionId);
     expect(res1.status).toBe(200);
@@ -150,7 +183,7 @@ describe('History Smoke Test', () => {
     expect(data1.choices[0].message.content.trim().length).toBeGreaterThan(0);
 
     // Turn 2: server loads 1 user + 1 assistant turn from DB, adds new user message
-    const res2 = await sendRequest(socketPath, [
+    const res2 = await sendRequest(socket, [
       { role: 'user', content: 'this is turn two' },
     ], sessionId);
     expect(res2.status).toBe(200);
@@ -159,7 +192,7 @@ describe('History Smoke Test', () => {
     expect(data2.choices[0].message.content.trim().length).toBeGreaterThan(0);
 
     // Turn 3: server loads 2 user + 2 assistant turns from DB, adds new user message
-    const res3 = await sendRequest(socketPath, [
+    const res3 = await sendRequest(socket, [
       { role: 'user', content: 'this is turn three' },
     ], sessionId);
     expect(res3.status).toBe(200);
@@ -168,49 +201,45 @@ describe('History Smoke Test', () => {
     expect(data3.choices[0].message.content.trim().length).toBeGreaterThan(0);
 
     // Verify the server is still alive (didn't crash during history loading)
-    expect(proc!.killed).toBe(false);
+    expect(proc.killed).toBe(false);
 
     // Verify the conversation DB was created
-    const dbPath = join(smokeTestHome, 'data', 'conversations.db');
+    const dbPath = join(home, 'data', 'conversations.db');
     expect(existsSync(dbPath)).toBe(true);
   }, 90_000);
 
   test('history isolation: different session_ids do not cross-contaminate', async () => {
-    proc = startServer();
-    const output = collectOutput(proc);
-    await waitForReady(proc, output);
-
     const sessionA = randomUUID();
     const sessionB = randomUUID();
 
     // Send 2 messages to session A
-    const resA1 = await sendRequest(socketPath, [
+    const resA1 = await sendRequest(socket, [
       { role: 'user', content: 'session A message one' },
     ], sessionA);
     expect(resA1.status).toBe(200);
 
-    const resA2 = await sendRequest(socketPath, [
+    const resA2 = await sendRequest(socket, [
       { role: 'user', content: 'session A message two' },
     ], sessionA);
     expect(resA2.status).toBe(200);
 
     // Send 1 message to session B
-    const resB1 = await sendRequest(socketPath, [
+    const resB1 = await sendRequest(socket, [
       { role: 'user', content: 'session B message one' },
     ], sessionB);
     expect(resB1.status).toBe(200);
 
     // Send another message to session B -- should only have session B's history
-    const resB2 = await sendRequest(socketPath, [
+    const resB2 = await sendRequest(socket, [
       { role: 'user', content: 'session B message two' },
     ], sessionB);
     expect(resB2.status).toBe(200);
 
     // Both sessions should succeed without the server crashing
-    expect(proc!.killed).toBe(false);
+    expect(proc.killed).toBe(false);
 
     // Verify the DB exists with data from both sessions
-    const dbPath = join(smokeTestHome, 'data', 'conversations.db');
+    const dbPath = join(home, 'data', 'conversations.db');
     expect(existsSync(dbPath)).toBe(true);
 
     // Directly check the DB to verify isolation
@@ -240,12 +269,8 @@ describe('History Smoke Test', () => {
   }, 90_000);
 
   test('ephemeral sessions (no session_id) succeed independently', async () => {
-    proc = startServer();
-    const output = collectOutput(proc);
-    await waitForReady(proc, output);
-
     // Send two independent messages without session_id
-    const res1 = await sendRequest(socketPath, [
+    const res1 = await sendRequest(socket, [
       { role: 'user', content: 'ephemeral message one' },
     ]);
     expect(res1.status).toBe(200);
@@ -253,7 +278,7 @@ describe('History Smoke Test', () => {
     expect(data1.choices[0].message.role).toBe('assistant');
     expect(data1.choices[0].message.content.trim().length).toBeGreaterThan(0);
 
-    const res2 = await sendRequest(socketPath, [
+    const res2 = await sendRequest(socket, [
       { role: 'user', content: 'ephemeral message two' },
     ]);
     expect(res2.status).toBe(200);
@@ -262,10 +287,10 @@ describe('History Smoke Test', () => {
     expect(data2.choices[0].message.content.trim().length).toBeGreaterThan(0);
 
     // Server should still be alive
-    expect(proc!.killed).toBe(false);
+    expect(proc.killed).toBe(false);
 
     // Verify no conversation history was persisted for ephemeral sessions
-    const dbPath = join(smokeTestHome, 'data', 'conversations.db');
+    const dbPath = join(home, 'data', 'conversations.db');
     if (existsSync(dbPath)) {
       const { ConversationStore } = await import('../../src/conversation-store.js');
       const store = await ConversationStore.create(dbPath);

@@ -714,3 +714,14 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 - MODIFIED: tests/agent/ipc-tools.test.ts, tests/agent/mcp-server.test.ts, tests/agent/tool-catalog.test.ts, tests/agent/tool-catalog-sync.test.ts
 **Outcome:** Success — all 147 targeted tests pass, 1717/1722 total (4 flaky integration smoke timeouts unrelated to changes)
 **Notes:** Initial test run only covered new + host test files. CI runs all 167 test files including agent/ and integration/ sync tests. Lesson: always run `npm test -- --run` (full suite) before committing.
+
+## [2026-02-27 02:35] — Fix flaky integration smoke tests
+
+**Task:** Make the 4 flaky smoke tests more robust — they timed out under parallel CI load with "Server did not become ready in time" (stdout/stderr both empty).
+**What I did:** Three changes to both `smoke.test.ts` and `history-smoke.test.ts`:
+1. **Event-based readiness detection**: Replaced 100ms `setInterval` polling with event listeners on stdout/stderr that react immediately when `server_listening` appears. Also checks already-buffered output for race safety.
+2. **Increased timeout from 15s to 45s**: The old 15s wasn't enough when `tsx` has to cold-start under heavy parallel load (167 test files). All stdout/stderr was empty — the process hadn't even started logging yet.
+3. **Shared server processes**: Tests using the same config now share a single server via `beforeAll`/`afterAll` instead of each test spawning its own. smoke.test.ts shares 1 server across 4 core pipeline tests (saves 3 cold starts). history-smoke.test.ts shares 1 server across all 3 tests (saves 2 cold starts). Tests with custom env/config still get dedicated servers via a `withServer()` helper.
+**Files touched:** tests/integration/smoke.test.ts, tests/integration/history-smoke.test.ts
+**Outcome:** Success — 167/167 test files pass, 1721/1722 tests (1 skipped = macOS seatbelt), zero failures under full parallel load
+**Notes:** Root cause was tsx cold-start time under heavy CPU/disk contention. The empty stdout/stderr proved the server process hadn't produced ANY output in 15s — not that it started but was slow to listen. The shared server approach also improves test suite speed: shared tests run in 3-6s each vs 7-15s when each spawned its own server.
