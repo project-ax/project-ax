@@ -42,7 +42,7 @@ describe('ipc-tools', () => {
       scope: 'test',
       content: 'hello',
       tags: ['a'],
-    });
+    }, undefined);
   });
 
   test('memory_query sends IPC call with correct action', async () => {
@@ -55,7 +55,7 @@ describe('ipc-tools', () => {
       scope: 'test',
       query: 'search term',
       limit: 5,
-    });
+    }, undefined);
   });
 
   test('web_fetch sends IPC call with correct action', async () => {
@@ -66,7 +66,7 @@ describe('ipc-tools', () => {
     expect(client.call).toHaveBeenCalledWith({
       action: 'web_fetch',
       url: 'https://example.com',
-    });
+    }, undefined);
   });
 
   test('returns IPC response as text content', async () => {
@@ -115,7 +115,7 @@ describe('ipc-tools', () => {
       content: '# Soul\nI am helpful.',
       reason: 'User asked',
       origin: 'user_request',
-    });
+    }, undefined);
   });
 
   test('identity_write has description mentioning identity files', () => {
@@ -148,7 +148,7 @@ describe('ipc-tools', () => {
       reason: 'Observed preference',
       origin: 'agent_initiated',
       userId: 'U12345',
-    });
+    }, undefined);
   });
 
   test('includes scheduler_add_cron tool', () => {
@@ -206,6 +206,28 @@ describe('ipc-tools', () => {
     // Core tools still present
     expect(names).toContain('memory_write');
     expect(names).toContain('identity_write');
+  });
+
+  test('agent_delegate uses default timeout (heartbeat-based)', async () => {
+    const client = createMockClient();
+    const tools = createIPCTools(client as any);
+    const tool = findTool(tools, 'agent_delegate');
+    await tool.execute('tc-delegate', { task: 'research X', context: 'some context' });
+    expect(client.call).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'agent_delegate', task: 'research X' }),
+      undefined,  // no per-tool override — heartbeats keep the connection alive
+    );
+  });
+
+  test('image_generate uses default timeout (heartbeat-based)', async () => {
+    const client = createMockClient();
+    const tools = createIPCTools(client as any);
+    const tool = findTool(tools, 'image_generate');
+    await tool.execute('tc-image', { prompt: 'a cat' });
+    expect(client.call).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'image_generate', prompt: 'a cat' }),
+      undefined,  // no per-tool override — heartbeats keep the connection alive
+    );
   });
 
   test('filter with all flags false returns only core tools', () => {

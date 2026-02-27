@@ -25,6 +25,9 @@ const logger = getLogger().child({ component: 'ipc' });
 // LLM calls have their own timeout (10min default), so this is a safety net.
 const IPC_HANDLER_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
+/** Interval between heartbeat frames sent to clients during handler execution. */
+export const HEARTBEAT_INTERVAL_MS = 15_000;
+
 export interface IPCContext {
   sessionId: string;
   agentId: string;
@@ -284,7 +287,24 @@ export function createIPCServer(
         buffer = buffer.subarray(4 + msgLen);
 
         logger.debug('message_received', { msgLen });
-        const response = await handler(raw, defaultCtx);
+
+        // Send periodic heartbeat frames so the client knows we're alive
+        // during long-running handlers (agent_delegate, image_generate, etc.)
+        const heartbeatInterval = setInterval(() => {
+          const hb = JSON.stringify({ _heartbeat: true, ts: Date.now() });
+          const hbBuf = Buffer.from(hb, 'utf-8');
+          const hbLenBuf = Buffer.alloc(4);
+          hbLenBuf.writeUInt32BE(hbBuf.length, 0);
+          try { socket.write(Buffer.concat([hbLenBuf, hbBuf])); } catch { /* socket gone */ }
+        }, HEARTBEAT_INTERVAL_MS);
+
+        let response: string;
+        try {
+          response = await handler(raw, defaultCtx);
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
+
         const responseBuf = Buffer.from(response, 'utf-8');
         const lenBuf = Buffer.alloc(4);
         lenBuf.writeUInt32BE(responseBuf.length, 0);

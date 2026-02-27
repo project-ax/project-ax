@@ -21,6 +21,9 @@ export interface ToolSpec {
   category: ToolCategory;
   /** When true, execute() must inject userId into IPC call params. */
   injectUserId?: boolean;
+  /** Custom IPC call timeout in ms. Tools that spawn subprocesses (agent_delegate)
+   *  or call slow external APIs (image_generate) need longer than the 30s default. */
+  timeoutMs?: number;
 }
 
 export const TOOL_CATALOG: readonly ToolSpec[] = [

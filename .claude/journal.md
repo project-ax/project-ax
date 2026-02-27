@@ -1,5 +1,13 @@
 # Journal
 
+## [2026-02-27 14:30] — Create exploring-reference-repos skill
+
+**Task:** Create a new skill for exploring other git repositories to get architectural inspiration
+**What I did:** Created `~/.claude/skills/exploring-reference-repos/SKILL.md` — a technique skill with an 8-step workflow: define target, find repos, shallow clone to temp dir, orient via README, targeted search, read and trace patterns, summarize insights, clean up. Includes a reference table of well-known projects for common patterns and common mistakes section.
+**Files touched:** `~/.claude/skills/exploring-reference-repos/SKILL.md` (created)
+**Outcome:** Success — skill loads via Skill tool and appears in the discoverable skills list
+**Notes:** Personal skills at `~/.claude/skills/` ARE auto-discovered by Claude Code (initially tried project dir too, removed duplicate)
+
 ## [2026-02-27 12:15] — Harden subagent delegation (fix 4 crash-causing bugs)
 
 **Task:** Diagnose and fix "3 concurrent agents crashes the server" in the delegation pipeline.
@@ -7,6 +15,14 @@
 **Files touched:** src/host/ipc-server.ts, src/host/ipc-handlers/delegation.ts, src/host/server-completions.ts, src/agent/ipc-transport.ts, tests/host/delegation-hardening.test.ts (new), tests/e2e/scenarios/delegation-stress.test.ts (new)
 **Outcome:** Success — all 18 new tests pass, full suite green
 **Notes:** The root cause of "3 agents crashes server" was a combination of timer leaks + error response inconsistency. Each IPC call leaked a 15-minute setTimeout; under 3 concurrent delegations making multiple IPC calls, timers accumulated fast. The delegation error handler also let exceptions propagate up, causing the IPC handler to return "Handler error: ..." instead of the expected {ok, error} shape.
+
+## [2026-02-27 09:55] — Fix agent_delegate IPC timeout causing repeated subagent tasks
+
+**Task:** Diagnose why subagents repeat the same tasks despite EPERM fix being in place.
+**What I did:** Root-caused to IPC client 30-second default timeout. `agent_delegate` spawns subagents needing 30-60+ seconds, but the IPC call times out at 30s, returning "Error: IPC call timed out after 30000ms" to the LLM. The LLM interprets this as delegate failure and retries — creating repeated tasks. Added `timeoutMs` field to `ToolSpec` interface in tool catalog. Set 10-minute timeout for `agent_delegate` (matching max sandbox timeout) and 2-minute timeout for `image_generate`. Threaded timeout through both IPC tool creation paths (ipc-tools.ts and pi-session.ts).
+**Files touched:** src/agent/tool-catalog.ts, src/agent/ipc-tools.ts, src/agent/runners/pi-session.ts, tests/agent/ipc-tools.test.ts
+**Outcome:** Success — all 1731 tests pass. Subagents will no longer be re-delegated due to IPC timeout.
+**Notes:** Evidence in the log was clear: gap between first and second `tool_execute name=agent_delegate` was exactly 30 seconds — the IPC timeout. LLM calls already had a 10-minute override (`LLM_CALL_TIMEOUT_MS`) but tool calls didn't.
 
 ## [2026-02-27 09:35] — Dev/production mode split for agent runner
 
@@ -789,3 +805,15 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** src/utils/retry.ts, src/host/server-channels.ts, tests/utils/retry.test.ts, tests/host/channel-reconnect.test.ts
 **Outcome:** Success — all 1725 tests pass. Next time Slack connect fails, the log will show "test-channel connect() rejected without an error value" instead of "undefined"
 **Notes:** Root cause of the Slack connection failure itself is unknown — the `error: "undefined"` was masking it. With this fix, the next failure will produce a real error message. Common causes: invalid app token, Socket Mode not enabled, network issues.
+
+## [2026-02-27 10:29] — IPC Heartbeat Keep-Alive
+
+**Task:** Implement heartbeat mechanism for IPC so long-running operations don't time out
+**What I did:**
+- Server (`ipc-server.ts`): Added `HEARTBEAT_INTERVAL_MS` (15s) export and heartbeat interval around handler execution in `createIPCServer`. Server sends `{_heartbeat: true, ts}` frames during handler execution.
+- Client (`ipc-client.ts`): Rewrote `onData` in `callOnce()` to process multiple frames in a `while` loop, recognize `_heartbeat` frames (reset timeout timer), and resolve on actual response. Changed `const timer` to `let timer`. Updated timeout error message to mention heartbeats.
+- Tool catalog (`tool-catalog.ts`): Removed `timeoutMs` from `agent_delegate` (was 10min) and `image_generate` (was 2min) — heartbeats eliminate the need for static overrides.
+- Tests: Added 4 new heartbeat tests in `ipc-client.test.ts`, 2 tests in `ipc-server.test.ts`, updated 2 tests in `ipc-tools.test.ts`.
+**Files touched:** `src/host/ipc-server.ts`, `src/agent/ipc-client.ts`, `src/agent/tool-catalog.ts`, `tests/agent/ipc-client.test.ts`, `tests/host/ipc-server.test.ts`, `tests/agent/ipc-tools.test.ts`
+**Outcome:** Success — all 1736 tests pass (167 test files)
+**Notes:** Design mirrors openclaw pattern (tick events every 15s, 2x watchdog = 30s default client timeout). For fast operations (<15s), interval never fires — zero overhead.

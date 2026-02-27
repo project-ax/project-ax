@@ -107,4 +107,129 @@ describe('IPCClient', () => {
 
     client.disconnect();
   }, 5000);
+
+  test('heartbeats reset timeout — client survives long operation', async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ipc-test-'));
+    const socketPath = join(tmpDir, 'test.sock');
+
+    // Server sends heartbeats every 50ms, then responds after 300ms
+    server = createServer((socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('data', (data) => {
+        buffer = Buffer.concat([buffer, data]);
+        if (buffer.length < 4) return;
+        const msgLen = buffer.readUInt32BE(0);
+        if (buffer.length < 4 + msgLen) return;
+
+        // Send heartbeats
+        const hbInterval = setInterval(() => {
+          const hb = JSON.stringify({ _heartbeat: true, ts: Date.now() });
+          const hbBuf = Buffer.from(hb, 'utf-8');
+          const lenBuf = Buffer.alloc(4);
+          lenBuf.writeUInt32BE(hbBuf.length, 0);
+          socket.write(Buffer.concat([lenBuf, hbBuf]));
+        }, 50);
+
+        // Send real response after 300ms (longer than the 150ms timeout)
+        setTimeout(() => {
+          clearInterval(hbInterval);
+          const resp = JSON.stringify({ ok: true, result: 'done' });
+          const respBuf = Buffer.from(resp, 'utf-8');
+          const lenBuf = Buffer.alloc(4);
+          lenBuf.writeUInt32BE(respBuf.length, 0);
+          socket.write(Buffer.concat([lenBuf, respBuf]));
+        }, 300);
+      });
+    });
+    server.listen(socketPath);
+    await new Promise<void>((resolve) => server.on('listening', resolve));
+
+    // Timeout is 150ms — without heartbeats this would fail
+    const client = new IPCClient({ socketPath, timeoutMs: 150 });
+    const result = await client.call({ action: 'test' });
+
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe('done');
+
+    client.disconnect();
+  }, 5000);
+
+  test('times out when heartbeats stop arriving', async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ipc-test-'));
+    const socketPath = join(tmpDir, 'test.sock');
+
+    // Server sends one heartbeat then stops — never sends a real response
+    server = createServer((socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('data', (data) => {
+        buffer = Buffer.concat([buffer, data]);
+        if (buffer.length < 4) return;
+        const msgLen = buffer.readUInt32BE(0);
+        if (buffer.length < 4 + msgLen) return;
+
+        // Send one heartbeat after 30ms
+        setTimeout(() => {
+          const hb = JSON.stringify({ _heartbeat: true, ts: Date.now() });
+          const hbBuf = Buffer.from(hb, 'utf-8');
+          const lenBuf = Buffer.alloc(4);
+          lenBuf.writeUInt32BE(hbBuf.length, 0);
+          socket.write(Buffer.concat([lenBuf, hbBuf]));
+        }, 30);
+        // Then silence — no more heartbeats, no response
+      });
+    });
+    server.listen(socketPath);
+    await new Promise<void>((resolve) => server.on('listening', resolve));
+
+    const client = new IPCClient({ socketPath, timeoutMs: 150 });
+
+    await expect(client.call({ action: 'test' })).rejects.toThrow('no heartbeat');
+
+    client.disconnect();
+  }, 5000);
+
+  test('resolves actual response after multiple heartbeats', async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ipc-test-'));
+    const socketPath = join(tmpDir, 'test.sock');
+
+    // Server sends 3 heartbeats then the real response
+    server = createServer((socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('data', (data) => {
+        buffer = Buffer.concat([buffer, data]);
+        if (buffer.length < 4) return;
+        const msgLen = buffer.readUInt32BE(0);
+        if (buffer.length < 4 + msgLen) return;
+
+        function sendFrame(obj: Record<string, unknown>) {
+          const json = JSON.stringify(obj);
+          const buf = Buffer.from(json, 'utf-8');
+          const len = Buffer.alloc(4);
+          len.writeUInt32BE(buf.length, 0);
+          socket.write(Buffer.concat([len, buf]));
+        }
+
+        let count = 0;
+        const iv = setInterval(() => {
+          count++;
+          if (count <= 3) {
+            sendFrame({ _heartbeat: true, ts: Date.now() });
+          } else {
+            clearInterval(iv);
+            sendFrame({ ok: true, data: 'final' });
+          }
+        }, 40);
+      });
+    });
+    server.listen(socketPath);
+    await new Promise<void>((resolve) => server.on('listening', resolve));
+
+    const client = new IPCClient({ socketPath, timeoutMs: 150 });
+    const result = await client.call({ action: 'test' });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toBe('final');
+
+    client.disconnect();
+  }, 5000);
 });

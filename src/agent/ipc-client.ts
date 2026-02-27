@@ -115,9 +115,9 @@ export class IPCClient {
     logger.debug('call_start', { action, payloadBytes: payload.length, timeoutMs: effectiveTimeout });
 
     return new Promise<Record<string, unknown>>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let timer = setTimeout(() => {
         logger.debug('call_timeout', { action, timeoutMs: effectiveTimeout });
-        reject(new Error(`IPC call timed out after ${effectiveTimeout}ms`));
+        reject(new Error(`IPC call timed out (no heartbeat for ${effectiveTimeout}ms)`));
       }, effectiveTimeout);
 
       let buffer = Buffer.alloc(0);
@@ -125,30 +125,49 @@ export class IPCClient {
       const onData = (data: Buffer) => {
         buffer = Buffer.concat([buffer, data]);
 
-        if (buffer.length < 4) return;
+        while (buffer.length >= 4) {
+          const msgLen = buffer.readUInt32BE(0);
+          if (buffer.length < 4 + msgLen) return; // wait for more data
 
-        const msgLen = buffer.readUInt32BE(0);
-        if (buffer.length < 4 + msgLen) return;
+          const raw = buffer.subarray(4, 4 + msgLen).toString('utf-8');
+          buffer = buffer.subarray(4 + msgLen);
 
-        clearTimeout(timer);
-        socket.off('data', onData);
-        socket.off('error', onError);
+          const durationMs = Date.now() - callStart;
+          try {
+            const parsed = JSON.parse(raw);
 
-        const raw = buffer.subarray(4, 4 + msgLen).toString('utf-8');
-        const durationMs = Date.now() - callStart;
-        try {
-          const parsed = JSON.parse(raw);
-          logger.debug('call_done', {
-            action,
-            ok: parsed.ok,
-            responseBytes: msgLen,
-            durationMs,
-            ...(parsed.error ? { error: truncate(String(parsed.error)) } : {}),
-          });
-          resolve(parsed);
-        } catch {
-          logger.debug('call_error', { action, error: 'Invalid JSON in response', durationMs });
-          reject(new Error('Invalid JSON in IPC response'));
+            if (parsed._heartbeat) {
+              // Reset timeout — server is alive
+              clearTimeout(timer);
+              timer = setTimeout(() => {
+                logger.debug('call_timeout', { action, timeoutMs: effectiveTimeout });
+                reject(new Error(`IPC call timed out (no heartbeat for ${effectiveTimeout}ms)`));
+              }, effectiveTimeout);
+              logger.debug('heartbeat_received', { action, ts: parsed.ts });
+              continue; // keep listening for more frames
+            }
+
+            // Regular response — resolve
+            clearTimeout(timer);
+            socket.off('data', onData);
+            socket.off('error', onError);
+            logger.debug('call_done', {
+              action,
+              ok: parsed.ok,
+              responseBytes: msgLen,
+              durationMs,
+              ...(parsed.error ? { error: truncate(String(parsed.error)) } : {}),
+            });
+            resolve(parsed);
+            return;
+          } catch {
+            clearTimeout(timer);
+            socket.off('data', onData);
+            socket.off('error', onError);
+            logger.debug('call_error', { action, error: 'Invalid JSON in response', durationMs });
+            reject(new Error('Invalid JSON in IPC response'));
+            return;
+          }
         }
       };
 
