@@ -408,3 +408,15 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Downgrading server_listening log to debug broke smoke tests that searched for it as a readiness marker
 **Lesson:** Integration/smoke tests in tests/integration/ spawn the server as a subprocess and watch stdout for a specific string to detect readiness. When changing log levels or replacing log messages with event bus events, always search for the old log message across ALL test files (not just unit tests) — smoke tests are easily missed. The smoke tests (smoke.test.ts, history-smoke.test.ts) both had independent copies of `waitForReady()` matching on `server_listening`.
 **Tags:** testing, smoke, integration, log-levels, readiness
+
+### Extend the EventBus rather than replacing it for orchestration
+**Date:** 2026-02-28
+**Context:** Designing agent orchestration — needed to decide whether to build a new event system or reuse the existing EventBus
+**Lesson:** The existing EventBus already emits llm.start, tool.call, llm.done events throughout the pipeline. Instead of creating a parallel event system, use auto-state inference: subscribe to the EventBus and map existing events to agent state transitions (llm.start → waiting_for_llm, tool.call → tool_calling, etc.). This avoids modifying existing IPC handlers while still getting rich agent state. The bridge pattern (listen → translate → update) is better than forking.
+**Tags:** architecture, event-bus, orchestration, bridge-pattern, state-management
+
+### Agent messages must flow through trusted host — never sandbox-to-sandbox
+**Date:** 2026-02-28
+**Context:** Designing inter-agent messaging for the orchestration system
+**Lesson:** Even though agents need to talk to each other, messages MUST route through the host process. The sandbox security boundary means agents have no network access and cannot reach each other's IPC sockets. The host mediates all communication: validates messages, enforces scope (same-session only), checks sender/recipient status, and logs to audit. This is more latency than direct messaging but preserves the security invariant that sandboxes are isolated.
+**Tags:** security, messaging, orchestration, sandbox, ipc, agent-communication
