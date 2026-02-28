@@ -894,3 +894,26 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** `src/host/server-completions.ts`, `src/host/ipc-handlers/llm.ts`, `src/host/server.ts`, `src/host/event-bus.ts`, `tests/host/ipc-handlers/llm-events.test.ts`, `tests/host/streaming-completions.test.ts` (new)
 **Outcome:** Success — all 1808 tests pass across 176 test files
 **Notes:** Initially tried threading a separate `_requestId` through the full pipeline (stdin → IPC client → IPC server → IPCContext), but simplified to just passing the HTTP requestId as the agent's sessionId. The key insight: `ctx.sessionId` is already threaded end-to-end, so reusing it avoids new plumbing. The old `queued.session_id` (`http:dm:client`) was shared across all HTTP requests, making correlation impossible.
+
+## [2026-02-28 15:50] — Agent Orchestration Architecture
+
+**Task:** Design and implement an agent orchestration system that enables real-time visibility into active agents, agent state tracking, interrupt mechanisms, and agent-to-agent communication.
+**What I did:**
+- Researched OpenClaw's Agent Teams RFC, Google A2A protocol, Confluent's event-driven patterns, OpenAI Agents SDK handoff model, and LangGraph state machines
+- Designed a hybrid orchestration architecture: centralized governance (Orchestrator) with decentralized messaging (peer-to-peer through host)
+- Implemented three new modules in `src/host/orchestration/`:
+  - `types.ts` — Agent state machine (10 states, validated transitions), AgentHandle, AgentMessage, scoping types
+  - `agent-supervisor.ts` — Lifecycle management with interrupt/grace-period/cancel, max-agent safety valve, audit logging
+  - `agent-directory.ts` — Runtime discovery with multi-dimensional queries (by session, user, parent), tree builder, session summaries
+  - `orchestrator.ts` — Central coordinator: message routing, mailbox system (push + pull), scoped broadcast, auto-state inference from existing EventBus events
+- Added IPC handler (`src/host/ipc-handlers/orchestration.ts`) with session-scoped access control
+- Added 6 new IPC schemas for orchestration actions
+- Wrote 92 tests covering all modules
+**Files touched:**
+- Created: `docs/plans/2026-02-28-agent-orchestration-architecture.md`
+- Created: `src/host/orchestration/types.ts`, `agent-supervisor.ts`, `agent-directory.ts`, `orchestrator.ts`
+- Created: `src/host/ipc-handlers/orchestration.ts`
+- Modified: `src/ipc-schemas.ts` (added 6 orchestration action schemas)
+- Created: `tests/host/orchestration/agent-supervisor.test.ts`, `agent-directory.test.ts`, `orchestrator.test.ts`
+**Outcome:** Success — 92 new tests pass, existing IPC schema tests unaffected
+**Notes:** Key design decisions: (1) Extend EventBus rather than replace it — auto-state inference bridges existing llm.start/tool.call events to the new state model. (2) Messages always flow through trusted host — preserves sandbox security boundary. (3) A2A-inspired state machine with 10 states and enforced transitions. (4) Both push (listeners) and pull (polling) message delivery — sandboxed agents use pull via IPC, internal components use push.

@@ -328,6 +328,47 @@ export const AgentRegistryGetSchema = ipcAction('agent_registry_get', {
   agentId: safeString(100),
 });
 
+// ── Agent Orchestration ────────────────────────────────
+
+const agentHandleId = safeString(128);
+
+export const AgentOrchStatusSchema = ipcAction('agent_orch_status', {
+  handleId: agentHandleId.optional(),
+});
+
+export const AgentOrchListSchema = ipcAction('agent_orch_list', {
+  sessionId: safeString(128).optional(),
+  userId: safeString(200).optional(),
+  parentId: agentHandleId.optional(),
+  state: z.union([
+    z.enum(['spawning', 'running', 'thinking', 'tool_calling', 'waiting_for_llm', 'delegating', 'interrupted', 'completed', 'failed', 'canceled']),
+    z.array(z.enum(['spawning', 'running', 'thinking', 'tool_calling', 'waiting_for_llm', 'delegating', 'interrupted', 'completed', 'failed', 'canceled'])),
+  ]).optional(),
+});
+
+export const AgentOrchTreeSchema = ipcAction('agent_orch_tree', {
+  rootId: agentHandleId,
+});
+
+export const AgentOrchMessageSchema = ipcAction('agent_orch_message', {
+  to: agentHandleId,
+  type: z.enum(['request', 'response', 'notification']),
+  payload: z.record(z.unknown()).refine(
+    obj => JSON.stringify(obj).length <= 50_000,
+    'Payload too large (max 50KB)'
+  ),
+  correlationId: safeString(128).optional(),
+});
+
+export const AgentOrchPollSchema = ipcAction('agent_orch_poll', {
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+export const AgentOrchInterruptSchema = ipcAction('agent_orch_interrupt', {
+  handleId: agentHandleId,
+  reason: safeString(1000),
+});
+
 // ── Plugin Management ────────────────────────────────
 
 export const PluginListSchema = ipcAction('plugin_list', {});

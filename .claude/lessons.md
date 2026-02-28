@@ -402,3 +402,15 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Adding thinking/reasoning chunk support to the Anthropic LLM provider
 **Lesson:** When processing Anthropic streaming events for extended thinking, the `content_block_delta` event's delta has a `thinking` key (not `text`). Cast delta to `Record<string, unknown>` to check for it since the SDK types may not include it yet. For OpenAI-compatible providers, reasoning content appears as `reasoning_content` or `reasoning` on the delta — also non-standard fields that need a cast to access.
 **Tags:** anthropic, openai, thinking, reasoning, streaming, types
+
+### Extend the EventBus rather than replacing it for orchestration
+**Date:** 2026-02-28
+**Context:** Designing agent orchestration — needed to decide whether to build a new event system or reuse the existing EventBus
+**Lesson:** The existing EventBus already emits llm.start, tool.call, llm.done events throughout the pipeline. Instead of creating a parallel event system, use auto-state inference: subscribe to the EventBus and map existing events to agent state transitions (llm.start → waiting_for_llm, tool.call → tool_calling, etc.). This avoids modifying existing IPC handlers while still getting rich agent state. The bridge pattern (listen → translate → update) is better than forking.
+**Tags:** architecture, event-bus, orchestration, bridge-pattern, state-management
+
+### Agent messages must flow through trusted host — never sandbox-to-sandbox
+**Date:** 2026-02-28
+**Context:** Designing inter-agent messaging for the orchestration system
+**Lesson:** Even though agents need to talk to each other, messages MUST route through the host process. The sandbox security boundary means agents have no network access and cannot reach each other's IPC sockets. The host mediates all communication: validates messages, enforces scope (same-session only), checks sender/recipient status, and logs to audit. This is more latency than direct messaging but preserves the security invariant that sandboxes are isolated.
+**Tags:** security, messaging, orchestration, sandbox, ipc, agent-communication
