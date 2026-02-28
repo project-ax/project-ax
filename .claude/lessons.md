@@ -372,3 +372,15 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Smoke tests timed out under full parallel CI load — 4 tests failed with empty stdout/stderr because tsx cold-start exceeded the 15s timeout when 167 test files ran simultaneously.
 **Lesson:** When tests spawn child processes (e.g., `npx tsx src/main.ts`), the cold-start cost is high and unpredictable under parallel load. Three fixes: (1) Increase `waitForReady` timeout to 45s minimum — tsx cold-start under contention can easily take 20-30s. (2) Use event listeners on stdout/stderr instead of setInterval polling — react immediately when the readiness marker appears. (3) Share server processes across compatible tests using `beforeAll`/`afterAll` — reduces total spawn count and eliminates repeated cold starts. Tests sharing a server must use random session IDs to avoid state contamination.
 **Tags:** testing, integration, flaky, timeout, child-process, shared-server, beforeAll
+
+### Cross-provider imports should go through shared-types.ts, not sibling directories
+**Date:** 2026-02-28
+**Context:** Preparing provider extraction (Step 2b) — scheduler imported types directly from channel/, memory/, and audit/ directories
+**Lesson:** When one provider category needs types from another (e.g., scheduler needs `SessionAddress` from channel), import from `src/providers/shared-types.ts` — never directly from `../channel/types.js`. This keeps the import graph clean for eventual package extraction. The shared-types file is purely re-exports; canonical definitions stay in their home provider's types.ts. A structural test in `tests/providers/shared-types.test.ts` enforces this by scanning source imports.
+**Tags:** architecture, imports, providers, cross-provider, shared-types, extraction-prep
+
+### Shared utilities between routers go in src/providers/router-utils.ts
+**Date:** 2026-02-28
+**Context:** image/router.ts was importing parseCompoundId from llm/router.ts — a cross-provider runtime dependency
+**Lesson:** If multiple provider routers share utility functions (like `parseCompoundId`), extract them to `src/providers/router-utils.ts`. Don't have one router import from another — that creates a dependency between provider categories. When extracting the shared function, add a re-export from the original location for backwards compatibility, and mark it for removal in a future phase.
+**Tags:** architecture, imports, router, shared-utils, parseCompoundId, extraction-prep

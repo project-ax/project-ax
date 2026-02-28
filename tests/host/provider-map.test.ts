@@ -82,4 +82,17 @@ describe('Provider allowlist (SC-SEC-002)', () => {
     expect(sandboxMap!['nsjail']).toBeDefined();
     expect(sandboxMap!['docker']).toBeDefined();
   });
+
+  test('all resolved paths use file:// protocol (SC-SEC-002 hardening)', () => {
+    // SECURITY: assertFileUrl() rejects non-file:// URLs (data:, http:, node:, etc).
+    // This test ensures every resolved path from the built-in allowlist passes
+    // the protocol check. When Phase 3 adds package names, they must also resolve
+    // to file:// URLs via import.meta.resolve().
+    for (const [kind, names] of Object.entries(PROVIDER_MAP)) {
+      for (const name of Object.keys(names)) {
+        const resolved = resolveProviderPath(kind, name);
+        expect(resolved).toMatch(/^file:\/\//);
+      }
+    }
+  });
 });

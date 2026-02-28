@@ -814,21 +814,17 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Outcome:** Success — clean TypeScript build, 167/167 test files pass, 1721/1722 tests (1 skipped macOS seatbelt)
 **Notes:** The npm package @mariozechner/pi-agent-core is still a direct dependency for type imports (AgentMessage, AgentTool, StreamFn). These types are not re-exported by pi-coding-agent. A follow-up could re-export them from a local barrel file and drop the direct dep.
 
-## [2026-02-26 22:14] — Fix diagnoseError crash on undefined/null input
+## [2026-02-28 01:20] — Harden import.meta.resolve + fix cross-provider dependencies (Step 2b)
 
-**Task:** Fix TypeError crash in `diagnoseError` when called with `undefined` from a `.catch()` handler
-**What I did:** Added nullish guard to `diagnoseError` — changed type signature to accept `undefined | null`, used optional chaining (`err?.message ?? 'Unknown error'`). Added test covering undefined and null inputs.
-**Files touched:** src/errors.ts, tests/errors.test.ts
-**Outcome:** Success — all 1723 tests pass, crash no longer occurs
-**Notes:** All 5 callers use `err as Error` from `.catch()` blocks. A Promise can reject with `undefined` (e.g., `reject()` with no args), so the error boundary function must be defensive.
-
-## [2026-02-26 22:20] — Fix Slack retry logging "undefined" error
-
-**Task:** Diagnose and fix `error: "undefined"` in Slack channel retry logs
-**What I did:** The `@slack/bolt` SDK can reject with `undefined` on socket failures. Fixed two layers: (1) `withRetry` now logs descriptive message instead of `String(undefined)`, (2) `connectChannelWithRetry` wraps `undefined` rejections into a real Error with the channel name so retry classification and logging work correctly.
-**Files touched:** src/utils/retry.ts, src/host/server-channels.ts, tests/utils/retry.test.ts, tests/host/channel-reconnect.test.ts
-**Outcome:** Success — all 1725 tests pass. Next time Slack connect fails, the log will show "test-channel connect() rejected without an error value" instead of "undefined"
-**Notes:** Root cause of the Slack connection failure itself is unknown — the `error: "undefined"` was masking it. With this fix, the next failure will produce a real error message. Common causes: invalid app token, Socket Mode not enabled, network issues.
+**Task:** Add post-resolution URL protocol validation to provider-map.ts, extract parseCompoundId out of llm/router into shared router-utils, and break scheduler's direct imports from channel/memory/audit types via shared-types.ts
+**What I did:**
+1. Added `assertFileUrl()` guard in provider-map.ts — every resolved URL must be `file://` protocol (rejects `data:`, `http:`, `node:` schemes). Defense-in-depth for SC-SEC-002.
+2. Created `src/providers/router-utils.ts` with `parseCompoundId` + `ModelCandidate`. Updated both `llm/router.ts` and `image/router.ts` to import from shared utils. Added backwards-compat re-export from `llm/router.ts`.
+3. Created `src/providers/shared-types.ts` as a cross-provider type re-export hub. Updated all 4 scheduler files (`types.ts`, `utils.ts`, `cron.ts`, `full.ts`) to import from `shared-types.ts` instead of directly from `../channel/types.js`, `../memory/types.js`, `../audit/types.js`.
+4. Added structural test (`shared-types.test.ts`) that reads source files to enforce no direct sibling provider imports.
+**Files touched:** Modified: src/host/provider-map.ts, src/providers/llm/router.ts, src/providers/image/router.ts, src/providers/scheduler/types.ts, src/providers/scheduler/utils.ts, src/providers/scheduler/cron.ts, src/providers/scheduler/full.ts, tests/host/provider-map.test.ts, tests/providers/llm/router.test.ts, tests/providers/image/router.test.ts. Created: src/providers/router-utils.ts, src/providers/shared-types.ts, tests/providers/router-utils.test.ts, tests/providers/shared-types.test.ts
+**Outcome:** Success — 171/171 test files pass, 1749/1750 tests pass (1 skipped), clean TypeScript build
+**Notes:** The re-export from llm/router.ts is marked for removal in Phase 3. The shared-types.ts pattern keeps canonical type definitions in their home provider — it's purely a re-export hub to prevent import graph coupling.
 
 ## [2026-02-27 10:29] — IPC Heartbeat Keep-Alive
 
@@ -841,3 +837,19 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** `src/host/ipc-server.ts`, `src/agent/ipc-client.ts`, `src/agent/tool-catalog.ts`, `tests/agent/ipc-client.test.ts`, `tests/host/ipc-server.test.ts`, `tests/agent/ipc-tools.test.ts`
 **Outcome:** Success — all 1736 tests pass (167 test files)
 **Notes:** Design mirrors openclaw pattern (tick events every 15s, 2x watchdog = 30s default client timeout). For fast operations (<15s), interval never fires — zero overhead.
+
+## [2026-02-26 22:20] — Fix Slack retry logging "undefined" error
+
+**Task:** Diagnose and fix `error: "undefined"` in Slack channel retry logs
+**What I did:** The `@slack/bolt` SDK can reject with `undefined` on socket failures. Fixed two layers: (1) `withRetry` now logs descriptive message instead of `String(undefined)`, (2) `connectChannelWithRetry` wraps `undefined` rejections into a real Error with the channel name so retry classification and logging work correctly.
+**Files touched:** src/utils/retry.ts, src/host/server-channels.ts, tests/utils/retry.test.ts, tests/host/channel-reconnect.test.ts
+**Outcome:** Success — all 1725 tests pass. Next time Slack connect fails, the log will show "test-channel connect() rejected without an error value" instead of "undefined"
+**Notes:** Root cause of the Slack connection failure itself is unknown — the `error: "undefined"` was masking it. With this fix, the next failure will produce a real error message. Common causes: invalid app token, Socket Mode not enabled, network issues.
+
+## [2026-02-26 22:14] — Fix diagnoseError crash on undefined/null input
+
+**Task:** Fix TypeError crash in `diagnoseError` when called with `undefined` from a `.catch()` handler
+**What I did:** Added nullish guard to `diagnoseError` — changed type signature to accept `undefined | null`, used optional chaining (`err?.message ?? 'Unknown error'`). Added test covering undefined and null inputs.
+**Files touched:** src/errors.ts, tests/errors.test.ts
+**Outcome:** Success — all 1723 tests pass, crash no longer occurs
+**Notes:** All 5 callers use `err as Error` from `.catch()` blocks. A Promise can reject with `undefined` (e.g., `reject()` with no args), so the error boundary function must be defensive.

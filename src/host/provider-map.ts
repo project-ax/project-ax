@@ -120,6 +120,25 @@ export type ScreenerProviderName   = keyof ProviderMapType['screener'];
 export type ProviderNameFor<K extends ProviderKind> = keyof ProviderMapType[K];
 
 /**
+ * SECURITY: Post-resolution URL protocol guard.
+ *
+ * Every resolved provider path MUST be a file:// URL. This prevents a
+ * compromised or malformed provider map entry from loading code via
+ * data:, http:, node:, or other URL schemes that bypass the filesystem.
+ *
+ * Defense-in-depth: the allowlist already constrains inputs, but this
+ * catches any future regression where a non-file URL leaks through.
+ */
+function assertFileUrl(url: string, kind: string, name: string): void {
+  if (!url.startsWith('file://')) {
+    throw new Error(
+      `SC-SEC-002 violation: provider ${kind}/${name} resolved to non-file URL ` +
+      `(got ${url.split(':')[0]}:// scheme). Only file:// URLs are permitted.`
+    );
+  }
+}
+
+/**
  * Returns an absolute file URL for a given provider kind and name.
  * Resolves the relative path from the PROVIDER_MAP against this module's
  * location so the result can be used from any import() call site.
@@ -163,12 +182,16 @@ export function resolveProviderPath(kind: string, name: string): string {
   // shadows the real package. import.meta.resolve() behaves like new URL()
   // for relative paths: it resolves from this file's location, not CWD.
   if (modulePath.startsWith('@') || (!modulePath.startsWith('.') && !modulePath.startsWith('/'))) {
-    return import.meta.resolve(modulePath);
+    const resolved = import.meta.resolve(modulePath);
+    assertFileUrl(resolved, kind, name);
+    return resolved;
   }
 
   // Resolve the relative path against this module's location to produce
   // an absolute file:// URL usable from any import() call site.
-  return new URL(modulePath, import.meta.url).href;
+  const resolved = new URL(modulePath, import.meta.url).href;
+  assertFileUrl(resolved, kind, name);
+  return resolved;
 }
 
 // =====================================================
