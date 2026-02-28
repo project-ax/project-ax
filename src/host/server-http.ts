@@ -34,6 +34,13 @@ export interface OpenAIChatResponse {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
+export interface OpenAIToolCall {
+  index: number;
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
 export interface OpenAIStreamChunk {
   id: string;
   object: 'chat.completion.chunk';
@@ -41,8 +48,8 @@ export interface OpenAIStreamChunk {
   model: string;
   choices: {
     index: number;
-    delta: { role?: string; content?: string };
-    finish_reason: 'stop' | 'length' | 'content_filter' | null;
+    delta: { role?: string; content?: string; tool_calls?: OpenAIToolCall[] };
+    finish_reason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | null;
   }[];
 }
 

@@ -881,3 +881,16 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** `src/providers/llm/types.ts`, `src/providers/llm/anthropic.ts`, `src/providers/llm/openai.ts`, `src/host/ipc-handlers/llm.ts`, `tests/host/event-bus.test.ts`, `tests/host/ipc-handlers/llm-events.test.ts` (new), `tests/providers/llm/thinking-chunk.test.ts` (new)
 **Outcome:** Success — 29 new tests pass, all 431 existing tests pass (40 test files)
 **Notes:** The thinking event only carries `contentLength` — we intentionally do NOT include thinking content in events (no credentials, no full content in events per the security design). Anthropic thinking deltas arrive as `{ thinking: "..." }` in the delta, while OpenAI-compatible providers use `reasoning_content` or `reasoning` as non-standard delta fields.
+
+## [2026-02-27 22:26] — Stream llm.* event bus events as OpenAI SSE in chat completions
+
+**Task:** When `stream=true` on `/v1/chat/completions`, convert `llm.*` event bus events into real-time OpenAI-compatible SSE chunks instead of faking streaming with the full response.
+**What I did:**
+- Passed HTTP `requestId` as the agent's `sessionId` in the stdin payload (instead of `queued.session_id` which canonicalized to the shared `http:dm:client`). This makes `ctx.sessionId` in IPC handlers equal the HTTP requestId, so event bus events naturally correlate.
+- Updated image draining to use `requestId` instead of `queued.session_id` (images are stored under `ctx.sessionId` and must match).
+- Added text content to `llm.chunk` events (previously only had `contentLength`)
+- Restructured `handleCompletions` streaming path: subscribe to event bus before `processCompletion`, forward `llm.chunk` events as OpenAI SSE deltas in real-time, with fallback to full-response-as-single-chunk when no events are emitted
+- Added debug logging to `event-bus.ts` emit()
+**Files touched:** `src/host/server-completions.ts`, `src/host/ipc-handlers/llm.ts`, `src/host/server.ts`, `src/host/event-bus.ts`, `tests/host/ipc-handlers/llm-events.test.ts`, `tests/host/streaming-completions.test.ts` (new)
+**Outcome:** Success — all 1808 tests pass across 176 test files
+**Notes:** Initially tried threading a separate `_requestId` through the full pipeline (stdin → IPC client → IPC server → IPCContext), but simplified to just passing the HTTP requestId as the agent's sessionId. The key insight: `ctx.sessionId` is already threaded end-to-end, so reusing it avoids new plumbing. The old `queued.session_id` (`http:dm:client`) was shared across all HTTP requests, making correlation impossible.

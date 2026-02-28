@@ -419,7 +419,7 @@ export async function processCompletion(
       sandboxType: config.providers.sandbox,
       userId: currentUserId,
       replyOptional: replyOptional ?? false,
-      sessionId: queued.session_id,
+      sessionId: requestId,
       // Enterprise fields
       agentId: agentName,
       agentWorkspace: enterpriseAgentWs,
@@ -606,8 +606,8 @@ export async function processCompletion(
     // These are held in memory by the image handler — no disk round-trip needed.
     // The agent injects its session ID into IPC requests via _sessionId, so
     // images are stored under the real session ID (e.g. 'ch-d81c057a').
-    const generatedImages = drainGeneratedImages(queued.session_id);
-    reqLogger.debug('image_drain', { sessionKey: queued.session_id, count: generatedImages.length });
+    const generatedImages = drainGeneratedImages(requestId);
+    reqLogger.debug('image_drain', { sessionKey: requestId, count: generatedImages.length });
     if (generatedImages.length > 0) {
       if (!extractedFiles) extractedFiles = [];
       if (!responseBlocks) responseBlocks = [{ type: 'text', text: outbound.content }];

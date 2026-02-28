@@ -522,19 +522,14 @@ export async function createServer(
     // Extract userId from user field (first segment before /)
     const userId = chatReq.user?.split('/')[0] || undefined;
 
-    // Process completion — pass structured content through
-    const { responseContent, contentBlocks, finishReason } = await processCompletion(
-      completionDeps, content, requestId, chatReq.messages, sessionId,
-      undefined, userId,
-    );
-
     if (chatReq.stream) {
-      // Streaming mode -- OpenAI SSE format
+      // ── Streaming mode: subscribe to event bus and forward llm.chunk events as OpenAI SSE ──
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'X-Request-Id': requestId,
+        'X-Accel-Buffering': 'no',
       });
 
       // Role chunk
@@ -543,22 +538,76 @@ export async function createServer(
         choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
       });
 
-      // Content chunk — always plain text string
-      sendSSEChunk(res, {
-        id: requestId, object: 'chat.completion.chunk', created, model: requestModel,
-        choices: [{ index: 0, delta: { content: responseContent }, finish_reason: null }],
+      // Track whether we streamed any content via event bus
+      let streamedContent = false;
+
+      // Track tool call index for OpenAI-compatible incremental indexing
+      let toolCallIndex = 0;
+      let hasToolCalls = false;
+
+      // Subscribe to event bus for this request's llm events.
+      // Events are emitted synchronously during processCompletion, so the
+      // listener fires inline and we can res.write() in real-time.
+      const unsubscribe = eventBus.subscribeRequest(requestId, (event) => {
+        if (event.type === 'llm.chunk' && typeof event.data.content === 'string') {
+          streamedContent = true;
+          sendSSEChunk(res, {
+            id: requestId, object: 'chat.completion.chunk', created, model: requestModel,
+            choices: [{ index: 0, delta: { content: event.data.content as string }, finish_reason: null }],
+          });
+        } else if (event.type === 'tool.call' && event.data.toolName) {
+          streamedContent = true;
+          hasToolCalls = true;
+          sendSSEChunk(res, {
+            id: requestId, object: 'chat.completion.chunk', created, model: requestModel,
+            choices: [{ index: 0, delta: {
+              tool_calls: [{
+                index: toolCallIndex++,
+                id: (event.data.toolId as string) ?? `call_${toolCallIndex}`,
+                type: 'function',
+                function: {
+                  name: event.data.toolName as string,
+                  arguments: JSON.stringify(event.data.args ?? {}),
+                },
+              }],
+            }, finish_reason: null }],
+          });
+        }
       });
 
-      // Finish chunk
+      // Run completion — blocks while agent processes, but event callbacks fire during execution
+      const { responseContent, finishReason } = await processCompletion(
+        completionDeps, content, requestId, chatReq.messages, sessionId,
+        undefined, userId,
+      );
+
+      unsubscribe();
+
+      // Fallback: if no llm.chunk events were emitted (e.g. claude-code runner
+      // bypasses the IPC LLM handler), send the full response as a single chunk.
+      if (!streamedContent && responseContent) {
+        sendSSEChunk(res, {
+          id: requestId, object: 'chat.completion.chunk', created, model: requestModel,
+          choices: [{ index: 0, delta: { content: responseContent }, finish_reason: null }],
+        });
+      }
+
+      // Finish chunk — use 'tool_calls' finish reason when the response included tool calls
+      const streamFinishReason = hasToolCalls && finishReason === 'stop' ? 'tool_calls' as const : finishReason;
       sendSSEChunk(res, {
         id: requestId, object: 'chat.completion.chunk', created, model: requestModel,
-        choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+        choices: [{ index: 0, delta: {}, finish_reason: streamFinishReason }],
       });
 
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      // Non-streaming mode
+      // ── Non-streaming mode ──
+      const { responseContent, finishReason } = await processCompletion(
+        completionDeps, content, requestId, chatReq.messages, sessionId,
+        undefined, userId,
+      );
+
       const response: OpenAIChatResponse = {
         id: requestId, object: 'chat.completion', created, model: requestModel,
         choices: [{

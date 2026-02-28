@@ -55,6 +55,13 @@ export function createEventBus(): EventBus {
   const perRequest = new Map<string, EventListener[]>();
 
   function emit(event: StreamEvent): void {
+    logger.debug('event_bus_emit', {
+      type: event.type,
+      requestId: event.requestId,
+      timestamp: event.timestamp,
+      data: event.data,
+    });
+
     // Global listeners
     for (const listener of globals) {
       try {

@@ -89,7 +89,9 @@ describe('LLM handler event emissions', () => {
 
     const toolEvents = events.filter(e => e.type === 'tool.call');
     expect(toolEvents).toHaveLength(1);
+    expect(toolEvents[0].data.toolId).toBe('t1');
     expect(toolEvents[0].data.toolName).toBe('search');
+    expect(toolEvents[0].data.args).toEqual({ q: 'test' });
   });
 
   it('does not emit events when no eventBus is provided', async () => {
@@ -135,12 +137,34 @@ describe('LLM handler event emissions', () => {
       yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } };
     });
 
-    const ctx = { sessionId: 'sess-abc', agentId: 'agent-1' };
+    const ctx = { sessionId: 'chatcmpl-abc', agentId: 'agent-1' };
     const handlers = createLLMHandlers(providers, undefined, undefined, eventBus);
     await handlers.llm_call({ messages: [{ role: 'user', content: 'hi' }] }, ctx);
 
     for (const event of events) {
-      expect(event.requestId).toBe('sess-abc');
+      expect(event.requestId).toBe('chatcmpl-abc');
     }
+  });
+
+  it('includes text content in llm.chunk events', async () => {
+    const eventBus = createEventBus();
+    const events: StreamEvent[] = [];
+    eventBus.subscribe((e) => events.push(e));
+
+    const providers = mockProviders(async function* () {
+      yield { type: 'text', content: 'Hello world' };
+      yield { type: 'text', content: '!' };
+      yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } };
+    });
+
+    const handlers = createLLMHandlers(providers, undefined, undefined, eventBus);
+    await handlers.llm_call({ messages: [{ role: 'user', content: 'hi' }] }, mockCtx());
+
+    const chunkEvents = events.filter(e => e.type === 'llm.chunk');
+    expect(chunkEvents).toHaveLength(2);
+    expect(chunkEvents[0].data.content).toBe('Hello world');
+    expect(chunkEvents[0].data.contentLength).toBe(11);
+    expect(chunkEvents[1].data.content).toBe('!');
+    expect(chunkEvents[1].data.contentLength).toBe(1);
   });
 });

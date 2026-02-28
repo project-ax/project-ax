@@ -87,11 +87,12 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
         // Emit per-chunk event for real-time streaming observers
         const chunkType = (chunk as any).type;
         if (chunkType === 'tool_use') {
+          const tc = (chunk as any).toolCall;
           eventBus?.emit({
             type: 'tool.call',
             requestId: ctx.sessionId,
             timestamp: Date.now(),
-            data: { toolName: (chunk as any).toolCall?.name },
+            data: { toolId: tc?.id, toolName: tc?.name, args: tc?.args },
           });
         } else if (chunkType === 'thinking') {
           eventBus?.emit({
@@ -101,11 +102,12 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
             data: { contentLength: ((chunk as any).content ?? '').length },
           });
         } else if (chunkType === 'text') {
+          const textContent = (chunk as any).content ?? '';
           eventBus?.emit({
             type: 'llm.chunk',
             requestId: ctx.sessionId,
             timestamp: Date.now(),
-            data: { chunkType: 'text', contentLength: ((chunk as any).content ?? '').length },
+            data: { chunkType: 'text', content: textContent, contentLength: textContent.length },
           });
         }
       }
