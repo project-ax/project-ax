@@ -32,6 +32,14 @@ function formatTime(ts: number): string {
   return `${h}:${m}:${s}`;
 }
 
+/** Color-code context remaining percentage. */
+function colorContext(pct: number): string {
+  const label = `ctx:${pct}%`;
+  if (pct > 50) return green(label);
+  if (pct > 20) return yellow(label);
+  return red(label);
+}
+
 /** Derive a compact status string + color from event type and data. */
 function formatEvent(event: StreamEvent): { label: string; status: string } | null {
   const { type, data } = event;
@@ -49,8 +57,16 @@ function formatEvent(event: StreamEvent): { label: string; status: string } | nu
     case 'completion.error':
       return { label: 'completion.error', status: red(String(data.error ?? 'unknown')) };
 
-    case 'llm.start':
-      return { label: 'llm.start', status: green('ok') };
+    case 'llm.start': {
+      const parts: string[] = [];
+      if (data.contextRemaining != null) {
+        parts.push(colorContext(data.contextRemaining as number));
+      }
+      if (data.estimatedInputTokens != null) {
+        parts.push(dim(`~${data.estimatedInputTokens}tok`));
+      }
+      return { label: 'llm.start', status: parts.length > 0 ? parts.join(' ') : green('ok') };
+    }
 
     case 'llm.thinking':
       return { label: 'llm.thinking', status: green('stream') };

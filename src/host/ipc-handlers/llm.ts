@@ -10,6 +10,7 @@ import { userWorkspaceDir, workspaceDir } from '../../paths.js';
 import { safePath } from '../../utils/safe-path.js';
 import { getLogger } from '../../logger.js';
 import type { EventBus } from '../event-bus.js';
+import { getContextWindow } from '../../providers/llm/context-windows.js';
 
 const logger = getLogger().child({ component: 'ipc' });
 
@@ -52,7 +53,14 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
   const resolvedAgentName = agentName ?? 'main';
   return {
     llm_call: async (req: any, ctx: IPCContext) => {
-      const effectiveModel = configModel ?? req.model;
+      const effectiveModel = configModel ?? req.model ?? 'claude-sonnet-4-20250514';
+      // Estimate context usage from the messages being sent
+      const contextWindow = getContextWindow(effectiveModel);
+      const messagesJson = JSON.stringify(req.messages ?? []);
+      const toolsJson = JSON.stringify(req.tools ?? []);
+      const estimatedInputTokens = Math.ceil((messagesJson.length + toolsJson.length) / 4);
+      const contextRemaining = Math.max(0, Math.round(((contextWindow - estimatedInputTokens) / contextWindow) * 100));
+
       logger.debug('llm_call_start', {
         model: effectiveModel,
         taskType: req.taskType,
@@ -60,6 +68,9 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
         toolCount: req.tools?.length ?? 0,
         toolNames: req.tools?.map((t: { name: string }) => t.name),
         messageCount: req.messages?.length ?? 0,
+        contextWindow,
+        estimatedInputTokens,
+        contextRemaining,
       });
       eventBus?.emit({
         type: 'llm.start',
@@ -70,6 +81,9 @@ export function createLLMHandlers(providers: ProviderRegistry, configModel?: str
           taskType: req.taskType,
           messageCount: req.messages?.length ?? 0,
           toolCount: req.tools?.length ?? 0,
+          contextWindow,
+          estimatedInputTokens,
+          contextRemaining,
         },
       });
       const resolveImageFile = createImageResolver(ctx, resolvedAgentName);

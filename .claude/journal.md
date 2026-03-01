@@ -1,5 +1,13 @@
 # Journal
 
+## [2026-03-01 16:11] — Add context metrics to event console logs
+
+**Task:** Show context usage metrics in logs: context % remaining, estimated input tokens per LLM turn
+**What I did:** Created pricing.ts with model context window tables, added context metrics (contextWindow, estimatedInputTokens, contextRemaining) to llm.start event, enhanced event-console with color-coded context % display (green >50%, yellow >20%, red <=20%), enriched PromptMetadata with contextWindow/historyTokens/percentRemaining, added tests
+**Files touched:** src/providers/llm/pricing.ts (new), src/host/ipc-handlers/llm.ts, src/host/event-console.ts, src/agent/prompt/builder.ts, tests/providers/llm/pricing.test.ts (new), tests/host/event-console.test.ts, tests/host/ipc-handlers/llm-events.test.ts
+**Outcome:** Success — 2014 tests pass, clean build
+**Notes:** The effectiveModel defaulting was needed because existing tests don't pass a model to createLLMHandlers. Cost/pricing features were initially implemented but removed per user request.
+
 ## [2026-03-01 07:00] — Fix spawning→completed invalid state transition in fire-and-forget delegation
 
 **Task:** Fix `invalid_state_transition from=spawning to=completed` warnings when fire-and-forget delegates complete

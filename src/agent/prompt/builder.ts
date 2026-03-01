@@ -23,6 +23,12 @@ export interface PromptMetadata {
   estimatedTokens: number;
   buildTimeMs: number;
   tokensByModule: Record<string, number>;
+  /** Model's max context window in tokens. */
+  contextWindow: number;
+  /** Estimated tokens consumed by conversation history. */
+  historyTokens: number;
+  /** Percentage of context window still available (0-100). */
+  percentRemaining: number;
 }
 
 /**
@@ -70,6 +76,10 @@ export class PromptBuilder {
 
     const content = sections.join('\n\n');
     const estimatedTokens = Math.ceil(content.length / 4);
+    const used = estimatedTokens + ctx.historyTokens;
+    const percentRemaining = ctx.contextWindow > 0
+      ? Math.max(0, Math.round(((ctx.contextWindow - used) / ctx.contextWindow) * 100))
+      : 0;
 
     return {
       content,
@@ -79,6 +89,9 @@ export class PromptBuilder {
         estimatedTokens,
         buildTimeMs: Date.now() - start,
         tokensByModule,
+        contextWindow: ctx.contextWindow,
+        historyTokens: ctx.historyTokens,
+        percentRemaining,
       },
     };
   }

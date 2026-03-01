@@ -167,4 +167,26 @@ describe('LLM handler event emissions', () => {
     expect(chunkEvents[1].data.content).toBe('!');
     expect(chunkEvents[1].data.contentLength).toBe(1);
   });
+
+  it('includes context metrics in llm.start event', async () => {
+    const eventBus = createEventBus();
+    const events: StreamEvent[] = [];
+    eventBus.subscribe((e) => events.push(e));
+
+    const providers = mockProviders(async function* () {
+      yield { type: 'text', content: 'ok' };
+      yield { type: 'done', usage: { inputTokens: 5, outputTokens: 2 } };
+    });
+
+    const handlers = createLLMHandlers(providers, 'claude-sonnet-4-20250514', undefined, eventBus);
+    await handlers.llm_call({ messages: [{ role: 'user', content: 'hi' }] }, mockCtx());
+
+    const startEvent = events.find(e => e.type === 'llm.start');
+    expect(startEvent).toBeDefined();
+    expect(startEvent!.data.contextWindow).toBe(200_000);
+    expect(startEvent!.data.estimatedInputTokens).toBeGreaterThan(0);
+    expect(startEvent!.data.contextRemaining).toBeGreaterThan(0);
+    expect(startEvent!.data.contextRemaining).toBeLessThanOrEqual(100);
+  });
+
 });

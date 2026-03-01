@@ -328,6 +328,39 @@ describe('attachEventConsole', () => {
 
     unsub();
   });
+
+  it('shows context remaining percentage in llm.start', () => {
+    const bus = createEventBus();
+    const unsub = attachEventConsole(bus);
+
+    bus.emit(makeEvent({
+      type: 'llm.start',
+      data: { model: 'claude-sonnet-4', contextRemaining: 72, estimatedInputTokens: 56000 },
+    }));
+
+    const output = stripAnsi(writeSpy.mock.calls[0][0] as string);
+    expect(output).toContain('llm.start');
+    expect(output).toContain('ctx:72%');
+    expect(output).toContain('~56000tok');
+
+    unsub();
+  });
+
+  it('shows ok for llm.start without context metrics', () => {
+    const bus = createEventBus();
+    const unsub = attachEventConsole(bus);
+
+    bus.emit(makeEvent({
+      type: 'llm.start',
+      data: { model: 'claude-sonnet-4' },
+    }));
+
+    const output = stripAnsi(writeSpy.mock.calls[0][0] as string);
+    expect(output).toContain('llm.start');
+    expect(output).toContain('ok');
+
+    unsub();
+  });
 });
 
 describe('attachJsonEventConsole', () => {
