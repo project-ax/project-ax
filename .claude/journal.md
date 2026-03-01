@@ -1012,3 +1012,21 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 - Modified: `tests/agent/tool-catalog-sync.test.ts`, `tests/integration/cross-component.test.ts`
 **Outcome:** Success — all 182 test files pass (1943 tests), TypeScript build clean
 **Notes:** The base branch's `z.record(z.unknown())` was broken under Zod v4 (needs key type). Fixed as part of this work. Orchestration IPC actions are host-internal and not exposed in the agent tool catalog.
+
+## [2026-03-01 02:05] — Fix PR review issues for orchestration enhancements
+
+**Task:** Resolve 3 review conversations on PR #48: (P1) dispatcher integration missing, (P1) caller identity resolution flaw, (P2) session-to-handle mapping overwrites
+**What I did:**
+1. Wired `createOrchestrationHandlers` into `createIPCHandler` via optional `opts.orchestrator` parameter
+2. Fixed `resolveCallerHandle` — changed `||` to `&&` with non-terminal check so multi-agent sessions resolve correctly
+3. Changed `sessionToHandle` Map<string,string> to `sessionToHandles` Map<string,Set<string>> to support multiple handles per session
+4. Added tests: new `tests/host/ipc-handlers/orchestration.test.ts` (5 tests), 2 new tests in `orchestrator.test.ts`
+**Files touched:**
+- Modified: `src/host/ipc-server.ts` (import + wire orchestration handlers)
+- Modified: `src/host/ipc-handlers/orchestration.ts` (fix resolveCallerHandle)
+- Modified: `src/host/orchestration/orchestrator.ts` (session→handles 1:N mapping)
+- Modified: `tests/host/orchestration/orchestrator.test.ts` (2 new autoState tests)
+- Modified: `tests/integration/cross-component.test.ts` (updated comment)
+- Created: `tests/host/ipc-handlers/orchestration.test.ts` (5 handler tests)
+**Outcome:** Success — all 184 test files pass (1972 tests), TypeScript build clean
+**Notes:** The `resolveCallerHandle` bug was subtle — `bySession()` pre-filters by session, making the `||` always true and returning first candidate regardless of agentId. The fix uses `&&` with agentId match + non-terminal state check.

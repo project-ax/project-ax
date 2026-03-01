@@ -488,6 +488,48 @@ describe('Orchestrator', () => {
       // Should still be running, not tool_calling
       expect(orchestrator.supervisor.get(handle.id)?.state).toBe('running');
     });
+
+    it('tracks multiple handles per session without overwriting', () => {
+      const h1 = orchestrator.register(makeRegistration({ agentId: 'a', sessionId: 'shared-session' }));
+      const h2 = orchestrator.register(makeRegistration({ agentId: 'b', sessionId: 'shared-session' }));
+      orchestrator.supervisor.transition(h1.id, 'running');
+      orchestrator.supervisor.transition(h2.id, 'running');
+      const unsub = orchestrator.enableAutoState();
+
+      eventBus.emit({
+        type: 'llm.start',
+        requestId: 'shared-session',
+        timestamp: Date.now(),
+        data: { model: 'test' },
+      });
+
+      // Both handles should transition — neither should be lost
+      expect(orchestrator.supervisor.get(h1.id)?.state).toBe('waiting_for_llm');
+      expect(orchestrator.supervisor.get(h2.id)?.state).toBe('waiting_for_llm');
+      unsub();
+    });
+
+    it('skips terminal handles when session has multiple agents', () => {
+      const h1 = orchestrator.register(makeRegistration({ agentId: 'a', sessionId: 'shared' }));
+      const h2 = orchestrator.register(makeRegistration({ agentId: 'b', sessionId: 'shared' }));
+      orchestrator.supervisor.transition(h1.id, 'running');
+      orchestrator.supervisor.complete(h1.id);
+      orchestrator.supervisor.transition(h2.id, 'running');
+      const unsub = orchestrator.enableAutoState();
+
+      eventBus.emit({
+        type: 'tool.call',
+        requestId: 'shared',
+        timestamp: Date.now(),
+        data: { toolName: 'bash' },
+      });
+
+      // h1 is completed — should remain completed
+      expect(orchestrator.supervisor.get(h1.id)?.state).toBe('completed');
+      // h2 is active — should transition
+      expect(orchestrator.supervisor.get(h2.id)?.state).toBe('tool_calling');
+      unsub();
+    });
   });
 
   describe('policyTags', () => {

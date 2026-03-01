@@ -390,8 +390,8 @@ describe('Tool Catalog → IPC Handler Completeness', () => {
     // The test verifies the handler EXISTS — i.e. we don't get "No handler for action".
     // We may get validation errors or handler errors, both are fine — they prove the handler is wired up.
 
-    // Orchestration actions are handled by a separate handler (createOrchestrationHandlers)
-    // wired outside createIPCHandler, so they won't be found here.
+    // Orchestration actions require an Orchestrator instance passed via opts.orchestrator.
+    // This test doesn't configure one, so those handlers aren't registered.
     const orchestrationActions = new Set([
       'agent_orch_status', 'agent_orch_list', 'agent_orch_tree',
       'agent_orch_message', 'agent_orch_poll', 'agent_orch_interrupt',

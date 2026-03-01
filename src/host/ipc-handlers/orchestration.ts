@@ -19,7 +19,10 @@ export function createOrchestrationHandlers(orchestrator: Orchestrator) {
    */
   function resolveCallerHandle(ctx: IPCContext): string | null {
     const candidates = orchestrator.directory.bySession(ctx.sessionId);
-    const match = candidates.find(h => h.agentId === ctx.agentId || h.sessionId === ctx.sessionId);
+    // Match by agentId within the session — must use AND, not OR,
+    // since bySession already filters by session so the sessionId
+    // predicate would always be true, returning the first candidate.
+    const match = candidates.find(h => h.agentId === ctx.agentId && !TERMINAL_STATES.has(h.state));
     return match?.id ?? null;
   }
 

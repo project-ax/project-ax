@@ -119,13 +119,18 @@ export function createOrchestrator(
   const maxMailbox = config?.maxMailboxSize ?? MAX_MAILBOX_SIZE;
   const maxPayloadBytes = config?.maxMessagePayloadBytes ?? MAX_MESSAGE_PAYLOAD_BYTES;
 
-  /** Map from requestId/sessionId → handleId, for auto-state inference. */
-  const sessionToHandle = new Map<string, string>();
+  /** Map from requestId/sessionId → set of handleIds, for auto-state inference. */
+  const sessionToHandles = new Map<string, Set<string>>();
 
   function register(opts: AgentRegistration): AgentHandle {
     const handle = supervisor.register(opts);
-    // Track session→handle mapping for auto-state
-    sessionToHandle.set(handle.sessionId, handle.id);
+    // Track session→handle mapping for auto-state (supports multiple agents per session)
+    let handles = sessionToHandles.get(handle.sessionId);
+    if (!handles) {
+      handles = new Set();
+      sessionToHandles.set(handle.sessionId, handles);
+    }
+    handles.add(handle.id);
     return handle;
   }
 
@@ -337,35 +342,38 @@ export function createOrchestrator(
    */
   function enableAutoState(): () => void {
     const listener: EventListener = (event: StreamEvent) => {
-      // Find the handle for this event's requestId
-      const handleId = sessionToHandle.get(event.requestId);
-      if (!handleId) return;
+      // Find all handles for this event's requestId (sessionId)
+      const handleIds = sessionToHandles.get(event.requestId);
+      if (!handleIds) return;
 
-      const handle = supervisor.get(handleId);
-      if (!handle || TERMINAL_STATES.has(handle.state)) return;
+      // Apply state transition to all active (non-terminal) handles in this session
+      for (const handleId of handleIds) {
+        const handle = supervisor.get(handleId);
+        if (!handle || TERMINAL_STATES.has(handle.state)) continue;
 
-      try {
-        switch (event.type) {
-          case 'llm.start':
-            supervisor.transition(handleId, 'waiting_for_llm', `LLM call: ${event.data.model ?? 'default'}`);
-            break;
-          case 'llm.thinking':
-            supervisor.transition(handleId, 'thinking', 'Extended thinking');
-            break;
-          case 'llm.done':
-            supervisor.transition(handleId, 'running', 'Processing LLM response');
-            break;
-          case 'tool.call':
-            supervisor.transition(handleId, 'tool_calling', `Tool: ${event.data.toolName ?? 'unknown'}`);
-            break;
-          case 'completion.agent':
-            if (handle.state === 'spawning') {
-              supervisor.transition(handleId, 'running', 'Agent started');
-            }
-            break;
+        try {
+          switch (event.type) {
+            case 'llm.start':
+              supervisor.transition(handleId, 'waiting_for_llm', `LLM call: ${event.data.model ?? 'default'}`);
+              break;
+            case 'llm.thinking':
+              supervisor.transition(handleId, 'thinking', 'Extended thinking');
+              break;
+            case 'llm.done':
+              supervisor.transition(handleId, 'running', 'Processing LLM response');
+              break;
+            case 'tool.call':
+              supervisor.transition(handleId, 'tool_calling', `Tool: ${event.data.toolName ?? 'unknown'}`);
+              break;
+            case 'completion.agent':
+              if (handle.state === 'spawning') {
+                supervisor.transition(handleId, 'running', 'Agent started');
+              }
+              break;
+          }
+        } catch {
+          // Invalid transition — ignore. The auto-state is best-effort.
         }
-      } catch {
-        // Invalid transition — ignore. The auto-state is best-effort.
       }
     };
 
@@ -387,7 +395,7 @@ export function createOrchestrator(
     // Clear all mailboxes and listeners
     mailboxes.clear();
     messageListeners.clear();
-    sessionToHandle.clear();
+    sessionToHandles.clear();
 
     logger.info('orchestrator_shutdown');
   }

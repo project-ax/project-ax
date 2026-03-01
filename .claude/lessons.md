@@ -432,3 +432,21 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Adding orchestration IPC schemas caused two test failures: `tool-catalog-sync.test.ts` and `cross-component.test.ts`
 **Lesson:** When adding new IPC schema actions, update two test files: (1) `tests/agent/tool-catalog-sync.test.ts` — add to `knownInternalActions` if the action is host-internal (not in TOOL_CATALOG), and (2) `tests/integration/cross-component.test.ts` — add to the skip set for "every IPC_SCHEMAS action has a handler" test if the handler is wired outside `createIPCHandler`. These two tests ensure schema/handler/catalog completeness.
 **Tags:** testing, ipc-schemas, tool-catalog, cross-component, orchestration
+
+### resolveCallerHandle OR vs AND bug pattern
+**Date:** 2026-03-01
+**Context:** Fixing caller identity resolution in orchestration IPC handlers where `bySession()` pre-filters candidates
+**Lesson:** When writing `candidates.find()` after a pre-filter like `bySession(ctx.sessionId)`, never use `||` with a condition that the pre-filter already guarantees (e.g. `h.sessionId === ctx.sessionId`). The `||` makes the whole predicate always true, returning the first candidate. Use `&&` to narrow within the pre-filtered set.
+**Tags:** logic-bug, find-predicate, orchestration, ipc-handlers
+
+### Session-to-handle mapping must be 1:N
+**Date:** 2026-03-01
+**Context:** Multiple agents can share a single sessionId — the auto-state inference map was Map<string, string> which lost earlier handles
+**Lesson:** When building a mapping from sessionId to runtime entities (handles, connections), always use Map<string, Set<string>> or Map<string, string[]> to support multiple entities per session. A 1:1 map silently drops concurrent agents in the same session.
+**Tags:** orchestrator, session-mapping, multi-agent, data-structure
+
+### Orchestration handlers now wired into createIPCHandler
+**Date:** 2026-03-01
+**Context:** Previously orchestration IPC handlers were defined but never registered in the main dispatcher
+**Lesson:** After wiring orchestration handlers via `opts.orchestrator` in `createIPCHandler`, the cross-component test skip set is still needed because that test doesn't configure an orchestrator. Update the comment from "separate handler" to "requires Orchestrator instance" for accuracy.
+**Tags:** ipc-server, orchestration, handler-registration, cross-component-test

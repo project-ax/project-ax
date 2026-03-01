@@ -18,7 +18,9 @@ import { createWorkspaceHandlers } from './ipc-handlers/workspace.js';
 import { createGovernanceHandlers } from './ipc-handlers/governance.js';
 import { createImageHandlers } from './ipc-handlers/image.js';
 import { createPluginHandlers } from './ipc-handlers/plugin.js';
+import { createOrchestrationHandlers } from './ipc-handlers/orchestration.js';
 import { AgentRegistry } from './agent-registry.js';
+import type { Orchestrator } from './orchestration/orchestrator.js';
 
 const logger = getLogger().child({ component: 'ipc' });
 
@@ -67,6 +69,8 @@ export interface IPCHandlerOptions {
   agentRegistry?: AgentRegistry;
   /** Streaming event bus for real-time observability. */
   eventBus?: EventBus;
+  /** Orchestrator instance for agent orchestration IPC actions. */
+  orchestrator?: Orchestrator;
 }
 
 export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerOptions) {
@@ -99,6 +103,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       registry: opts?.agentRegistry ?? new AgentRegistry(),
     }),
     ...createPluginHandlers(providers),
+    ...(opts?.orchestrator ? createOrchestrationHandlers(opts.orchestrator) : {}),
   };
 
   return async function handleIPC(raw: string, ctx: IPCContext): Promise<string> {
