@@ -486,3 +486,21 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Auto-state inference existed in the orchestrator but was never called in server.ts — only in tests. This meant `tool.call` and `llm.done` events were never mapped to supervisor state transitions in production.
 **Lesson:** After adding a feature to the orchestrator (like `enableAutoState()`), always wire it into `server.ts` where the orchestrator is created. Check that production code calls the method, not just tests. Also clean up the subscription in the shutdown path.
 **Tags:** orchestration, auto-state, server, wiring, production-vs-test
+
+### Canonical path names should match their semantic role, not implementation
+**Date:** 2026-03-01
+**Context:** Renamed /workspace→/scratch, /agent-identity→/agent, etc. The old names were either too verbose or didn't convey the right mental model to the agent (e.g., /workspace didn't communicate "this is ephemeral").
+**Lesson:** Short canonical names that describe purpose (/scratch, /agent, /shared, /user) are better than names that describe implementation (/workspace, /agent-identity, /agent-workspace, /user-workspace). The agent doesn't need to know it's a "workspace" — it needs to know it's ephemeral scratch space.
+**Tags:** canonical-paths, naming, agent-ux
+
+### Eliminate redundant mount points rather than documenting differences
+**Date:** 2026-03-01
+**Context:** Both /workspace (cwd) and /scratch were session-scoped ephemeral rw directories. The only difference was naming. Instead of explaining the subtle difference to agents, we removed one.
+**Lesson:** If two mount points have the same lifecycle, permissions, and purpose, merge them. Agents don't benefit from subtle filesystem distinctions — they benefit from a small, clear set of canonical paths.
+**Tags:** canonical-paths, simplification, mount-points
+
+### OverlayFS for merging skill layers with fallback
+**Date:** 2026-03-01
+**Context:** Agent-level and user-level skills needed to appear as a single /skills directory. OverlayFS merges them with user skills shadowing agent skills. Falls back to agent-only when overlayfs is unavailable (macOS, unprivileged).
+**Lesson:** Use overlayfs for merging read-only layers where user content should shadow shared content. Always implement a fallback for environments without overlayfs support (macOS, containers without CAP_SYS_ADMIN). The fallback can be degraded (agent-only) as long as the IPC layer still manages both via host-side operations.
+**Tags:** overlayfs, skills, sandbox, fallback

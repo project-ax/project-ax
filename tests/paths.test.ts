@@ -1,7 +1,7 @@
 import { describe, test, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { isValidSessionId, workspaceDir, scratchDir, agentDir, agentStateDir, agentUserDir, axHome, composeSessionId, parseSessionId } from '../src/paths.js';
+import { isValidSessionId, workspaceDir, agentDir, agentStateDir, agentUserDir, axHome, composeSessionId, parseSessionId, userSkillsDir, agentSkillsDir } from '../src/paths.js';
 
 describe('paths', () => {
   const originalEnv = process.env.AX_HOME;
@@ -154,26 +154,21 @@ describe('paths', () => {
     expect(() => agentDir('../etc')).toThrow();
   });
 
-  test('scratchDir returns flat path for UUIDs', () => {
-    process.env.AX_HOME = '/tmp/sc-test';
-    expect(scratchDir('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')).toBe(
-      '/tmp/sc-test/scratch/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+  test('userSkillsDir returns path under agent users dir', () => {
+    expect(userSkillsDir('main', 'alice')).toBe(
+      join(axHome(), 'agents', 'main', 'users', 'alice', 'skills'),
     );
   });
 
-  test('scratchDir returns nested path for colon-separated IDs', () => {
-    process.env.AX_HOME = '/tmp/sc-test';
-    expect(scratchDir('test:thread:C02:2000.0001')).toBe(
-      '/tmp/sc-test/scratch/test/thread/C02/2000.0001',
-    );
-    expect(scratchDir('main:slack:dm:U1234')).toBe(
-      '/tmp/sc-test/scratch/main/slack/dm/U1234',
-    );
+  test('userSkillsDir rejects path traversal', () => {
+    expect(() => userSkillsDir('../etc', 'alice')).toThrow();
+    expect(() => userSkillsDir('main', '../etc')).toThrow();
+    expect(() => userSkillsDir('main', '')).toThrow();
   });
 
-  test('scratchDir rejects invalid session IDs', () => {
-    expect(() => scratchDir('../etc/passwd')).toThrow();
-    expect(() => scratchDir('')).toThrow();
-    expect(() => scratchDir('hello')).toThrow();
+  test('agentSkillsDir returns path under agent identity dir', () => {
+    expect(agentSkillsDir('main')).toBe(
+      join(axHome(), 'agents', 'main', 'agent', 'skills'),
+    );
   });
 });

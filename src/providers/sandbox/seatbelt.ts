@@ -34,7 +34,6 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '-D', `AGENT_DIR=${config.agentDir ?? config.workspace}`,
         '-D', `AGENT_WORKSPACE=${config.agentWorkspace ?? ''}`,
         '-D', `USER_WORKSPACE=${config.userWorkspace ?? ''}`,
-        '-D', `SCRATCH_DIR=${config.scratchDir ?? ''}`,
         // Also allow access to symlink mount root
         '-D', `MOUNT_ROOT=${mountRoot}`,
         cmd, ...args,

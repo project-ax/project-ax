@@ -1213,3 +1213,19 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** `src/host/orchestration/orchestrator.ts`
 **Outcome:** Success — build clean, all 1983 tests pass
 **Notes:** Multiple tool.call events in one LLM turn are normal (parallel tool use). The first transitions to tool_calling, subsequent ones just update the activity label.
+
+## [2026-03-01 19:30] — Rename canonical paths, remove /scratch redundancy, add overlayfs skills merge
+
+**Task:** Rename canonical sandbox paths for clarity, remove redundant /scratch tier, implement overlayfs for merged agent+user skills
+**What I did:**
+- Renamed canonical paths: /workspace→/scratch, /agent-identity→/agent, /agent-workspace→/shared, /user-workspace→/user
+- Removed old redundant /scratch (ephemeral per-session) since /workspace (now /scratch) already serves that role
+- Removed scratchDir() from paths.ts and SandboxConfig
+- Added userSkillsDir() to paths.ts for per-user private skills
+- Added mergeSkillsOverlay() to canonical-paths.ts — overlayfs merge of agent+user skills with fallback
+- Removed 'scratch' from IPC workspace tier enum (agent, user only now)
+- Updated all 5 sandbox providers, server-completions, workspace IPC handler, agent runner, prompt modules
+- Updated all tests (canonical-paths, paths, workspace, workspace-file, enterprise-runtime, ipc-schemas, sandbox-isolation, e2e workspace-ops)
+**Files touched:** src/paths.ts, src/providers/sandbox/canonical-paths.ts, src/providers/sandbox/types.ts, src/providers/sandbox/{docker,nsjail,bwrap,seatbelt,subprocess}.ts, src/host/server-completions.ts, src/host/ipc-handlers/workspace.ts, src/ipc-schemas.ts, src/agent/runner.ts, src/agent/agent-setup.ts, src/agent/prompt/modules/runtime.ts, tests/providers/sandbox/canonical-paths.test.ts, tests/paths.test.ts, tests/host/ipc-handlers/{workspace,workspace-file}.test.ts, tests/agent/prompt/enterprise-runtime.test.ts, tests/ipc-schemas-enterprise.test.ts, tests/e2e/scenarios/workspace-ops.test.ts, tests/sandbox-isolation.test.ts
+**Outcome:** Success — build passes, all 1998 tests pass
+**Notes:** Final 5 canonical paths: /scratch (session cwd/HOME, rw), /skills (overlayfs merged, ro), /agent (identity, ro), /shared (agent workspace, ro), /user (persistent, rw)

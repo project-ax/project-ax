@@ -1,16 +1,15 @@
 /**
  * IPC handlers: enterprise workspace operations (workspace_write, workspace_read, workspace_list).
  *
- * Three-tier workspace model:
+ * Two-tier workspace model:
  * - agent: shared agent workspace (read-only in sandbox, write via host IPC)
- * - user:  per-user workspace (read-write)
- * - scratch: ephemeral per-session (read-write)
+ * - user:  per-user persistent workspace (read-write)
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import type { ProviderRegistry } from '../../types.js';
 import type { IPCContext } from '../ipc-server.js';
-import { agentWorkspaceDir, userWorkspaceDir, scratchDir } from '../../paths.js';
+import { agentWorkspaceDir, userWorkspaceDir } from '../../paths.js';
 import { safePath } from '../../utils/safe-path.js';
 
 /** Split a relative path and pass each segment through safePath for traversal protection. */
@@ -34,8 +33,6 @@ export function createWorkspaceHandlers(providers: ProviderRegistry, opts: Works
         return agentWorkspaceDir(agentName);
       case 'user':
         return userWorkspaceDir(agentName, ctx.userId ?? 'default');
-      case 'scratch':
-        return scratchDir(ctx.sessionId);
       default:
         throw new Error(`Unknown workspace tier: ${tier}`);
     }

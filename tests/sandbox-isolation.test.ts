@@ -195,8 +195,8 @@ describe('subprocess sandbox env leak (dev-only fallback)', () => {
 
     const env = JSON.parse(output.trim());
     expect(env.ipc).toBe('/tmp/test-ipc.sock');
-    // Canonical symlink paths: /tmp/.ax-mounts-<uuid>/workspace and /tmp/.ax-mounts-<uuid>/skills
-    expect(env.ws).toMatch(/\/tmp\/\.ax-mounts-[a-f0-9]+\/workspace$/);
+    // Canonical symlink paths: /tmp/.ax-mounts-<uuid>/scratch and /tmp/.ax-mounts-<uuid>/skills
+    expect(env.ws).toMatch(/\/tmp\/\.ax-mounts-[a-f0-9]+\/scratch$/);
     expect(env.sk).toMatch(/\/tmp\/\.ax-mounts-[a-f0-9]+\/skills$/);
     } finally {
       rmSync(ws, { recursive: true, force: true });
@@ -282,14 +282,12 @@ describe('server workspace isolation', () => {
     expect(spawnSection).not.toContain("'--skills'");
     expect(spawnSection).not.toContain("'--agent-dir'");
 
-    // Skills dir is the persistent agentSkillsDir(), passed directly via sandbox config.
-    // No temp copy needed — skills dir is a peer of workspace, not inside it.
-    expect(source).toContain("skills: skillsDir");
+    // Skills dir is the merged overlayfs of agent + user skills.
+    expect(source).toContain("skills: skillsMerge.mergedDir");
 
     // Must NOT have temp dir creation or copy logic for skills
     expect(source).not.toContain("wsSkillsDir");
     expect(source).not.toContain("hostSkillsDir");
-    expect(source).not.toContain("ax-skills-");
   });
 
   test('skills dir is a peer of workspace, not a subpath', async () => {

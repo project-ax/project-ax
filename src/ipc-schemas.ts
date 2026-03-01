@@ -279,23 +279,23 @@ const pathSegment = safeString(255).check(
 );
 
 export const WorkspaceWriteSchema = ipcAction('workspace_write', {
-  tier: z.enum(['agent', 'user', 'scratch']),
+  tier: z.enum(['agent', 'user']),
   path: safeString(1024),
   content: safeString(500_000),
 });
 
 export const WorkspaceReadSchema = ipcAction('workspace_read', {
-  tier: z.enum(['agent', 'user', 'scratch']),
+  tier: z.enum(['agent', 'user']),
   path: safeString(1024),
 });
 
 export const WorkspaceListSchema = ipcAction('workspace_list', {
-  tier: z.enum(['agent', 'user', 'scratch']),
+  tier: z.enum(['agent', 'user']),
   path: safeString(1024).optional(),
 });
 
 export const WorkspaceWriteFileSchema = ipcAction('workspace_write_file', {
-  tier: z.enum(['agent', 'user', 'scratch']),
+  tier: z.enum(['agent', 'user']),
   path: safeString(1024),
   /** Base64-encoded binary content. */
   data: safeString(20_000_000),

@@ -9,13 +9,11 @@ export interface SandboxConfig {
   memoryMB?: number;
   command: string[];
 
-  // ── Enterprise three-tier mounts (optional) ──
+  // ── Enterprise mounts (optional) ──
   /** Agent's shared workspace (read-only): ~/.ax/agents/<id>/agent/workspace/ */
   agentWorkspace?: string;
   /** Per-user workspace (read-write): ~/.ax/agents/<id>/users/<userId>/workspace/ */
   userWorkspace?: string;
-  /** Ephemeral scratch directory (read-write): ~/.ax/scratch/<sessionId>/ */
-  scratchDir?: string;
 }
 
 export interface SandboxProcess {

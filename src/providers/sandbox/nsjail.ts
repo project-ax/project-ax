@@ -35,20 +35,19 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--rlimit_as', String(config.memoryMB ?? 256),
         '--max_cpus', '1',
 
-        // Mount workspace (read-write) — canonical /workspace
-        '--bindmount', `${config.workspace}:${CANONICAL.workspace}`,
-        '--cwd', CANONICAL.workspace,
+        // Mount workspace (read-write) — canonical /scratch
+        '--bindmount', `${config.workspace}:${CANONICAL.scratch}`,
+        '--cwd', CANONICAL.scratch,
 
         // Mount skills (read-only) — canonical /skills
         '--bindmount_ro', `${config.skills}:${CANONICAL.skills}`,
 
-        // Mount agent identity directory (read-only) — SOUL.md, BOOTSTRAP.md, etc.
-        ...(config.agentDir ? ['--bindmount_ro', `${config.agentDir}:${CANONICAL.agentIdentity}`] : []),
+        // Mount agent identity directory (read-only) — SOUL.md, etc.
+        ...(config.agentDir ? ['--bindmount_ro', `${config.agentDir}:${CANONICAL.agent}`] : []),
 
-        // Enterprise three-tier mounts — canonical paths
-        ...(config.agentWorkspace ? ['--bindmount_ro', `${config.agentWorkspace}:${CANONICAL.agentWorkspace}`] : []),
-        ...(config.userWorkspace ? ['--bindmount', `${config.userWorkspace}:${CANONICAL.userWorkspace}`] : []),
-        ...(config.scratchDir ? ['--bindmount', `${config.scratchDir}:${CANONICAL.scratch}`] : []),
+        // Enterprise mounts — canonical paths
+        ...(config.agentWorkspace ? ['--bindmount_ro', `${config.agentWorkspace}:${CANONICAL.shared}`] : []),
+        ...(config.userWorkspace ? ['--bindmount', `${config.userWorkspace}:${CANONICAL.user}`] : []),
 
         // Mount IPC socket directory
         '--bindmount', `${resolve(config.ipcSocket, '..')}:${resolve(config.ipcSocket, '..')}`,
@@ -65,9 +64,9 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         // Seccomp-bpf policy
         '--seccomp_policy', policyPath,
 
-        // Minimal env — canonical paths so the LLM sees simple /workspace
+        // Minimal env — canonical paths so the LLM sees simple /scratch
         '--env', `PATH=${process.env.PATH ?? '/usr/bin:/usr/local/bin'}`,
-        '--env', `HOME=${CANONICAL.workspace}`,
+        '--env', `HOME=${CANONICAL.scratch}`,
         ...Object.entries(canonicalEnv(config)).flatMap(([k, v]) => ['--env', `${k}=${v}`]),
 
         // Command

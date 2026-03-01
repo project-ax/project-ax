@@ -3,8 +3,15 @@
  *
  * Instead of mounting host directories at their real paths (leaking structure
  * like /home/alice/.ax/data/workspaces/main/cli/default/), sandbox providers
- * remap mounts to these short canonical paths. The LLM sees /workspace instead
+ * remap mounts to these short canonical paths. The LLM sees /scratch instead
  * of a deeply-nested host path, regardless of sandbox type.
+ *
+ * Canonical mount table:
+ *   /scratch  — Session cwd/HOME (ephemeral, rw)
+ *   /skills   — Merged agent + user skills (overlayfs, ro)
+ *   /agent    — Agent identity files: SOUL.md, etc. (ro)
+ *   /shared   — Shared agent workspace (ro)
+ *   /user     — Per-user persistent storage (rw)
  *
  * Providers that support filesystem remapping (Docker, bwrap, nsjail) mount
  * directly to canonical paths. Providers that don't (seatbelt, subprocess)
@@ -18,12 +25,11 @@ import type { SandboxConfig } from './types.js';
 
 /** Canonical paths inside the sandbox — what the LLM sees. */
 export const CANONICAL = {
-  workspace:      '/workspace',
-  skills:         '/skills',
-  agentIdentity:  '/agent-identity',
-  agentWorkspace: '/agent-workspace',
-  userWorkspace:  '/user-workspace',
-  scratch:        '/scratch',
+  scratch:  '/scratch',
+  skills:   '/skills',
+  agent:    '/agent',
+  shared:   '/shared',
+  user:     '/user',
 } as const;
 
 /**
@@ -33,12 +39,11 @@ export const CANONICAL = {
 export function canonicalEnv(config: SandboxConfig): Record<string, string> {
   return {
     AX_IPC_SOCKET: config.ipcSocket,
-    AX_WORKSPACE: CANONICAL.workspace,
+    AX_WORKSPACE: CANONICAL.scratch,
     AX_SKILLS: CANONICAL.skills,
-    ...(config.agentDir        ? { AX_AGENT_DIR: CANONICAL.agentIdentity } : {}),
-    ...(config.agentWorkspace  ? { AX_AGENT_WORKSPACE: CANONICAL.agentWorkspace } : {}),
-    ...(config.userWorkspace   ? { AX_USER_WORKSPACE: CANONICAL.userWorkspace } : {}),
-    ...(config.scratchDir      ? { AX_SCRATCH: CANONICAL.scratch } : {}),
+    ...(config.agentDir        ? { AX_AGENT_DIR: CANONICAL.agent } : {}),
+    ...(config.agentWorkspace  ? { AX_AGENT_WORKSPACE: CANONICAL.shared } : {}),
+    ...(config.userWorkspace   ? { AX_USER_WORKSPACE: CANONICAL.user } : {}),
     // Redirect caches to /tmp so they don't pollute workspace
     npm_config_cache: '/tmp/.ax-npm-cache',
     XDG_CACHE_HOME: '/tmp/.ax-cache',
@@ -59,28 +64,25 @@ export function createCanonicalSymlinks(config: SandboxConfig): {
   const mountRoot = join('/tmp', `.ax-mounts-${randomUUID().slice(0, 8)}`);
   mkdirSync(mountRoot, { recursive: true });
 
-  // workspace → real workspace
-  symlinkSync(config.workspace, join(mountRoot, 'workspace'));
+  // scratch → real workspace (session cwd/HOME)
+  symlinkSync(config.workspace, join(mountRoot, 'scratch'));
 
-  // skills → real skills (separate from workspace)
+  // skills → real skills dir (merged via overlayfs on host, or single dir)
   symlinkSync(config.skills, join(mountRoot, 'skills'));
 
-  // agent-identity → real agentDir
+  // agent → real agentDir (identity files)
   if (config.agentDir) {
-    symlinkSync(config.agentDir, join(mountRoot, 'agent-identity'));
+    symlinkSync(config.agentDir, join(mountRoot, 'agent'));
   }
 
-  // Enterprise tiers
+  // shared → agent workspace (read-only)
   if (config.agentWorkspace) {
-    symlinkSync(config.agentWorkspace, join(mountRoot, 'agent-workspace'));
+    symlinkSync(config.agentWorkspace, join(mountRoot, 'shared'));
   }
 
+  // user → per-user persistent workspace (read-write)
   if (config.userWorkspace) {
-    symlinkSync(config.userWorkspace, join(mountRoot, 'user-workspace'));
-  }
-
-  if (config.scratchDir) {
-    symlinkSync(config.scratchDir, join(mountRoot, 'scratch'));
+    symlinkSync(config.userWorkspace, join(mountRoot, 'user'));
   }
 
   return {
@@ -104,14 +106,77 @@ export function createCanonicalSymlinks(config: SandboxConfig): {
 export function symlinkEnv(config: SandboxConfig, mountRoot: string): Record<string, string> {
   return {
     AX_IPC_SOCKET: config.ipcSocket,
-    AX_WORKSPACE: join(mountRoot, 'workspace'),
+    AX_WORKSPACE: join(mountRoot, 'scratch'),
     AX_SKILLS: join(mountRoot, 'skills'),
-    ...(config.agentDir        ? { AX_AGENT_DIR: join(mountRoot, 'agent-identity') } : {}),
-    ...(config.agentWorkspace  ? { AX_AGENT_WORKSPACE: join(mountRoot, 'agent-workspace') } : {}),
-    ...(config.userWorkspace   ? { AX_USER_WORKSPACE: join(mountRoot, 'user-workspace') } : {}),
-    ...(config.scratchDir      ? { AX_SCRATCH: join(mountRoot, 'scratch') } : {}),
+    ...(config.agentDir        ? { AX_AGENT_DIR: join(mountRoot, 'agent') } : {}),
+    ...(config.agentWorkspace  ? { AX_AGENT_WORKSPACE: join(mountRoot, 'shared') } : {}),
+    ...(config.userWorkspace   ? { AX_USER_WORKSPACE: join(mountRoot, 'user') } : {}),
     npm_config_cache: '/tmp/.ax-npm-cache',
     XDG_CACHE_HOME: '/tmp/.ax-cache',
     AX_HOME: '/tmp/.ax-agent',
   };
+}
+
+/**
+ * Merge agent-level and user-level skills into a single directory using overlayfs.
+ *
+ * The merged view is read-only — writes go through the skills_propose IPC action
+ * on the host side. Agent skills form the lower layer; user skills form the upper
+ * layer, so user skills shadow agent skills of the same name.
+ *
+ * Falls back to a plain directory when overlayfs is unavailable (macOS,
+ * unprivileged Linux). In fallback mode, only agent-level skills are visible.
+ *
+ * @returns The path to the merged skills directory and a cleanup function.
+ */
+export function mergeSkillsOverlay(agentSkillsDir: string, userSkillsDir: string): {
+  mergedDir: string;
+  cleanup: () => void;
+} {
+  const id = randomUUID().slice(0, 8);
+  const mergedDir = join('/tmp', `.ax-skills-merged-${id}`);
+  const workDir = join('/tmp', `.ax-skills-work-${id}`);
+
+  mkdirSync(mergedDir, { recursive: true });
+  mkdirSync(agentSkillsDir, { recursive: true });
+  mkdirSync(userSkillsDir, { recursive: true });
+
+  // Try overlayfs mount (requires privileges or user namespace support)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
+    mkdirSync(workDir, { recursive: true });
+
+    // overlayfs: lower=agent (base), upper=user (overrides).
+    // User skills shadow agent skills of the same name.
+    execFileSync('mount', [
+      '-t', 'overlay', 'overlay',
+      '-o', `lowerdir=${agentSkillsDir},upperdir=${userSkillsDir},workdir=${workDir}`,
+      mergedDir,
+    ], { stdio: 'ignore' });
+
+    return {
+      mergedDir,
+      cleanup: () => {
+        try {
+          const { execFileSync: unmount } = require('node:child_process') as typeof import('node:child_process');
+          unmount('umount', [mergedDir], { stdio: 'ignore' });
+        } catch { /* best-effort */ }
+        try { rmSync(mergedDir, { recursive: true, force: true }); } catch { /* */ }
+        try { rmSync(workDir, { recursive: true, force: true }); } catch { /* */ }
+      },
+    };
+  } catch {
+    // Fallback: no overlayfs support — just use agent skills dir directly.
+    // User-level skills won't be visible in the sandbox in this mode.
+    // The skill store provider on the host side still manages both layers via IPC.
+    rmSync(mergedDir, { recursive: true, force: true });
+
+    return {
+      mergedDir: agentSkillsDir,
+      cleanup: () => {
+        // Nothing to clean up in fallback mode
+      },
+    };
+  }
 }

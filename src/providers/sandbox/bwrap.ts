@@ -48,19 +48,18 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--dev', '/dev',
         '--proc', '/proc',
 
-        // Workspace (read-write) — mounted at canonical /workspace
-        '--bind', config.workspace, CANONICAL.workspace,
+        // Workspace (read-write) — mounted at canonical /scratch
+        '--bind', config.workspace, CANONICAL.scratch,
 
         // Skills (read-only) — mounted at canonical /skills
         '--ro-bind', config.skills, CANONICAL.skills,
 
-        // Agent identity directory (read-only) — SOUL.md, BOOTSTRAP.md, etc.
-        ...(config.agentDir ? ['--ro-bind', config.agentDir, CANONICAL.agentIdentity] : []),
+        // Agent identity directory (read-only) — SOUL.md, etc.
+        ...(config.agentDir ? ['--ro-bind', config.agentDir, CANONICAL.agent] : []),
 
-        // Enterprise three-tier mounts — canonical paths
-        ...(config.agentWorkspace ? ['--ro-bind', config.agentWorkspace, CANONICAL.agentWorkspace] : []),
-        ...(config.userWorkspace ? ['--bind', config.userWorkspace, CANONICAL.userWorkspace] : []),
-        ...(config.scratchDir ? ['--bind', config.scratchDir, CANONICAL.scratch] : []),
+        // Enterprise mounts — canonical paths
+        ...(config.agentWorkspace ? ['--ro-bind', config.agentWorkspace, CANONICAL.shared] : []),
+        ...(config.userWorkspace ? ['--bind', config.userWorkspace, CANONICAL.user] : []),
 
         // IPC socket directory (read-write)
         '--bind', ipcSocketDir, ipcSocketDir,
@@ -83,13 +82,13 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         // ~/.local (read-only) — Claude Code CLI binary + install
         ...(hasDotLocal ? ['--ro-bind', dotLocal, dotLocal] : []),
 
-        // Minimal environment — canonical paths so the LLM sees simple /workspace
+        // Minimal environment — canonical paths so the LLM sees simple /scratch
         '--setenv', 'PATH', process.env.PATH ?? '/usr/bin:/usr/local/bin',
-        '--setenv', 'HOME', CANONICAL.workspace,
+        '--setenv', 'HOME', CANONICAL.scratch,
         ...Object.entries(canonicalEnv(config)).flatMap(([k, v]) => ['--setenv', k, v]),
 
         // Working directory — canonical
-        '--chdir', CANONICAL.workspace,
+        '--chdir', CANONICAL.scratch,
 
         // Command to run
         '--', cmd, ...args,

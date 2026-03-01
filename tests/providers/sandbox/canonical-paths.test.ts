@@ -30,28 +30,24 @@ function mockSandboxConfig(overrides?: Partial<SandboxConfig>): SandboxConfig {
 }
 
 describe('CANONICAL constants', () => {
-  test('workspace is /workspace', () => {
-    expect(CANONICAL.workspace).toBe('/workspace');
+  test('scratch is /scratch (session workspace)', () => {
+    expect(CANONICAL.scratch).toBe('/scratch');
   });
 
-  test('skills is /skills (separate top-level mount)', () => {
+  test('skills is /skills (merged overlayfs mount)', () => {
     expect(CANONICAL.skills).toBe('/skills');
   });
 
-  test('agentIdentity is /agent-identity', () => {
-    expect(CANONICAL.agentIdentity).toBe('/agent-identity');
+  test('agent is /agent (identity files)', () => {
+    expect(CANONICAL.agent).toBe('/agent');
   });
 
-  test('agentWorkspace is /agent-workspace', () => {
-    expect(CANONICAL.agentWorkspace).toBe('/agent-workspace');
+  test('shared is /shared (agent workspace)', () => {
+    expect(CANONICAL.shared).toBe('/shared');
   });
 
-  test('userWorkspace is /user-workspace', () => {
-    expect(CANONICAL.userWorkspace).toBe('/user-workspace');
-  });
-
-  test('scratch is /scratch', () => {
-    expect(CANONICAL.scratch).toBe('/scratch');
+  test('user is /user (per-user persistent storage)', () => {
+    expect(CANONICAL.user).toBe('/user');
   });
 });
 
@@ -60,7 +56,7 @@ describe('canonicalEnv', () => {
     const config = mockSandboxConfig();
     const env = canonicalEnv(config);
 
-    expect(env.AX_WORKSPACE).toBe('/workspace');
+    expect(env.AX_WORKSPACE).toBe('/scratch');
     expect(env.AX_SKILLS).toBe('/skills');
     expect(env.AX_IPC_SOCKET).toBe(config.ipcSocket);
   });
@@ -72,19 +68,16 @@ describe('canonicalEnv', () => {
     expect(envBasic.AX_AGENT_DIR).toBeUndefined();
     expect(envBasic.AX_AGENT_WORKSPACE).toBeUndefined();
     expect(envBasic.AX_USER_WORKSPACE).toBeUndefined();
-    expect(envBasic.AX_SCRATCH).toBeUndefined();
 
     const envFull = canonicalEnv(mockSandboxConfig({
       agentDir: '/home/alice/.ax/agents/main/agent',
       agentWorkspace: '/home/alice/.ax/agents/main/agent/workspace',
       userWorkspace: '/home/alice/.ax/agents/main/users/alice/workspace',
-      scratchDir: '/tmp/ax-scratch-xyz',
     }));
 
-    expect(envFull.AX_AGENT_DIR).toBe('/agent-identity');
-    expect(envFull.AX_AGENT_WORKSPACE).toBe('/agent-workspace');
-    expect(envFull.AX_USER_WORKSPACE).toBe('/user-workspace');
-    expect(envFull.AX_SCRATCH).toBe('/scratch');
+    expect(envFull.AX_AGENT_DIR).toBe('/agent');
+    expect(envFull.AX_AGENT_WORKSPACE).toBe('/shared');
+    expect(envFull.AX_USER_WORKSPACE).toBe('/user');
   });
 
   test('redirects caches to /tmp', () => {
@@ -103,7 +96,7 @@ describe('createCanonicalSymlinks', () => {
     cleanupFn = undefined;
   });
 
-  test('creates mount root directory and workspace symlink', () => {
+  test('creates mount root directory and scratch symlink', () => {
     const config = mockSandboxConfig();
     const { mountRoot, cleanup } = createCanonicalSymlinks(config);
     cleanupFn = cleanup;
@@ -111,9 +104,9 @@ describe('createCanonicalSymlinks', () => {
     expect(existsSync(mountRoot)).toBe(true);
     expect(mountRoot).toMatch(/^\/tmp\/.ax-mounts-/);
 
-    const wsLink = join(mountRoot, 'workspace');
-    expect(symlinkExists(wsLink)).toBe(true);
-    expect(readlinkSync(wsLink)).toBe(config.workspace);
+    const scratchLink = join(mountRoot, 'scratch');
+    expect(symlinkExists(scratchLink)).toBe(true);
+    expect(readlinkSync(scratchLink)).toBe(config.workspace);
   });
 
   test('creates skills symlink', () => {
@@ -131,15 +124,13 @@ describe('createCanonicalSymlinks', () => {
       agentDir: '/home/alice/.ax/agents/main/agent',
       agentWorkspace: '/home/alice/.ax/agents/main/agent/workspace',
       userWorkspace: '/home/alice/.ax/agents/main/users/alice/workspace',
-      scratchDir: '/tmp/ax-scratch-xyz',
     });
     const { mountRoot, cleanup } = createCanonicalSymlinks(config);
     cleanupFn = cleanup;
 
-    expect(readlinkSync(join(mountRoot, 'agent-identity'))).toBe(config.agentDir);
-    expect(readlinkSync(join(mountRoot, 'agent-workspace'))).toBe(config.agentWorkspace);
-    expect(readlinkSync(join(mountRoot, 'user-workspace'))).toBe(config.userWorkspace);
-    expect(readlinkSync(join(mountRoot, 'scratch'))).toBe(config.scratchDir);
+    expect(readlinkSync(join(mountRoot, 'agent'))).toBe(config.agentDir);
+    expect(readlinkSync(join(mountRoot, 'shared'))).toBe(config.agentWorkspace);
+    expect(readlinkSync(join(mountRoot, 'user'))).toBe(config.userWorkspace);
   });
 
   test('skips enterprise tier symlinks when not configured', () => {
@@ -147,10 +138,9 @@ describe('createCanonicalSymlinks', () => {
     const { mountRoot, cleanup } = createCanonicalSymlinks(config);
     cleanupFn = cleanup;
 
-    expect(existsSync(join(mountRoot, 'agent-identity'))).toBe(false);
-    expect(existsSync(join(mountRoot, 'agent-workspace'))).toBe(false);
-    expect(existsSync(join(mountRoot, 'user-workspace'))).toBe(false);
-    expect(existsSync(join(mountRoot, 'scratch'))).toBe(false);
+    expect(existsSync(join(mountRoot, 'agent'))).toBe(false);
+    expect(existsSync(join(mountRoot, 'shared'))).toBe(false);
+    expect(existsSync(join(mountRoot, 'user'))).toBe(false);
   });
 
   test('cleanup removes mount root', () => {
@@ -181,7 +171,7 @@ describe('symlinkEnv', () => {
 
     const env = symlinkEnv(config, mountRoot);
 
-    expect(env.AX_WORKSPACE).toBe(join(mountRoot, 'workspace'));
+    expect(env.AX_WORKSPACE).toBe(join(mountRoot, 'scratch'));
     expect(env.AX_SKILLS).toBe(join(mountRoot, 'skills'));
     expect(env.AX_IPC_SOCKET).toBe(config.ipcSocket);
   });
@@ -191,16 +181,14 @@ describe('symlinkEnv', () => {
       agentDir: '/home/alice/.ax/agents/main/agent',
       agentWorkspace: '/home/alice/.ax/agents/main/agent/workspace',
       userWorkspace: '/home/alice/.ax/agents/main/users/alice/workspace',
-      scratchDir: '/tmp/ax-scratch-xyz',
     });
     const { mountRoot, cleanup } = createCanonicalSymlinks(config);
     cleanupFn = cleanup;
 
     const env = symlinkEnv(config, mountRoot);
 
-    expect(env.AX_AGENT_DIR).toBe(join(mountRoot, 'agent-identity'));
-    expect(env.AX_AGENT_WORKSPACE).toBe(join(mountRoot, 'agent-workspace'));
-    expect(env.AX_USER_WORKSPACE).toBe(join(mountRoot, 'user-workspace'));
-    expect(env.AX_SCRATCH).toBe(join(mountRoot, 'scratch'));
+    expect(env.AX_AGENT_DIR).toBe(join(mountRoot, 'agent'));
+    expect(env.AX_AGENT_WORKSPACE).toBe(join(mountRoot, 'shared'));
+    expect(env.AX_USER_WORKSPACE).toBe(join(mountRoot, 'user'));
   });
 });

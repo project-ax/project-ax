@@ -78,18 +78,17 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--read-only',                             // immutable root fs
         '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m', // writable /tmp
 
-        // Volume mounts — canonical paths so the LLM sees simple /workspace
-        '-v', `${config.workspace}:${CANONICAL.workspace}:rw`,
+        // Volume mounts — canonical paths so the LLM sees simple /scratch
+        '-v', `${config.workspace}:${CANONICAL.scratch}:rw`,
         '-v', `${config.skills}:${CANONICAL.skills}:ro`,
         '-v', `${socketDir}:${socketDir}:rw`,
-        ...(config.agentDir ? ['-v', `${config.agentDir}:${CANONICAL.agentIdentity}:ro`] : []),
-        // Enterprise three-tier mounts — canonical paths
-        ...(config.agentWorkspace ? ['-v', `${config.agentWorkspace}:${CANONICAL.agentWorkspace}:ro`] : []),
-        ...(config.userWorkspace ? ['-v', `${config.userWorkspace}:${CANONICAL.userWorkspace}:rw`] : []),
-        ...(config.scratchDir ? ['-v', `${config.scratchDir}:${CANONICAL.scratch}:rw`] : []),
+        ...(config.agentDir ? ['-v', `${config.agentDir}:${CANONICAL.agent}:ro`] : []),
+        // Enterprise mounts — canonical paths
+        ...(config.agentWorkspace ? ['-v', `${config.agentWorkspace}:${CANONICAL.shared}:ro`] : []),
+        ...(config.userWorkspace ? ['-v', `${config.userWorkspace}:${CANONICAL.user}:rw`] : []),
 
         // Working directory — canonical
-        '-w', CANONICAL.workspace,
+        '-w', CANONICAL.scratch,
 
         // Environment — canonical paths
         ...Object.entries(canonicalEnv(config)).flatMap(([k, v]) => ['-e', `${k}=${v}`]),

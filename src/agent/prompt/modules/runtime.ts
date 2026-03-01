@@ -82,9 +82,8 @@ export class RuntimeModule extends BasePromptModule {
     }
     if (ctx.hasWorkspaceTiers) {
       lines.push('', '### Workspace Tiers',
-        '- **agent**: Shared files (read-only in sandbox). Use `workspace({ type: "write", tier: "agent" })` to write.',
-        '- **user**: Your personal persistent files. Use `workspace({ type: "write", tier: "user" })`.',
-        '- **scratch**: Ephemeral per-session files. Deleted when session ends.',
+        '- **agent** (`/shared`): Shared files (read-only in sandbox). Use `workspace({ type: "write", tier: "agent" })` to write via IPC.',
+        '- **user** (`/user`): Your personal persistent files. Use `workspace({ type: "write", tier: "user" })`.',
       );
     }
     if (ctx.hasGovernance) {

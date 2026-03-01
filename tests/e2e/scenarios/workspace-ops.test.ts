@@ -2,7 +2,7 @@
  * Scenario: Workspace read/write operations
  *
  * Tests the workspace_write, workspace_read, and workspace_list IPC actions
- * across agent, user, and scratch tiers.
+ * across agent and user tiers.
  *
  * Note: workspace_write returns { written: true, tier, path }
  *       workspace_read returns { content, tier, path }
@@ -38,20 +38,16 @@ describe('E2E Scenario: Workspace Operations', () => {
   test('workspace_write then workspace_read round-trip', async () => {
     harness = await TestHarness.create();
 
-    // Use scratch tier — sessionId must be a valid UUID or 3+ colon-separated segments
-    const { randomUUID } = await import('node:crypto');
-    const ctx = { sessionId: randomUUID(), agentId: 'agent-1' };
-
     await harness.ipcCall('workspace_write', {
-      tier: 'scratch',
+      tier: 'user',
       path: 'temp-data.json',
       content: '{"key": "value"}',
-    }, ctx);
+    });
 
     const readResult = await harness.ipcCall('workspace_read', {
-      tier: 'scratch',
+      tier: 'user',
       path: 'temp-data.json',
-    }, ctx);
+    });
 
     expect(readResult.ok).toBe(true);
     expect(readResult.content).toBe('{"key": "value"}');
