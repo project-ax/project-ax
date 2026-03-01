@@ -10,12 +10,10 @@ import type { ProviderRegistry } from '../../../src/types.js';
 let tmpDir: string;
 let agentWsDir: string;
 let userWsDir: string;
-let scratchWsDir: string;
 
 vi.mock('../../../src/paths.js', () => ({
   agentWorkspaceDir: () => agentWsDir,
   userWorkspaceDir: () => userWsDir,
-  scratchDir: () => scratchWsDir,
 }));
 
 // Minimal provider stubs
@@ -33,10 +31,8 @@ describe('workspace_write_file IPC handler', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ax-ws-file-test-'));
     agentWsDir = join(tmpDir, 'agent-workspace');
     userWsDir = join(tmpDir, 'user-workspace');
-    scratchWsDir = join(tmpDir, 'scratch');
     mkdirSync(agentWsDir, { recursive: true });
     mkdirSync(userWsDir, { recursive: true });
-    mkdirSync(scratchWsDir, { recursive: true });
 
     ctx = { sessionId: 'test-session', agentId: 'test-agent', userId: 'testuser' };
   });
@@ -64,19 +60,19 @@ describe('workspace_write_file IPC handler', () => {
     expect(content).toEqual(imageData);
   });
 
-  test('writes binary file to scratch tier', async () => {
+  test('writes binary file to agent tier', async () => {
     const providers = stubProviders();
     const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
 
     const data = Buffer.from('some binary data');
 
     const result = await handlers.workspace_write_file(
-      { tier: 'scratch', path: 'output.bin', data: data.toString('base64'), mimeType: 'application/octet-stream' },
+      { tier: 'agent', path: 'output.bin', data: data.toString('base64'), mimeType: 'application/octet-stream' },
       ctx,
     );
 
     expect(result.written).toBe(true);
-    const content = readFileSync(join(scratchWsDir, 'output.bin'));
+    const content = readFileSync(join(agentWsDir, 'output.bin'));
     expect(content).toEqual(data);
   });
 

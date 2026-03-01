@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import type { SandboxProvider, SandboxConfig, SandboxProcess } from './types.js';
 import type { Config } from '../../types.js';
 import { exitCodePromise, killProcess, checkCommand, sandboxProcess } from './utils.js';
+import { CANONICAL, canonicalEnv } from './canonical-paths.js';
 
 export async function create(_config: Config): Promise<SandboxProvider> {
   const policyPath = resolve('policies/agent.kafel');
@@ -34,20 +35,19 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         '--rlimit_as', String(config.memoryMB ?? 256),
         '--max_cpus', '1',
 
-        // Mount workspace (read-write)
-        '--bindmount', `${config.workspace}:${config.workspace}`,
-        '--cwd', config.workspace,
+        // Mount workspace (read-write) — canonical /scratch
+        '--bindmount', `${config.workspace}:${CANONICAL.scratch}`,
+        '--cwd', CANONICAL.scratch,
 
-        // Mount skills (read-only)
-        '--bindmount_ro', `${config.skills}:${config.skills}`,
+        // Mount skills (read-only) — canonical /skills
+        '--bindmount_ro', `${config.skills}:${CANONICAL.skills}`,
 
-        // Mount agent identity directory (read-only) — SOUL.md, BOOTSTRAP.md, etc.
-        ...(config.agentDir ? ['--bindmount_ro', `${config.agentDir}:${config.agentDir}`] : []),
+        // Mount agent identity directory (read-only) — SOUL.md, etc.
+        ...(config.agentDir ? ['--bindmount_ro', `${config.agentDir}:${CANONICAL.agent}`] : []),
 
-        // Enterprise three-tier mounts
-        ...(config.agentWorkspace ? ['--bindmount_ro', `${config.agentWorkspace}:${config.agentWorkspace}`] : []),
-        ...(config.userWorkspace ? ['--bindmount', `${config.userWorkspace}:${config.userWorkspace}`] : []),
-        ...(config.scratchDir ? ['--bindmount', `${config.scratchDir}:${config.scratchDir}`] : []),
+        // Enterprise mounts — canonical paths
+        ...(config.agentWorkspace ? ['--bindmount_ro', `${config.agentWorkspace}:${CANONICAL.shared}`] : []),
+        ...(config.userWorkspace ? ['--bindmount', `${config.userWorkspace}:${CANONICAL.user}`] : []),
 
         // Mount IPC socket directory
         '--bindmount', `${resolve(config.ipcSocket, '..')}:${resolve(config.ipcSocket, '..')}`,
@@ -64,19 +64,10 @@ export async function create(_config: Config): Promise<SandboxProvider> {
         // Seccomp-bpf policy
         '--seccomp_policy', policyPath,
 
-        // Minimal env
+        // Minimal env — canonical paths so the LLM sees simple /scratch
         '--env', `PATH=${process.env.PATH ?? '/usr/bin:/usr/local/bin'}`,
-        '--env', `HOME=${config.workspace}`,
-        '--env', `AX_IPC_SOCKET=${config.ipcSocket}`,
-        '--env', `AX_WORKSPACE=${config.workspace}`,
-        '--env', `AX_SKILLS=${config.skills}`,
-        ...(config.agentWorkspace ? ['--env', `AX_AGENT_WORKSPACE=${config.agentWorkspace}`] : []),
-        ...(config.userWorkspace ? ['--env', `AX_USER_WORKSPACE=${config.userWorkspace}`] : []),
-        ...(config.scratchDir ? ['--env', `AX_SCRATCH=${config.scratchDir}`] : []),
-        // Redirect caches and data dirs so they don't pollute the workspace
-        '--env', 'npm_config_cache=/tmp/.ax-npm-cache',
-        '--env', 'XDG_CACHE_HOME=/tmp/.ax-cache',
-        '--env', 'AX_HOME=/tmp/.ax-agent',
+        '--env', `HOME=${CANONICAL.scratch}`,
+        ...Object.entries(canonicalEnv(config)).flatMap(([k, v]) => ['--env', `${k}=${v}`]),
 
         // Command
         '--', cmd, ...args,

@@ -1,5 +1,23 @@
 # Lessons Learned
 
+### Prefer structural layout fixes over runtime workarounds
+**Date:** 2026-03-01
+**Context:** Skills dir was inside workspace, requiring a per-turn copy to avoid mount permission overlap. Moving skills to be a peer of workspace (`agentIdentityDir()/skills` instead of `agentWorkspaceDir()/skills`) eliminated the need entirely.
+**Lesson:** When two directories need different mount permissions, fix the directory layout so they're peers — don't work around a bad layout with runtime copying. A one-line path change beats 15 lines of temp-dir management.
+**Tags:** architecture, simplicity, sandbox, skills, workspace
+
+### existsSync follows symlinks — use lstatSync for symlink existence checks
+**Date:** 2026-03-01
+**Context:** Writing tests for createCanonicalSymlinks that creates symlinks pointing to non-existent targets in test environment
+**Lesson:** `existsSync()` follows symlinks and checks if the *target* exists. To check if a symlink *itself* exists (regardless of target), use `lstatSync()` wrapped in try-catch. This matters whenever symlinks point to paths that don't exist in the test environment.
+**Tags:** testing, filesystem, symlinks, existsSync, lstatSync
+
+### Sandbox providers use source-level test assertions (read source, check patterns)
+**Date:** 2026-03-01
+**Context:** Updating sandbox-isolation.test.ts after changing seatbelt/subprocess env construction
+**Lesson:** Many sandbox tests verify behavior by reading the provider's TypeScript source and checking for string patterns (e.g. `expect(source).toContain('...process.env')`). When changing provider implementation patterns, check sandbox-isolation.test.ts for source-level assertions that will break. These tests are in tests/sandbox-isolation.test.ts, not in tests/providers/sandbox/.
+**Tags:** testing, sandbox, source-level-tests, sandbox-isolation
+
 ### import.meta.resolve() is the secure way to resolve package names
 **Date:** 2026-02-28
 **Context:** Analyzing security of monorepo split — switching provider-map from relative paths to @ax/provider-* package names
@@ -468,3 +486,21 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Auto-state inference existed in the orchestrator but was never called in server.ts — only in tests. This meant `tool.call` and `llm.done` events were never mapped to supervisor state transitions in production.
 **Lesson:** After adding a feature to the orchestrator (like `enableAutoState()`), always wire it into `server.ts` where the orchestrator is created. Check that production code calls the method, not just tests. Also clean up the subscription in the shutdown path.
 **Tags:** orchestration, auto-state, server, wiring, production-vs-test
+
+### Canonical path names should match their semantic role, not implementation
+**Date:** 2026-03-01
+**Context:** Renamed /workspace→/scratch, /agent-identity→/agent, etc. The old names were either too verbose or didn't convey the right mental model to the agent (e.g., /workspace didn't communicate "this is ephemeral").
+**Lesson:** Short canonical names that describe purpose (/scratch, /agent, /shared, /user) are better than names that describe implementation (/workspace, /agent-identity, /agent-workspace, /user-workspace). The agent doesn't need to know it's a "workspace" — it needs to know it's ephemeral scratch space.
+**Tags:** canonical-paths, naming, agent-ux
+
+### Eliminate redundant mount points rather than documenting differences
+**Date:** 2026-03-01
+**Context:** Both /workspace (cwd) and /scratch were session-scoped ephemeral rw directories. The only difference was naming. Instead of explaining the subtle difference to agents, we removed one.
+**Lesson:** If two mount points have the same lifecycle, permissions, and purpose, merge them. Agents don't benefit from subtle filesystem distinctions — they benefit from a small, clear set of canonical paths.
+**Tags:** canonical-paths, simplification, mount-points
+
+### OverlayFS for merging skill layers with fallback
+**Date:** 2026-03-01
+**Context:** Agent-level and user-level skills needed to appear as a single /skills directory. OverlayFS merges them with user skills shadowing agent skills. Falls back to agent-only when overlayfs is unavailable (macOS, unprivileged).
+**Lesson:** Use overlayfs for merging read-only layers where user content should shadow shared content. Always implement a fallback for environments without overlayfs support (macOS, containers without CAP_SYS_ADMIN). The fallback can be degraded (agent-only) as long as the IPC layer still manages both via host-side operations.
+**Tags:** overlayfs, skills, sandbox, fallback

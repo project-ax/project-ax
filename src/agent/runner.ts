@@ -50,7 +50,6 @@ export interface AgentConfig {
   agentId?: string;
   agentWorkspace?: string;
   userWorkspace?: string;
-  scratchDir?: string;
 }
 
 /** Sanitize a sender name: only alphanumeric, underscore, dot, dash; max 100 chars. */
@@ -176,33 +175,30 @@ function parseArgs(): AgentConfig {
   let agent: AgentType = 'pi-coding-agent';
   let model = '';
   let ipcSocket = '';
-  let workspace = '';
-  let skills = '';
   let proxySocket = '';
   let maxTokens = 0;
   let verbose = false;
-  let agentDir = '';
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--agent': agent = args[++i] as AgentType; break;
       case '--model': model = args[++i]; break;
       case '--ipc-socket': ipcSocket = args[++i]; break;
-      case '--workspace': workspace = args[++i]; break;
-      case '--skills': skills = args[++i]; break;
       case '--proxy-socket': proxySocket = args[++i]; break;
       case '--max-tokens': maxTokens = parseInt(args[++i], 10) || 0; break;
       case '--verbose': verbose = true; break;
-      case '--agent-dir': agentDir = args[++i]; break;
     }
   }
 
+  // Workspace, skills, and agentDir are set via canonical env vars by the sandbox
+  // provider (e.g. AX_WORKSPACE=/workspace). No CLI arg fallback.
   ipcSocket = ipcSocket || process.env.AX_IPC_SOCKET || '';
-  workspace = workspace || process.env.AX_WORKSPACE || '';
-  skills = skills || process.env.AX_SKILLS || '';
+  const workspace = process.env.AX_WORKSPACE || '';
+  const skills = process.env.AX_SKILLS || '';
+  const agentDir = process.env.AX_AGENT_DIR || '';
 
   if (!ipcSocket || !workspace) {
-    logger.error('missing_args', { message: 'Usage: agent-runner --agent <type> --ipc-socket <path> --workspace <path> [--skills <path>]' });
+    logger.error('missing_args', { message: 'Usage: agent-runner --agent <type> --ipc-socket <path> (AX_WORKSPACE env var required)' });
     process.exit(1);
   }
 
@@ -240,7 +236,6 @@ export interface StdinPayload {
   agentId?: string;
   agentWorkspace?: string;
   userWorkspace?: string;
-  scratchDir?: string;
 }
 
 /**
@@ -280,7 +275,6 @@ export function parseStdinPayload(data: string): StdinPayload {
         agentId: typeof parsed.agentId === 'string' ? parsed.agentId : undefined,
         agentWorkspace: typeof parsed.agentWorkspace === 'string' ? parsed.agentWorkspace : undefined,
         userWorkspace: typeof parsed.userWorkspace === 'string' ? parsed.userWorkspace : undefined,
-        scratchDir: typeof parsed.scratchDir === 'string' ? parsed.scratchDir : undefined,
       };
     }
   } catch {
@@ -337,11 +331,11 @@ if (isMain) {
     config.userId = payload.userId;
     config.replyOptional = payload.replyOptional;
     config.sessionId = payload.sessionId;
-    // Enterprise fields
+    // Enterprise fields — prefer canonical env vars (set by sandbox provider)
+    // over stdin payload (which carries host paths).
     config.agentId = payload.agentId;
-    config.agentWorkspace = payload.agentWorkspace;
-    config.userWorkspace = payload.userWorkspace;
-    config.scratchDir = payload.scratchDir;
+    config.agentWorkspace = process.env.AX_AGENT_WORKSPACE || payload.agentWorkspace;
+    config.userWorkspace = process.env.AX_USER_WORKSPACE || payload.userWorkspace;
     return run(config);
   }).catch((err) => {
     logger.error('main_error', { error: (err as Error).message, stack: (err as Error).stack });

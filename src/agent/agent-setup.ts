@@ -37,7 +37,7 @@ export function buildSystemPrompt(config: AgentConfig): PromptBuildResult {
     userId: config.userId,
   });
 
-  const hasWorkspaceTiers = !!(config.agentWorkspace || config.userWorkspace || config.scratchDir);
+  const hasWorkspaceTiers = !!(config.agentWorkspace || config.userWorkspace);
   const hasGovernance = config.profile === 'paranoid' || config.profile === 'balanced';
 
   const promptBuilder = new PromptBuilder();

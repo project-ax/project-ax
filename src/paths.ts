@@ -31,18 +31,15 @@
  *           AGENTS.md         — operating instructions
  *           HEARTBEAT.md      — scheduled task checklist
  *           capabilities.yaml — capability declarations
- *           workspace/        — shared code, docs, skills
+ *           workspace/        — shared code, docs
  *             repo/
  *             docs/
- *             skills/
+ *           skills/           — agent-level skills (shared across users)
  *         users/
  *           <userId>/         — per-user state (isolated per user)
  *             USER.md         — user preferences, style, context
  *             workspace/      — user's persistent files
- *     scratch/
- *       <session-id>/         — ephemeral per-session scratch (deleted on session end)
- *         work/
- *         tmp/
+ *             skills/         — user-level skills (private to this user)
  */
 
 import { join } from 'node:path';
@@ -175,9 +172,19 @@ export function agentWorkspaceDir(agentId: string): string {
   return join(agentIdentityDir(agentId), 'workspace');
 }
 
-/** Path to an agent's skills directory: ~/.ax/agents/<agentId>/agent/workspace/skills/ */
+/** Path to an agent's skills directory (agent-level, shared): ~/.ax/agents/<agentId>/agent/skills/ */
 export function agentSkillsDir(agentId: string): string {
-  return join(agentWorkspaceDir(agentId), 'skills');
+  return join(agentIdentityDir(agentId), 'skills');
+}
+
+/**
+ * Path to a user's skills directory (user-level, private):
+ * ~/.ax/agents/<agentId>/users/<userId>/skills/
+ */
+export function userSkillsDir(agentId: string, userId: string): string {
+  validatePathSegment(agentId, 'agent ID');
+  validatePathSegment(userId, 'userId');
+  return join(axHome(), 'agents', agentId, 'users', userId, 'skills');
 }
 
 /**
@@ -188,24 +195,6 @@ export function userWorkspaceDir(agentId: string, userId: string): string {
   validatePathSegment(agentId, 'agent ID');
   validatePathSegment(userId, 'userId');
   return join(axHome(), 'agents', agentId, 'users', userId, 'workspace');
-}
-
-/**
- * Path to per-session scratch directory:
- * ~/.ax/scratch/<sessionId>/
- *
- * Ephemeral — deleted on session end.
- * Colon-separated IDs become nested directories (mirrors workspaceDir).
- */
-export function scratchDir(sessionId: string): string {
-  if (!isValidSessionId(sessionId)) {
-    throw new Error(`Invalid session ID for scratch dir: "${sessionId}"`);
-  }
-  if (sessionId.includes(':')) {
-    const parts = sessionId.split(':');
-    return join(axHome(), 'scratch', ...parts);
-  }
-  return join(axHome(), 'scratch', sessionId);
 }
 
 /** Path to the agent registry file: ~/.ax/registry.json */

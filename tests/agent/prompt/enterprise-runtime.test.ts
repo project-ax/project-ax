@@ -52,7 +52,8 @@ describe('RuntimeModule enterprise features', () => {
     expect(content).toContain('### Workspace Tiers');
     expect(content).toContain('agent');
     expect(content).toContain('user');
-    expect(content).toContain('scratch');
+    expect(content).toContain('/shared');
+    expect(content).toContain('/user');
   });
 
   test('includes governance docs when hasGovernance is true', () => {

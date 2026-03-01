@@ -58,9 +58,17 @@ describe('Enterprise IPC Schemas', () => {
   test('WorkspaceListSchema accepts valid input with optional path', () => {
     const result = WorkspaceListSchema.safeParse({
       action: 'workspace_list',
-      tier: 'scratch',
+      tier: 'user',
     });
     expect(result.success).toBe(true);
+  });
+
+  test('WorkspaceListSchema rejects scratch tier (removed)', () => {
+    const result = WorkspaceListSchema.safeParse({
+      action: 'workspace_list',
+      tier: 'scratch',
+    });
+    expect(result.success).toBe(false);
   });
 
   test('WorkspaceListSchema accepts path', () => {

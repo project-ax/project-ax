@@ -4,11 +4,12 @@
  * agent spawning, outbound scanning, and memory persistence.
  */
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { isValidSessionId, workspaceDir, agentWorkspaceDir, agentSkillsDir, userWorkspaceDir, scratchDir } from '../paths.js';
+import { isValidSessionId, workspaceDir, agentWorkspaceDir, agentSkillsDir, userSkillsDir, userWorkspaceDir } from '../paths.js';
+import { mergeSkillsOverlay } from '../providers/sandbox/canonical-paths.js';
 import type { Config, ProviderRegistry, ContentBlock, ImageMimeType } from '../types.js';
 import { safePath } from '../utils/safe-path.js';
 import type { InboundMessage } from '../providers/channel/types.js';
@@ -249,32 +250,23 @@ export async function processCompletion(
   let workspace = '';
   const isPersistent = !!persistentSessionId;
   let proxyCleanup: (() => void) | undefined;
-  let enterpriseScratch = '';
+  let skillsCleanup: (() => void) | undefined;
+  // Skills: merge agent-level and user-level skills via overlayfs.
+  // Agent skills form the lower layer; user skills shadow agent skills of the same name.
+  const agentName = config.agent_name ?? 'main';
+  const currentUserId = userId ?? process.env.USER ?? 'default';
+  const agentSkills = agentSkillsDir(agentName);
+  const userSkills = userSkillsDir(agentName, currentUserId);
+  mkdirSync(agentSkills, { recursive: true });
+  mkdirSync(userSkills, { recursive: true });
+  const skillsMerge = mergeSkillsOverlay(agentSkills, userSkills);
+  skillsCleanup = skillsMerge.cleanup;
   try {
     if (persistentSessionId) {
       workspace = workspaceDir(persistentSessionId);
       mkdirSync(workspace, { recursive: true });
     } else {
       workspace = mkdtempSync(join(tmpdir(), 'ax-ws-'));
-    }
-    // Refresh skills into workspace before each agent spawn.
-    // Copies from persistent ~/.ax skills dir and removes stale files (reverted/deleted skills).
-    // Runs every turn so skill_propose auto-approvals appear on the next turn.
-    const hostSkillsDir = agentSkillsDir(config.agent_name ?? 'main');
-    const wsSkillsDir = join(workspace, 'skills');
-    mkdirSync(wsSkillsDir, { recursive: true });
-    try {
-      const hostFiles = readdirSync(hostSkillsDir).filter((f: string) => f.endsWith('.md'));
-      for (const f of hostFiles) {
-        copyFileSync(join(hostSkillsDir, f), join(wsSkillsDir, f));
-      }
-      // Remove workspace skill files that no longer exist on host (deleted/reverted)
-      const hostSet = new Set(hostFiles);
-      for (const f of readdirSync(wsSkillsDir).filter((f: string) => f.endsWith('.md'))) {
-        if (!hostSet.has(f)) unlinkSync(join(wsSkillsDir, f));
-      }
-    } catch {
-      reqLogger.debug('skills_refresh_failed', { hostSkillsDir });
     }
 
     // Build conversation history: prefer DB-persisted history for persistent sessions,
@@ -375,6 +367,9 @@ export async function processCompletion(
 
     const maxTokens = config.max_tokens ?? 8192;
 
+    // Workspace/skills/agentDir are NOT passed as CLI args — they're set via
+    // canonical env vars by the sandbox provider (e.g. AX_WORKSPACE=/workspace).
+    // This avoids conflicts between host paths (CLI args) and canonical paths (env vars).
     const spawnCommand = [process.execPath,
       // Dev mode: load tsx ESM loader so the .ts runner source is compiled on
       // the fly. Production: run compiled dist/agent/runner.js directly.
@@ -382,10 +377,7 @@ export async function processCompletion(
       resolveRunnerPath(),
       '--agent', agentType,
       '--ipc-socket', ipcSocketPath,
-      '--workspace', workspace,
-      '--skills', wsSkillsDir,
       '--max-tokens', String(maxTokens),
-      '--agent-dir', agentDir,
       ...(proxySocketPath ? ['--proxy-socket', proxySocketPath] : []),
       ...(deps.verbose ? ['--verbose'] : []),
     ];
@@ -398,15 +390,11 @@ export async function processCompletion(
       memoryMB: config.sandbox.memory_mb,
     });
 
-    // Enterprise: set up three-tier workspace directories
-    const agentName = config.agent_name ?? 'main';
-    const currentUserId = userId ?? process.env.USER ?? 'default';
+    // Enterprise: set up workspace directories
     const enterpriseAgentWs = agentWorkspaceDir(agentName);
     const enterpriseUserWs = userWorkspaceDir(agentName, currentUserId);
-    enterpriseScratch = scratchDir(sessionId);
     mkdirSync(enterpriseAgentWs, { recursive: true });
     mkdirSync(enterpriseUserWs, { recursive: true });
-    mkdirSync(enterpriseScratch, { recursive: true });
 
     // Build stdin payload once — reused across retry attempts.
     const taintState = taintBudget.getState(sessionId);
@@ -424,7 +412,6 @@ export async function processCompletion(
       agentId: agentName,
       agentWorkspace: enterpriseAgentWs,
       userWorkspace: enterpriseUserWs,
-      scratchDir: enterpriseScratch,
     });
 
     // Spawn, run, and collect agent output — with retry on transient crashes.
@@ -432,7 +419,7 @@ export async function processCompletion(
     // Permanent: auth failures, bad config, content filter blocks.
     const sandboxConfig = {
       workspace,
-      skills: wsSkillsDir,
+      skills: skillsMerge.mergedDir,
       ipcSocket: ipcSocketPath,
       agentDir,
       timeoutSec: config.sandbox.timeout_sec,
@@ -440,7 +427,6 @@ export async function processCompletion(
       command: spawnCommand,
       agentWorkspace: enterpriseAgentWs,
       userWorkspace: enterpriseUserWs,
-      scratchDir: enterpriseScratch,
     };
 
     let response = '';
@@ -707,10 +693,10 @@ export async function processCompletion(
         reqLogger.debug('workspace_cleanup_failed', { workspace });
       }
     }
-    // Clean up ephemeral scratch directory
-    if (enterpriseScratch) {
-      try { rmSync(enterpriseScratch, { recursive: true, force: true }); } catch {
-        reqLogger.debug('scratch_cleanup_failed', { scratchDir: enterpriseScratch });
+    // Clean up overlayfs skills merge (unmount if applicable)
+    if (skillsCleanup) {
+      try { skillsCleanup(); } catch {
+        reqLogger.debug('skills_cleanup_failed');
       }
     }
   }

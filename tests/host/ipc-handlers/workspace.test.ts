@@ -10,12 +10,10 @@ import type { ProviderRegistry } from '../../../src/types.js';
 let tmpDir: string;
 let agentWsDir: string;
 let userWsDir: string;
-let scratchWsDir: string;
 
 vi.mock('../../../src/paths.js', () => ({
   agentWorkspaceDir: () => agentWsDir,
   userWorkspaceDir: () => userWsDir,
-  scratchDir: () => scratchWsDir,
 }));
 
 // Minimal provider stubs
@@ -33,10 +31,8 @@ describe('Workspace IPC handlers', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ax-ws-test-'));
     agentWsDir = join(tmpDir, 'agent-workspace');
     userWsDir = join(tmpDir, 'user-workspace');
-    scratchWsDir = join(tmpDir, 'scratch');
     mkdirSync(agentWsDir, { recursive: true });
     mkdirSync(userWsDir, { recursive: true });
-    mkdirSync(scratchWsDir, { recursive: true });
 
     ctx = { sessionId: 'test-session', agentId: 'test-agent', userId: 'testuser' };
   });
@@ -58,20 +54,6 @@ describe('Workspace IPC handlers', () => {
     expect(result.tier).toBe('user');
     const content = readFileSync(join(userWsDir, 'notes.md'), 'utf-8');
     expect(content).toBe('# Notes\nHello world');
-  });
-
-  test('workspace_write writes file to scratch tier', async () => {
-    const providers = stubProviders();
-    const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
-
-    const result = await handlers.workspace_write(
-      { tier: 'scratch', path: 'temp.txt', content: 'ephemeral data' },
-      ctx,
-    );
-
-    expect(result.written).toBe(true);
-    const content = readFileSync(join(scratchWsDir, 'temp.txt'), 'utf-8');
-    expect(content).toBe('ephemeral data');
   });
 
   test('workspace_write queues agent tier writes in paranoid mode', async () => {
@@ -121,14 +103,14 @@ describe('Workspace IPC handlers', () => {
   });
 
   test('workspace_list returns directory entries', async () => {
-    writeFileSync(join(scratchWsDir, 'a.txt'), 'a', 'utf-8');
-    writeFileSync(join(scratchWsDir, 'b.txt'), 'b', 'utf-8');
-    mkdirSync(join(scratchWsDir, 'subdir'));
+    writeFileSync(join(userWsDir, 'a.txt'), 'a', 'utf-8');
+    writeFileSync(join(userWsDir, 'b.txt'), 'b', 'utf-8');
+    mkdirSync(join(userWsDir, 'subdir'));
 
     const providers = stubProviders();
     const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
 
-    const result = await handlers.workspace_list({ tier: 'scratch' }, ctx);
+    const result = await handlers.workspace_list({ tier: 'user' }, ctx);
     expect(result.files).toHaveLength(3);
     const names = result.files.map((f: any) => f.name).sort();
     expect(names).toEqual(['a.txt', 'b.txt', 'subdir']);
