@@ -198,7 +198,7 @@ export async function processCompletion(
       canaryToken: preProcessed.canaryToken,
       scanResult: { verdict: 'PASS' },
     };
-    reqLogger.info('scan_inbound', { status: 'clean' });
+    reqLogger.debug('scan_inbound', { status: 'clean' });
     reqLogger.debug('inbound_clean', { messageId: result.messageId });
   } else {
     // HTTP API path: scan and enqueue here
@@ -215,7 +215,7 @@ export async function processCompletion(
 
     if (!result.queued) {
       reqLogger.debug('inbound_blocked', { reason: result.scanResult.reason });
-      reqLogger.info('scan_inbound', { status: 'blocked', reason: result.scanResult.reason ?? 'scan failed' });
+      reqLogger.warn('scan_inbound', { status: 'blocked', reason: result.scanResult.reason ?? 'scan failed' });
       eventBus?.emit({
         type: 'scan.inbound',
         requestId,
@@ -228,7 +228,7 @@ export async function processCompletion(
       };
     }
 
-    reqLogger.info('scan_inbound', { status: 'clean' });
+    reqLogger.debug('scan_inbound', { status: 'clean' });
     sessionCanaries.set(result.sessionId, result.canaryToken);
     reqLogger.debug('inbound_clean', { messageId: result.messageId });
     eventBus?.emit({
@@ -452,7 +452,7 @@ export async function processCompletion(
       stderr = '';
 
       const proc = await providers.sandbox.spawn(sandboxConfig);
-      reqLogger.info('agent_spawn', { sandbox: 'subprocess', attempt });
+      reqLogger.debug('agent_spawn', { sandbox: 'subprocess', attempt });
       eventBus?.emit({
         type: 'completion.agent',
         requestId,
@@ -503,7 +503,7 @@ export async function processCompletion(
         stderrPreview: stderr ? truncate(stderr, 1000) : undefined,
       });
 
-      reqLogger.info('agent_complete', { durationSec: 0, exitCode, attempt });
+      reqLogger.debug('agent_complete', { durationSec: 0, exitCode, attempt });
 
       if (exitCode === 0) break; // Success — no retry needed
 

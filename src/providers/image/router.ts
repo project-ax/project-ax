@@ -42,7 +42,7 @@ export async function create(config: Config): Promise<ImageProvider> {
 
   const candidates = config.models.image.map(parseCompoundId);
 
-  logger.info('init', {
+  logger.debug('init', {
     image_models: config.models.image,
     candidateCount: candidates.length,
   });

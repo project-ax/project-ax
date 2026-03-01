@@ -81,7 +81,7 @@ export async function create(config: Config): Promise<LLMProvider> {
   // 'default' is guaranteed to exist by the check above
   const defaultCandidates = taskChains.get('default')!;
 
-  logger.info('init', {
+  logger.debug('init', {
     taskTypes: [...taskChains.keys()],
     defaultModels: config.models.default,
     totalChains: taskChains.size,

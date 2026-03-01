@@ -105,3 +105,60 @@ describe('Logger', () => {
     expect(entry.time).toBeDefined();
   });
 });
+
+/** Strip ANSI escape codes for assertion readability. */
+function stripAnsi(s: string): string {
+  return s.replace(/\x1B\[[0-9;]*m/g, '');
+}
+
+describe('prettyFormat', () => {
+  it('formats info without level label suffix', async () => {
+    const { prettyFormat } = await import('../src/logger.js');
+    const output = stripAnsi(prettyFormat({
+      time: 1709128837000,
+      level: 30,
+      msg: 'server_ready',
+      port: 8080,
+    }));
+    expect(output).toContain('server_ready');
+    expect(output).toContain('port=8080');
+    // Info should NOT have a level suffix like "info"
+    expect(output).not.toMatch(/\binfo\b/);
+    expect(output).toMatch(/\n$/);
+  });
+
+  it('formats warn with level label suffix', async () => {
+    const { prettyFormat } = await import('../src/logger.js');
+    const output = stripAnsi(prettyFormat({
+      time: 1709128837000,
+      level: 40,
+      msg: 'browser_disabled',
+      hint: 'npx playwright install chromium',
+    }));
+    expect(output).toContain('browser_disabled');
+    expect(output).toContain('hint=npx playwright install chromium');
+    expect(output).toMatch(/\bwarn\b/);
+  });
+
+  it('formats error with level label suffix', async () => {
+    const { prettyFormat } = await import('../src/logger.js');
+    const output = stripAnsi(prettyFormat({
+      time: 1709128837000,
+      level: 50,
+      msg: 'agent_failed',
+      exitCode: 1,
+    }));
+    expect(output).toContain('agent_failed');
+    expect(output).toMatch(/\berror\b/);
+  });
+
+  it('includes timestamp in HH:MM:SS format', async () => {
+    const { prettyFormat } = await import('../src/logger.js');
+    const output = stripAnsi(prettyFormat({
+      time: 1709128837000,
+      level: 30,
+      msg: 'test',
+    }));
+    expect(output).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+});

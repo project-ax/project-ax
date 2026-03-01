@@ -67,6 +67,7 @@ Server Options:
   --port <number>        Also listen on a TCP port (for external clients)
   --config <path>        Config file path (default: ~/.ax/ax.yaml)
   --verbose              Show tool calls and LLM turns in real-time
+  --json                 Output all logs and events as JSONL
 
 Chat Options:
   --socket <path>        Unix socket path (default: ~/.ax/ax.sock)
@@ -160,6 +161,7 @@ async function runServe(args: string[]): Promise<void> {
   let socketPath: string | undefined;
   let port: number | undefined;
   let verbose = false;
+  let jsonOutput = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--config' || args[i] === '-c') {
@@ -177,14 +179,19 @@ async function runServe(args: string[]): Promise<void> {
       }
     } else if (args[i] === '--verbose') {
       verbose = true;
+    } else if (args[i] === '--json') {
+      jsonOutput = true;
     }
   }
 
   // Initialize logger before anything else
   const { initLogger } = await import('../logger.js');
+  const isTTY = process.stdout.isTTY ?? false;
+  const usePretty = isTTY && !jsonOutput;
+  const defaultLevel = (usePretty && !verbose) ? 'warn' : (verbose ? 'debug' : 'info');
   const logger = initLogger({
-    level: verbose ? 'debug' : (process.env.LOG_LEVEL as LogLevel) ?? 'info',
-    pretty: true,
+    level: (process.env.LOG_LEVEL as LogLevel) ?? defaultLevel,
+    pretty: usePretty,
     file: true,
   });
 
@@ -202,11 +209,11 @@ async function runServe(args: string[]): Promise<void> {
   const { loadConfig } = await import('../config.js');
   const { createServer } = await import('../host/server.js');
 
-  logger.info('loading_config');
+  logger.debug('loading_config');
   let config = loadConfig(configPath);
-  logger.info('config_loaded', { profile: config.profile });
+  logger.debug('config_loaded', { profile: config.profile });
 
-  const serverOpts = { socketPath, port, daemon, verbose };
+  const serverOpts = { socketPath, port, daemon, verbose, json: jsonOutput };
   let server = await createServer(config, serverOpts);
   await server.start();
 

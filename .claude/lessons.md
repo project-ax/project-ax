@@ -402,3 +402,9 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Adding thinking/reasoning chunk support to the Anthropic LLM provider
 **Lesson:** When processing Anthropic streaming events for extended thinking, the `content_block_delta` event's delta has a `thinking` key (not `text`). Cast delta to `Record<string, unknown>` to check for it since the SDK types may not include it yet. For OpenAI-compatible providers, reasoning content appears as `reasoning_content` or `reasoning` on the delta — also non-standard fields that need a cast to access.
 **Tags:** anthropic, openai, thinking, reasoning, streaming, types
+
+### Smoke tests use stdout markers to detect server readiness
+**Date:** 2026-02-28
+**Context:** Downgrading server_listening log to debug broke smoke tests that searched for it as a readiness marker
+**Lesson:** Integration/smoke tests in tests/integration/ spawn the server as a subprocess and watch stdout for a specific string to detect readiness. When changing log levels or replacing log messages with event bus events, always search for the old log message across ALL test files (not just unit tests) — smoke tests are easily missed. The smoke tests (smoke.test.ts, history-smoke.test.ts) both had independent copies of `waitForReady()` matching on `server_listening`.
+**Tags:** testing, smoke, integration, log-levels, readiness

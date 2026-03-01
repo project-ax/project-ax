@@ -3,6 +3,7 @@ import type {
   BrowserProvider, BrowserConfig, BrowserSession, PageSnapshot,
 } from './types.js';
 import type { Config } from '../../types.js';
+import { getLogger } from '../../logger.js';
 
 /**
  * Sandboxed Playwright browser provider.
@@ -62,14 +63,13 @@ interface SessionState {
 export async function create(_config: Config): Promise<BrowserProvider> {
   const allowedDomains = parseAllowedDomains();
 
+  const browserLogger = getLogger().child({ component: 'browser' });
+
   let pw: any;
   try {
     pw = await import('playwright');
   } catch {
-    console.error(
-      '[browser] Browser automation disabled — playwright is not installed.\n' +
-      '  Install with: npx playwright install chromium',
-    );
+    browserLogger.warn('browser_disabled', { hint: 'npx playwright install chromium' });
     const disabled = (await import('./none.js')).create(_config);
     return disabled;
   }

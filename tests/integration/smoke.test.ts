@@ -27,7 +27,7 @@ const IS_BUN = typeof (globalThis as Record<string, unknown>).Bun !== 'undefined
 const IS_MACOS = process.platform === 'darwin';
 
 /**
- * How long to wait for `server_listening` before giving up.
+ * How long to wait for `server.ready` before giving up.
  * 45 s accommodates tsx cold-start under heavy parallel CI load.
  */
 const READY_TIMEOUT_MS = 45_000;
@@ -61,7 +61,7 @@ function collectOutput(proc: ChildProcess): { stdout: string[]; stderr: string[]
 }
 
 /**
- * Wait for the server to log `server_listening` via pino.
+ * Wait for the server to emit `server.ready` event.
  * Uses event listeners (not polling) so we react immediately.
  */
 function waitForReady(proc: ChildProcess, output: { stdout: string[]; stderr: string[] }): Promise<void> {
@@ -79,7 +79,7 @@ function waitForReady(proc: ChildProcess, output: { stdout: string[]; stderr: st
 
     function onData(data: Buffer) {
       if (settled) return;
-      if (data.toString().includes('server_listening')) {
+      if (data.toString().includes('server.ready')) {
         settled = true;
         clearTimeout(timeout);
         resolve();
@@ -102,7 +102,7 @@ function waitForReady(proc: ChildProcess, output: { stdout: string[]; stderr: st
 
     // Check output that was already buffered before we attached listeners
     const combined = output.stdout.join('') + output.stderr.join('');
-    if (combined.includes('server_listening')) {
+    if (combined.includes('server.ready')) {
       settled = true;
       clearTimeout(timeout);
       resolve();

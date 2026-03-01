@@ -921,3 +921,31 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** `docs/web/index.html`, `docs/web/styles.css`
 **Outcome:** Success — banner displays above navbar with orange styling, responsive on mobile
 **Notes:** Used z-index: 60 for the banner (above navbar's z-index: 50). The banner is ~2.5rem on desktop, ~3.5rem on mobile due to text wrapping.
+
+## [2026-02-28 19:40] — Beautiful event console output
+
+**Task:** Add beautiful color-coded event console output at default verbosity, showing event hub events in a clean format
+**What I did:** Created `src/host/event-console.ts` with an `attachEventConsole()` function that subscribes to the EventBus and prints compact, color-coded lines: `HH:MM:SS  event.type  status`. Wired it up in `server.ts` (TTY-only). Each event type maps to a meaningful status with appropriate colors (green=ok, yellow=flagged, red=blocked/error).
+**Files touched:** src/host/event-console.ts (new), src/host/server.ts (import + wiring), tests/host/event-console.test.ts (new, 12 tests)
+**Outcome:** Success — clean build, all 1822 tests pass
+**Notes:** Errors DO flow through the event hub as `completion.error`. The `llm.chunk` events are intentionally skipped (too noisy). Scanner verdicts are PASS/FLAG/BLOCK.
+
+## [2026-02-28 20:30] — Unified console output: all through event bus + matching pino formatter
+
+**Task:** Unify all console output so pino logs and event bus events share the same visual format
+**What I did:**
+- Replaced pino-pretty with custom Writable stream using prettyFormat() + pino.multistream() in logger.ts
+- Updated prettyFormat() to match event console style (no brackets, no INFO: prefix, level suffix only for warn/error)
+- Added --json flag to CLI for JSONL output
+- Set pino console level by mode: warn (default TTY), debug (--verbose), info (--json/non-TTY)
+- Moved eventBus creation before loadProviders in server.ts; emit server.config/providers/ready events
+- Added attachJsonEventConsole() for --json and non-TTY output
+- Added server.config/providers/ready formatters to event-console.ts
+- Downgraded duplicate info logs to debug in server-completions, server, llm/router, image/router
+- Suppressed Slack SDK noise with LogLevel.ERROR on SocketModeReceiver
+- Replaced console.error in browser/container.ts with logger.warn
+- Updated smoke test to look for 'server.ready' instead of 'server_listening'
+- Added LogLevel to Slack test mock
+**Files touched:** src/logger.ts, src/host/server.ts, src/host/event-console.ts, src/cli/index.ts, src/host/server-completions.ts, src/providers/llm/router.ts, src/providers/image/router.ts, src/providers/channel/slack.ts, src/providers/browser/container.ts, tests/host/event-console.test.ts, tests/logger.test.ts, tests/providers/channel/slack.test.ts, tests/integration/smoke.test.ts, tests/integration/history-smoke.test.ts
+**Outcome:** Success — clean build, all tests pass (1829 passed, 3 skipped)
+**Notes:** Key architectural decision: default TTY mode uses event console (pretty) + pino at warn level (pretty), --verbose uses pino at debug (pretty, no event console), --json uses JSON event console + pino at info (JSON). Both smoke tests (smoke.test.ts, history-smoke.test.ts) needed updating because they were matching on 'server_listening' pino log which is now at debug level — changed to look for 'server.ready' event bus event instead.

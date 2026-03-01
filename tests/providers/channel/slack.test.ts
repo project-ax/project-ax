@@ -57,6 +57,7 @@ vi.mock('@slack/bolt', () => ({
     client = mockSocketClient;
     constructor() {}
   },
+  LogLevel: { ERROR: 'error', WARN: 'warn', INFO: 'info', DEBUG: 'debug' },
 }));
 
 describe('Slack channel provider', () => {

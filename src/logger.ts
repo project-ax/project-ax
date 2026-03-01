@@ -9,6 +9,7 @@
 
 import pino from 'pino';
 import type { Logger as PinoLogger, DestinationStream } from 'pino';
+import { Writable } from 'node:stream';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -87,16 +88,13 @@ export function prettyFormat(obj: Record<string, unknown>): string {
   const msg = obj.msg as string ?? '';
   const colorize = LEVEL_COLORS[level] ?? ((s: string) => s);
 
-  // Extract reqId for the request ID column
-  const reqId = obj.reqId as string | undefined;
-  const reqCol = reqId ? styleText('cyan', `[${reqId}]`) + ' ' : '';
-
   const details = formatDetails(obj);
-  const detailStr = details ? '  ' + details : '';
+  const detailStr = details ? '  ' + styleText('gray', details) : '';
 
-  const levelLabel = LEVEL_LABELS[level] ?? 'unknown';
+  // Show level label only for warn/error (info is implied by context)
+  const levelLabel = level >= 40 ? '  ' + colorize(LEVEL_LABELS[level] ?? '') : '';
 
-  return `${styleText('gray', time)} ${reqCol}${colorize(`${msg}${detailStr}`)}  ${colorize(levelLabel)}\n`;
+  return `${styleText('gray', time)}  ${styleText('bold', colorize(msg))}${detailStr}${levelLabel}\n`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -126,17 +124,6 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
   const usePretty = opts.pretty ?? process.stdout.isTTY ?? false;
   const useFile = opts.file ?? !opts.stream; // disable file when test stream is provided
 
-  // Build transports
-  const targets: pino.TransportTargetOptions[] = [];
-
-  if (useFile) {
-    targets.push({
-      target: 'pino/file',
-      options: { destination: getLogPath(), mkdir: true },
-      level: 'debug', // file always captures everything
-    });
-  }
-
   // If a test stream is provided, use it directly (no transports)
   if (opts.stream) {
     const pinoInstance = pino({ level }, opts.stream);
@@ -144,25 +131,48 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
   }
 
   if (usePretty) {
-    targets.push({
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'HH:MM:ss',
-        ignore: 'pid,hostname',
-        messageFormat: false,
-        customPrettifiers: {},
-      },
+    // Custom pretty printer using our own prettyFormat() — replaces pino-pretty
+    const streams: Array<{ level: string; stream: DestinationStream }> = [];
+    if (useFile) {
+      streams.push({
+        level: 'debug',
+        stream: pino.destination({ dest: getLogPath(), mkdir: true }),
+      });
+    }
+    streams.push({
       level,
+      stream: new Writable({
+        write(chunk, _encoding, callback) {
+          try {
+            process.stdout.write(prettyFormat(JSON.parse(chunk.toString())));
+          } catch {
+            process.stdout.write(chunk);
+          }
+          callback();
+        },
+      }),
     });
-  } else {
-    // JSON to stdout for production/piping
+    const pinoInstance = pino({ level: 'debug' }, pino.multistream(streams));
+    return wrapPino(pinoInstance);
+  }
+
+  // JSON mode: file + stdout
+  const targets: pino.TransportTargetOptions[] = [];
+
+  if (useFile) {
     targets.push({
       target: 'pino/file',
-      options: { destination: 1 }, // fd 1 = stdout
-      level,
+      options: { destination: getLogPath(), mkdir: true },
+      level: 'debug',
     });
   }
+
+  // JSON to stdout for production/piping/--json
+  targets.push({
+    target: 'pino/file',
+    options: { destination: 1 }, // fd 1 = stdout
+    level,
+  });
 
   const transport = pino.transport({ targets });
   const pinoInstance = pino({ level }, transport);

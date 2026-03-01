@@ -88,7 +88,7 @@ export async function create(config: Config): Promise<ChannelProvider> {
   };
 
   // Dynamic import — @slack/bolt is an optional dependency
-  const { App, SocketModeReceiver } = await import('@slack/bolt');
+  const { App, SocketModeReceiver, LogLevel } = await import('@slack/bolt');
 
   const slackLogger = getLogger().child({ component: 'slack' });
 
@@ -103,7 +103,7 @@ export async function create(config: Config): Promise<ChannelProvider> {
   // Disable the library's built-in auto-reconnect — it has an unhandled promise
   // rejection bug in delayReconnectAttempt when start() fails during reconnection.
   // We run our own health-check loop (ensureConnected) instead.
-  const receiver = new SocketModeReceiver({ appToken });
+  const receiver = new SocketModeReceiver({ appToken, logLevel: LogLevel.ERROR });
   (receiver.client as any).autoReconnectEnabled = false;
   const app = new App({
     token: botToken,

@@ -29,6 +29,7 @@ import { SessionStore } from '../session-store.js';
 import { resolveDelivery } from './delivery.js';
 import { templatesDir as resolveTemplatesDir, seedSkillsDir as resolveSeedSkillsDir } from '../utils/assets.js';
 import { createEventBus, type EventBus } from './event-bus.js';
+import { attachEventConsole, attachJsonEventConsole } from './event-console.js';
 
 // Extracted modules
 import { sendError, sendSSEChunk, readBody } from './server-http.js';
@@ -49,6 +50,7 @@ export interface ServerOptions {
   port?: number;
   daemon?: boolean;
   verbose?: boolean;
+  json?: boolean;
   channels?: import('../providers/channel/types.js').ChannelProvider[];
   dedupeWindowMs?: number;
 }
@@ -129,10 +131,25 @@ export async function createServer(
   // Initialize OpenTelemetry tracing (no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset)
   await initTracing();
 
+  // Create event bus early so startup events can be emitted
+  const eventBus = createEventBus();
+
+  const usePrettyEvents = (process.stdout.isTTY ?? false) && !opts.verbose && !opts.json;
+  if (usePrettyEvents) {
+    attachEventConsole(eventBus);
+  } else if (opts.json || !process.stdout.isTTY) {
+    attachJsonEventConsole(eventBus);
+  }
+
+  eventBus.emit({ type: 'server.config', requestId: 'system', timestamp: Date.now(),
+    data: { profile: config.profile } });
+
   // Load providers
-  logger.info('loading_providers');
+  logger.debug('loading_providers');
   const providers = await loadProviders(config);
-  logger.info('providers_loaded');
+  logger.debug('providers_loaded');
+
+  eventBus.emit({ type: 'server.providers', requestId: 'system', timestamp: Date.now(), data: {} });
 
   // Inject additional channel providers (e.g. for testing)
   if (opts.channels?.length) {
@@ -149,7 +166,7 @@ export async function createServer(
     threshold: thresholdForProfile(config.profile),
   });
   const router = createRouter(providers, db, { taintBudget });
-  const eventBus = createEventBus();
+
   const agentName = 'main';
   const agentDirVal = agentDirPath(agentName);
   mkdirSync(agentDirVal, { recursive: true });
@@ -284,7 +301,7 @@ export async function createServer(
 
   const defaultCtx = { sessionId: 'server', agentId: 'system', userId: defaultUserId };
   const ipcServer: NetServer = createIPCServer(ipcSocketPath, handleIPC, defaultCtx);
-  logger.info('ipc_server_started', { socket: ipcSocketPath });
+  logger.debug('ipc_server_started', { socket: ipcSocketPath });
 
   let httpServer: HttpServer | null = null;
   let tcpServer: HttpServer | null = null;
@@ -640,7 +657,7 @@ export async function createServer(
     await new Promise<void>((resolveP, rejectP) => {
       httpServer!.listen(socketPath, () => {
         listening = true;
-        logger.info('server_listening', { socket: socketPath });
+        logger.debug('server_listening', { socket: socketPath });
         resolveP();
       });
       httpServer!.on('error', rejectP);
@@ -651,12 +668,15 @@ export async function createServer(
       tcpServer = createHttpServer(handleRequest);
       await new Promise<void>((resolveP, rejectP) => {
         tcpServer!.listen(opts.port, '127.0.0.1', () => {
-          logger.info('server_listening_tcp', { port: opts.port });
+          logger.debug('server_listening_tcp', { port: opts.port });
           resolveP();
         });
         tcpServer!.on('error', rejectP);
       });
     }
+
+    eventBus.emit({ type: 'server.ready', requestId: 'system', timestamp: Date.now(),
+      data: { socket: socketPath, ...(opts.port != null ? { port: opts.port } : {}) } });
 
     // Start scheduler
     await providers.scheduler.start(async (msg: InboundMessage) => {
