@@ -949,3 +949,84 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Files touched:** src/logger.ts, src/host/server.ts, src/host/event-console.ts, src/cli/index.ts, src/host/server-completions.ts, src/providers/llm/router.ts, src/providers/image/router.ts, src/providers/channel/slack.ts, src/providers/browser/container.ts, tests/host/event-console.test.ts, tests/logger.test.ts, tests/providers/channel/slack.test.ts, tests/integration/smoke.test.ts, tests/integration/history-smoke.test.ts
 **Outcome:** Success — clean build, all tests pass (1829 passed, 3 skipped)
 **Notes:** Key architectural decision: default TTY mode uses event console (pretty) + pino at warn level (pretty), --verbose uses pino at debug (pretty, no event console), --json uses JSON event console + pino at info (JSON). Both smoke tests (smoke.test.ts, history-smoke.test.ts) needed updating because they were matching on 'server_listening' pino log which is now at debug level — changed to look for 'server.ready' event bus event instead.
+
+## [2026-02-28 15:50] — Agent Orchestration Architecture
+
+**Task:** Design and implement an agent orchestration system that enables real-time visibility into active agents, agent state tracking, interrupt mechanisms, and agent-to-agent communication.
+**What I did:**
+- Researched OpenClaw's Agent Teams RFC, Google A2A protocol, Confluent's event-driven patterns, OpenAI Agents SDK handoff model, and LangGraph state machines
+- Designed a hybrid orchestration architecture: centralized governance (Orchestrator) with decentralized messaging (peer-to-peer through host)
+- Implemented three new modules in `src/host/orchestration/`:
+  - `types.ts` — Agent state machine (10 states, validated transitions), AgentHandle, AgentMessage, scoping types
+  - `agent-supervisor.ts` — Lifecycle management with interrupt/grace-period/cancel, max-agent safety valve, audit logging
+  - `agent-directory.ts` — Runtime discovery with multi-dimensional queries (by session, user, parent), tree builder, session summaries
+  - `orchestrator.ts` — Central coordinator: message routing, mailbox system (push + pull), scoped broadcast, auto-state inference from existing EventBus events
+- Added IPC handler (`src/host/ipc-handlers/orchestration.ts`) with session-scoped access control
+- Added 6 new IPC schemas for orchestration actions
+- Wrote 92 tests covering all modules
+**Files touched:**
+- Created: `docs/plans/2026-02-28-agent-orchestration-architecture.md`
+- Created: `src/host/orchestration/types.ts`, `agent-supervisor.ts`, `agent-directory.ts`, `orchestrator.ts`
+- Created: `src/host/ipc-handlers/orchestration.ts`
+- Modified: `src/ipc-schemas.ts` (added 6 orchestration action schemas)
+- Created: `tests/host/orchestration/agent-supervisor.test.ts`, `agent-directory.test.ts`, `orchestrator.test.ts`
+**Outcome:** Success — 92 new tests pass, existing IPC schema tests unaffected
+**Notes:** Key design decisions: (1) Extend EventBus rather than replace it — auto-state inference bridges existing llm.start/tool.call events to the new state model. (2) Messages always flow through trusted host — preserves sandbox security boundary. (3) A2A-inspired state machine with 10 states and enforced transitions. (4) Both push (listeners) and pull (polling) message delivery — sandboxed agents use pull via IPC, internal components use push.
+
+## [2026-02-28 16:20] — Add Ralph Wiggum Loop (agent-loop.ts)
+
+**Task:** Add support for the Ralph Wiggum pattern — iterative agent execution with fresh context and external validation.
+**What I did:**
+- Implemented `runAgentLoop()` in `src/host/orchestration/agent-loop.ts`
+- Each iteration: spawn agent with fresh context → run → validate externally → retry or pass
+- Key features: fresh context per iteration (no history accumulation), configurable validation function, customizable retry prompt builder, progress callbacks, interrupt-aware, loop events on EventBus
+- Each iteration tracked as a separate AgentHandle with `pattern: 'ralph'` metadata
+- Default retry prompt builder appends validation failure info to original prompt
+- Wrote 13 tests covering: first-pass success, retry until pass, max iterations, fresh handles per iteration, custom retry prompts, progress callbacks, event bus emissions, execute/validate error handling, interrupt support, metadata tagging, duration tracking
+**Files touched:**
+- Created: `src/host/orchestration/agent-loop.ts`
+- Created: `tests/host/orchestration/agent-loop.test.ts`
+**Outcome:** Success — 105 total orchestration tests pass (92 + 13 new)
+**Notes:** The loop is a workflow primitive that sits on top of the Orchestrator, not inside it. The execute/validate functions are injected by the caller, making it agnostic to how agents are actually spawned (processCompletion, delegation, etc.).
+
+## [2026-03-01 01:00] — Orchestration Enhancements (4 features)
+
+**Task:** Implement four orchestration enhancements from docs/plans/2026-02-28-orchestration-enhancements.md: persistent event store, heartbeat liveness monitor, policy tags on inter-agent messages, and wall-clock timeout for agent loops.
+**What I did:**
+- Merged the `claude/agent-orchestration-architecture-eppZW` base branch (resolved journal conflict)
+- **Persistent Event Store:** Created `src/migrations/orchestration.ts` (Kysely migration for `orchestration_events` table with 5 indexes), `src/host/orchestration/event-store.ts` (SQLite-backed store that subscribes to EventBus and auto-captures agent.* events), and 14 tests covering append/query/filter/capture
+- **Heartbeat Liveness Monitor:** Created `src/host/orchestration/heartbeat-monitor.ts` (subscribes to EventBus for proof-of-life, periodic check interval auto-interrupts stuck agents), and 9 tests covering activity tracking, timeout detection, terminal/interrupted agent skip, reset on activity
+- **Policy Tags:** Added `policyTags?: readonly string[]` to `AgentMessage` type, updated `send()`/`broadcast()` in orchestrator to pass through tags, added `policyTags` field to `AgentOrchMessageSchema` in IPC schemas, updated IPC handler to pass tags, 3 tests for send/broadcast/backward-compat
+- **Wall-Clock Timeout:** Added `maxWallClockMs` to `AgentLoopConfig`, `wall_clock_timeout` to reason/status enums, deadline checks before and after each iteration in `runAgentLoop()`, 3 tests covering timeout, non-interference, and event emission
+- Wired event store + heartbeat into orchestrator (new constructor param, shutdown cleanup)
+- Added types (`OrchestrationEvent`, `EventFilter`, `OrchestrationEventStore`, `HeartbeatMonitorConfig`) to types.ts
+- Added `AgentOrchTimelineSchema` to IPC schemas and timeline handler to IPC handlers
+- Fixed `z.record(z.unknown())` → `z.record(z.string(), z.unknown())` for Zod v4 compat
+- Updated `tool-catalog-sync.test.ts` and `cross-component.test.ts` to register orchestration IPC actions as internal-only
+**Files touched:**
+- Created: `src/migrations/orchestration.ts`, `src/host/orchestration/event-store.ts`, `src/host/orchestration/heartbeat-monitor.ts`
+- Created: `tests/host/orchestration/event-store.test.ts`, `tests/host/orchestration/heartbeat-monitor.test.ts`
+- Modified: `src/host/orchestration/types.ts`, `src/host/orchestration/orchestrator.ts`, `src/host/orchestration/agent-loop.ts`
+- Modified: `src/ipc-schemas.ts`, `src/host/ipc-handlers/orchestration.ts`
+- Modified: `tests/host/orchestration/orchestrator.test.ts`, `tests/host/orchestration/agent-loop.test.ts`
+- Modified: `tests/agent/tool-catalog-sync.test.ts`, `tests/integration/cross-component.test.ts`
+**Outcome:** Success — all 182 test files pass (1943 tests), TypeScript build clean
+**Notes:** The base branch's `z.record(z.unknown())` was broken under Zod v4 (needs key type). Fixed as part of this work. Orchestration IPC actions are host-internal and not exposed in the agent tool catalog.
+
+## [2026-03-01 02:05] — Fix PR review issues for orchestration enhancements
+
+**Task:** Resolve 3 review conversations on PR #48: (P1) dispatcher integration missing, (P1) caller identity resolution flaw, (P2) session-to-handle mapping overwrites
+**What I did:**
+1. Wired `createOrchestrationHandlers` into `createIPCHandler` via optional `opts.orchestrator` parameter
+2. Fixed `resolveCallerHandle` — changed `||` to `&&` with non-terminal check so multi-agent sessions resolve correctly
+3. Changed `sessionToHandle` Map<string,string> to `sessionToHandles` Map<string,Set<string>> to support multiple handles per session
+4. Added tests: new `tests/host/ipc-handlers/orchestration.test.ts` (5 tests), 2 new tests in `orchestrator.test.ts`
+**Files touched:**
+- Modified: `src/host/ipc-server.ts` (import + wire orchestration handlers)
+- Modified: `src/host/ipc-handlers/orchestration.ts` (fix resolveCallerHandle)
+- Modified: `src/host/orchestration/orchestrator.ts` (session→handles 1:N mapping)
+- Modified: `tests/host/orchestration/orchestrator.test.ts` (2 new autoState tests)
+- Modified: `tests/integration/cross-component.test.ts` (updated comment)
+- Created: `tests/host/ipc-handlers/orchestration.test.ts` (5 handler tests)
+**Outcome:** Success — all 184 test files pass (1972 tests), TypeScript build clean
+**Notes:** The `resolveCallerHandle` bug was subtle — `bySession()` pre-filters by session, making the `||` always true and returning first candidate regardless of agentId. The fix uses `&&` with agentId match + non-terminal state check.

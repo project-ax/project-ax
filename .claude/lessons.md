@@ -408,3 +408,45 @@ After the migration, images are persisted to the **enterprise user workspace** a
 **Context:** Downgrading server_listening log to debug broke smoke tests that searched for it as a readiness marker
 **Lesson:** Integration/smoke tests in tests/integration/ spawn the server as a subprocess and watch stdout for a specific string to detect readiness. When changing log levels or replacing log messages with event bus events, always search for the old log message across ALL test files (not just unit tests) — smoke tests are easily missed. The smoke tests (smoke.test.ts, history-smoke.test.ts) both had independent copies of `waitForReady()` matching on `server_listening`.
 **Tags:** testing, smoke, integration, log-levels, readiness
+
+### Extend the EventBus rather than replacing it for orchestration
+**Date:** 2026-02-28
+**Context:** Designing agent orchestration — needed to decide whether to build a new event system or reuse the existing EventBus
+**Lesson:** The existing EventBus already emits llm.start, tool.call, llm.done events throughout the pipeline. Instead of creating a parallel event system, use auto-state inference: subscribe to the EventBus and map existing events to agent state transitions (llm.start → waiting_for_llm, tool.call → tool_calling, etc.). This avoids modifying existing IPC handlers while still getting rich agent state. The bridge pattern (listen → translate → update) is better than forking.
+**Tags:** architecture, event-bus, orchestration, bridge-pattern, state-management
+
+### Agent messages must flow through trusted host — never sandbox-to-sandbox
+**Date:** 2026-02-28
+**Context:** Designing inter-agent messaging for the orchestration system
+**Lesson:** Even though agents need to talk to each other, messages MUST route through the host process. The sandbox security boundary means agents have no network access and cannot reach each other's IPC sockets. The host mediates all communication: validates messages, enforces scope (same-session only), checks sender/recipient status, and logs to audit. This is more latency than direct messaging but preserves the security invariant that sandboxes are isolated.
+**Tags:** security, messaging, orchestration, sandbox, ipc, agent-communication
+
+### z.record() in Zod v4 requires key and value schemas
+**Date:** 2026-03-01
+**Context:** TypeScript build failed on `z.record(z.unknown())` in IPC schemas (from base orchestration branch)
+**Lesson:** In Zod v4 (`zod@^4.x`), `z.record()` requires two arguments: `z.record(keySchema, valueSchema)`. The Zod v3 pattern `z.record(z.unknown())` (single arg) no longer compiles. Use `z.record(z.string(), z.unknown())` instead. Check existing usage patterns in the file (e.g., `z.record(safeString(200), safeString(4096))`) for the correct v4 signature.
+**Tags:** zod, zod-v4, ipc-schemas, typescript, breaking-change
+
+### Orchestration IPC actions need registration in both sync tests
+**Date:** 2026-03-01
+**Context:** Adding orchestration IPC schemas caused two test failures: `tool-catalog-sync.test.ts` and `cross-component.test.ts`
+**Lesson:** When adding new IPC schema actions, update two test files: (1) `tests/agent/tool-catalog-sync.test.ts` — add to `knownInternalActions` if the action is host-internal (not in TOOL_CATALOG), and (2) `tests/integration/cross-component.test.ts` — add to the skip set for "every IPC_SCHEMAS action has a handler" test if the handler is wired outside `createIPCHandler`. These two tests ensure schema/handler/catalog completeness.
+**Tags:** testing, ipc-schemas, tool-catalog, cross-component, orchestration
+
+### resolveCallerHandle OR vs AND bug pattern
+**Date:** 2026-03-01
+**Context:** Fixing caller identity resolution in orchestration IPC handlers where `bySession()` pre-filters candidates
+**Lesson:** When writing `candidates.find()` after a pre-filter like `bySession(ctx.sessionId)`, never use `||` with a condition that the pre-filter already guarantees (e.g. `h.sessionId === ctx.sessionId`). The `||` makes the whole predicate always true, returning the first candidate. Use `&&` to narrow within the pre-filtered set.
+**Tags:** logic-bug, find-predicate, orchestration, ipc-handlers
+
+### Session-to-handle mapping must be 1:N
+**Date:** 2026-03-01
+**Context:** Multiple agents can share a single sessionId — the auto-state inference map was Map<string, string> which lost earlier handles
+**Lesson:** When building a mapping from sessionId to runtime entities (handles, connections), always use Map<string, Set<string>> or Map<string, string[]> to support multiple entities per session. A 1:1 map silently drops concurrent agents in the same session.
+**Tags:** orchestrator, session-mapping, multi-agent, data-structure
+
+### Orchestration handlers now wired into createIPCHandler
+**Date:** 2026-03-01
+**Context:** Previously orchestration IPC handlers were defined but never registered in the main dispatcher
+**Lesson:** After wiring orchestration handlers via `opts.orchestrator` in `createIPCHandler`, the cross-component test skip set is still needed because that test doesn't configure an orchestrator. Update the comment from "separate handler" to "requires Orchestrator instance" for accuracy.
+**Tags:** ipc-server, orchestration, handler-registration, cross-component-test
