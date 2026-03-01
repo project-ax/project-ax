@@ -1,32 +1,5 @@
 # Journal
 
-## [2026-03-01 18:42] — Move skills dir to peer of workspace, eliminate temp-dir copy
-
-**Task:** Replace the skills-inside-workspace copy approach with a simpler layout where skills is a peer of workspace
-**What I did:**
-- Changed `agentSkillsDir()` from `agentWorkspaceDir()/skills` to `agentIdentityDir()/skills`
-- Removed per-turn copy logic from `server-completions.ts` (copyFileSync loop, stale file removal)
-- Removed unused imports (`copyFileSync`, `unlinkSync`, `readdirSync`)
-- Updated sandbox isolation tests and server.test.ts to assert the new pattern
-**Files touched:** src/paths.ts, src/host/server-completions.ts, tests/sandbox-isolation.test.ts, tests/host/server.test.ts
-**Outcome:** Success — all 1999 tests pass, build clean
-**Notes:** Skills as a peer of workspace means no path overlap, so sandboxes can mount it ro directly without temp copies.
-
-## [2026-03-01 14:50] — Simplify workspace paths for LLM agents in sandboxes
-
-**Task:** Remap sandbox mount destinations from host paths to simple canonical paths so LLMs don't see confusing deeply-nested paths
-**What I did:**
-- Created `src/providers/sandbox/canonical-paths.ts` with CANONICAL constants, `canonicalEnv()`, `createCanonicalSymlinks()`, `symlinkEnv()`
-- Updated all 5 sandbox providers (bwrap, docker, nsjail, seatbelt, subprocess) to use canonical mount destinations
-- Removed --workspace/--skills/--agent-dir CLI args from spawn command (env-vars only now)
-- Updated agent runner to read workspace paths from env vars, enterprise fields prefer env vars over stdin payload
-- Simplified runtime.ts workspace sanitizer
-- Added 16 tests for canonical-paths module
-- Fixed 3 existing tests in sandbox-isolation.test.ts that expected old CLI args and env patterns
-**Files touched:** `src/providers/sandbox/canonical-paths.ts` (NEW), `src/providers/sandbox/{bwrap,docker,nsjail,seatbelt,subprocess}.ts`, `src/host/server-completions.ts`, `src/agent/runner.ts`, `src/agent/prompt/modules/runtime.ts`, `tests/providers/sandbox/canonical-paths.test.ts` (NEW), `tests/sandbox-isolation.test.ts`
-**Outcome:** Success — all 1988 tests pass
-**Notes:** Canonical paths: /workspace, /skills, /agent-identity, /agent-workspace, /user-workspace, /scratch. Docker/bwrap/nsjail use real mounts; seatbelt/subprocess use symlinks under /tmp/.ax-mounts-<uuid>/
-
 ## [2026-03-01 07:00] — Fix spawning→completed invalid state transition in fire-and-forget delegation
 
 **Task:** Fix `invalid_state_transition from=spawning to=completed` warnings when fire-and-forget delegates complete
@@ -1214,18 +1187,34 @@ Tests: 53 new tests across 6 test files, all passing. Zero regressions on 383 ex
 **Outcome:** Success — build clean, all 1983 tests pass
 **Notes:** Multiple tool.call events in one LLM turn are normal (parallel tool use). The first transitions to tool_calling, subsequent ones just update the activity label.
 
-## [2026-03-01 19:30] — Rename canonical paths, remove /scratch redundancy, add overlayfs skills merge
+## [2026-03-01 10:23] — Improve agent event console output
 
-**Task:** Rename canonical sandbox paths for clarity, remove redundant /scratch tier, implement overlayfs for merged agent+user skills
-**What I did:**
-- Renamed canonical paths: /workspace→/scratch, /agent-identity→/agent, /agent-workspace→/shared, /user-workspace→/user
-- Removed old redundant /scratch (ephemeral per-session) since /workspace (now /scratch) already serves that role
-- Removed scratchDir() from paths.ts and SandboxConfig
-- Added userSkillsDir() to paths.ts for per-user private skills
-- Added mergeSkillsOverlay() to canonical-paths.ts — overlayfs merge of agent+user skills with fallback
-- Removed 'scratch' from IPC workspace tier enum (agent, user only now)
-- Updated all 5 sandbox providers, server-completions, workspace IPC handler, agent runner, prompt modules
-- Updated all tests (canonical-paths, paths, workspace, workspace-file, enterprise-runtime, ipc-schemas, sandbox-isolation, e2e workspace-ops)
-**Files touched:** src/paths.ts, src/providers/sandbox/canonical-paths.ts, src/providers/sandbox/types.ts, src/providers/sandbox/{docker,nsjail,bwrap,seatbelt,subprocess}.ts, src/host/server-completions.ts, src/host/ipc-handlers/workspace.ts, src/ipc-schemas.ts, src/agent/runner.ts, src/agent/agent-setup.ts, src/agent/prompt/modules/runtime.ts, tests/providers/sandbox/canonical-paths.test.ts, tests/paths.test.ts, tests/host/ipc-handlers/{workspace,workspace-file}.test.ts, tests/agent/prompt/enterprise-runtime.test.ts, tests/ipc-schemas-enterprise.test.ts, tests/e2e/scenarios/workspace-ops.test.ts, tests/sandbox-isolation.test.ts
-**Outcome:** Success — build passes, all 1998 tests pass
-**Notes:** Final 5 canonical paths: /scratch (session cwd/HOME, rw), /skills (overlayfs merged, ro), /agent (identity, ro), /shared (agent workspace, ro), /user (persistent, rw)
+**Task:** Make agent lifecycle events (agent.registered, agent.state, agent.completed, etc.) show useful info instead of generic "event"
+**What I did:** Added explicit cases in `formatEvent()` in event-console.ts for agent.registered, agent.state, agent.completed, agent.failed, agent.canceled, and agent.interrupt. Each now shows the agentId and relevant context (type, state transition, result, error, reason). Added 6 new tests.
+**Files touched:** `src/host/event-console.ts`, `tests/host/event-console.test.ts`
+**Outcome:** Success — build clean, all 24 event-console tests pass
+**Notes:** The default case in formatEvent was a catch-all that just showed dim("event"). Agent events have rich data (agentId, agentType, oldState/newState, result, error, reason) that was being thrown away.
+
+## [2026-03-01 15:50] — Clean up stale scratch tier references
+
+**Task:** Remove stale "scratch" tier references from tool catalog, MCP server, and runtime prompt after upstream PR removed the scratch tier from IPC schemas
+**What I did:** (1) Reverted `.filter(t => t.name !== 'write')` in pi-session.ts so local `write` tool is available for ephemeral `/scratch` writes. (2) Updated 4 tier description strings in tool-catalog.ts from `"agent", "user", or "scratch"` to `"agent" or "user"`. (3) Updated 1 tier description in mcp-server.ts similarly. (4) Renamed runtime prompt section from "Workspace Tiers" to "Workspace" and added `/scratch` ephemeral working directory description. (5) Updated test assertions to match new heading.
+**Files touched:** `src/agent/runners/pi-session.ts`, `src/agent/tool-catalog.ts`, `src/agent/mcp-server.ts`, `src/agent/prompt/modules/runtime.ts`, `tests/agent/prompt/enterprise-runtime.test.ts`
+**Outcome:** Success — build clean, all 2005 tests pass
+**Notes:** The mcp-server.ts file had a stale reference not mentioned in the original plan. Always grep broadly for stale references when cleaning up removed features.
+
+## [2026-03-01 15:57] — Rename canonical paths: /agent→/identity, /shared→/agent
+
+**Task:** Fix confusing mismatch between IPC tier name "agent" and mount path "/shared" by aligning the path to the tier name
+**What I did:** (1) Renamed identity dir from `CANONICAL.agent` (`/agent`) to `CANONICAL.identity` (`/identity`). (2) Renamed workspace from `CANONICAL.shared` (`/shared`) to `CANONICAL.agent` (`/agent`). Updated canonical-paths.ts (constants, canonicalEnv, createCanonicalSymlinks, symlinkEnv), all 3 sandbox providers (docker, bwrap, nsjail), runtime prompt, and all related tests.
+**Files touched:** `src/providers/sandbox/canonical-paths.ts`, `src/providers/sandbox/docker.ts`, `src/providers/sandbox/bwrap.ts`, `src/providers/sandbox/nsjail.ts`, `src/agent/prompt/modules/runtime.ts`, `tests/providers/sandbox/canonical-paths.test.ts`, `tests/agent/prompt/enterprise-runtime.test.ts`
+**Outcome:** Success — build clean, all 2005 tests pass, zero stale `/shared` or `CANONICAL.shared` references remain
+**Notes:** The existing `CANONICAL.agent` was occupied by the identity directory, so we needed a two-step swap: identity `/agent`→`/identity`, then workspace `/shared`→`/agent`.
+
+## [2026-03-01 21:20] — Fix CI unhandled ENOENT in phase1.test.ts
+
+**Task:** Fix failing CI caused by unhandled ENOENT error when pino's async file transport races with temp directory cleanup
+**What I did:** (1) In `tests/integration/phase1.test.ts`, added `initLogger({ file: false, level: 'silent' })` before `loadProviders()` to prevent pino from creating an async file transport to the temp AX_HOME. (2) Added `resetLogger()` in the `finally` block. (3) Added regression test in `tests/logger.test.ts` verifying `initLogger({ file: false })` does not create ax.log.
+**Files touched:** `tests/integration/phase1.test.ts`, `tests/logger.test.ts`
+**Outcome:** Success — build clean, all 2006 tests pass (2005+1 new), zero unhandled errors
+**Notes:** Root cause: `loadProviders()` imports LLM router module which has top-level `getLogger()` call. This created a pino file transport targeting `AX_HOME/data/ax.log`. When the test's `finally` block deleted the temp dir, pino's async worker thread threw ENOENT.
