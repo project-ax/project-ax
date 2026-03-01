@@ -4,13 +4,17 @@
  * Both TypeBox consumers (ipc-tools.ts, pi-session.ts) derive their tool
  * arrays from this catalog. The Zod consumer (mcp-server.ts) stays manually
  * written but a sync test ensures its tool names and parameter keys match.
+ *
+ * Tools are consolidated: each entry may represent multiple IPC actions
+ * selected via a `type` discriminator parameter. The actionMap / singletonAction
+ * fields tell the execute layer which IPC action to dispatch.
  */
 
 import { Type, type TSchema } from '@sinclair/typebox';
 
 export type ToolCategory =
   | 'memory' | 'web' | 'audit' | 'identity'
-  | 'scheduler' | 'skills' | 'delegation' | 'image'
+  | 'scheduler' | 'skill' | 'delegation' | 'image'
   | 'workspace' | 'governance';
 
 export interface ToolSpec {
@@ -24,90 +28,289 @@ export interface ToolSpec {
   /** Custom IPC call timeout in ms. Tools that spawn subprocesses (agent_delegate)
    *  or call slow external APIs (image_generate) need longer than the 30s default. */
   timeoutMs?: number;
+  /** Maps type discriminator values to IPC action names. Present on multi-op tools. */
+  actionMap?: Record<string, string>;
+  /** IPC action name for singleton tools (no type param). */
+  singletonAction?: string;
 }
 
 export const TOOL_CATALOG: readonly ToolSpec[] = [
-  // ── Memory tools ──
+  // ── Memory ──
   {
-    name: 'memory_write',
-    label: 'Write Memory',
+    name: 'memory',
+    label: 'Memory',
     description:
-      'Store a factual memory entry with scope, content, and optional tags. For name, personality, or style changes use identity_write or user_write instead.',
-    parameters: Type.Object({
-      scope: Type.String(),
-      content: Type.String(),
-      tags: Type.Optional(Type.Array(Type.String())),
-    }),
+      'Store, search, read, delete, and list memory entries.\n\nOperations:\n' +
+      '- write: Store a memory entry with scope, content, and optional tags\n' +
+      '- query: Search entries by scope and optional query string\n' +
+      '- read: Read a specific entry by ID\n' +
+      '- delete: Delete an entry by ID\n' +
+      '- list: List entries in a scope',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('write'),
+        scope: Type.String(),
+        content: Type.String(),
+        tags: Type.Optional(Type.Array(Type.String())),
+      }),
+      Type.Object({
+        type: Type.Literal('query'),
+        scope: Type.String(),
+        query: Type.Optional(Type.String()),
+        limit: Type.Optional(Type.Number()),
+        tags: Type.Optional(Type.Array(Type.String())),
+      }),
+      Type.Object({
+        type: Type.Literal('read'),
+        id: Type.String(),
+      }),
+      Type.Object({
+        type: Type.Literal('delete'),
+        id: Type.String(),
+      }),
+      Type.Object({
+        type: Type.Literal('list'),
+        scope: Type.String(),
+        limit: Type.Optional(Type.Number()),
+      }),
+    ]),
     category: 'memory',
-  },
-  {
-    name: 'memory_query',
-    label: 'Query Memory',
-    description: 'Search memory entries by scope and optional query string.',
-    parameters: Type.Object({
-      scope: Type.String(),
-      query: Type.Optional(Type.String()),
-      limit: Type.Optional(Type.Number()),
-      tags: Type.Optional(Type.Array(Type.String())),
-    }),
-    category: 'memory',
-  },
-  {
-    name: 'memory_read',
-    label: 'Read Memory',
-    description: 'Read a specific memory entry by ID.',
-    parameters: Type.Object({
-      id: Type.String(),
-    }),
-    category: 'memory',
-  },
-  {
-    name: 'memory_delete',
-    label: 'Delete Memory',
-    description: 'Delete a memory entry by ID.',
-    parameters: Type.Object({
-      id: Type.String(),
-    }),
-    category: 'memory',
-  },
-  {
-    name: 'memory_list',
-    label: 'List Memory',
-    description: 'List memory entries in a scope.',
-    parameters: Type.Object({
-      scope: Type.String(),
-      limit: Type.Optional(Type.Number()),
-    }),
-    category: 'memory',
+    actionMap: {
+      write: 'memory_write',
+      query: 'memory_query',
+      read: 'memory_read',
+      delete: 'memory_delete',
+      list: 'memory_list',
+    },
   },
 
-  // ── Web tools ──
+  // ── Web ──
   {
-    name: 'web_fetch',
-    label: 'Fetch URL',
-    description: 'Fetch content from a URL (proxied through host with SSRF protection).',
-    parameters: Type.Object({
-      url: Type.String(),
-      method: Type.Optional(Type.Union([Type.Literal('GET'), Type.Literal('HEAD')])),
-      headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-      timeoutMs: Type.Optional(Type.Number()),
-    }),
+    name: 'web',
+    label: 'Web',
+    description:
+      'Fetch URLs and search the web (proxied through host with SSRF protection).\n\nOperations:\n' +
+      '- fetch: Fetch content from a URL\n' +
+      '- search: Search the web',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('fetch'),
+        url: Type.String(),
+        method: Type.Optional(Type.Union([Type.Literal('GET'), Type.Literal('HEAD')])),
+        headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+        timeoutMs: Type.Optional(Type.Number()),
+      }),
+      Type.Object({
+        type: Type.Literal('search'),
+        query: Type.String(),
+        maxResults: Type.Optional(Type.Number()),
+      }),
+    ]),
     category: 'web',
-  },
-  {
-    name: 'web_search',
-    label: 'Web Search',
-    description: 'Search the web (proxied through host).',
-    parameters: Type.Object({
-      query: Type.String(),
-      maxResults: Type.Optional(Type.Number()),
-    }),
-    category: 'web',
+    actionMap: {
+      fetch: 'web_fetch',
+      search: 'web_search',
+    },
   },
 
-  // ── Audit tool ──
+  // ── Identity ──
   {
-    name: 'audit_query',
+    name: 'identity',
+    label: 'Identity',
+    description:
+      'Write or update identity files and user preferences.\n\nOperations:\n' +
+      '- write: Write or update a shared identity file (SOUL.md or IDENTITY.md)\n' +
+      '- user_write: Write or update what you have learned about the current user (USER.md). Per-user scoped.',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('write'),
+        file: Type.String({ description: 'File name: "SOUL.md" or "IDENTITY.md"' }),
+        content: Type.String(),
+        reason: Type.String(),
+        origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
+      }),
+      Type.Object({
+        type: Type.Literal('user_write'),
+        content: Type.String(),
+        reason: Type.String(),
+        origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
+      }),
+    ]),
+    category: 'identity',
+    injectUserId: true,
+    actionMap: {
+      write: 'identity_write',
+      user_write: 'user_write',
+    },
+  },
+
+  // ── Scheduler ──
+  {
+    name: 'scheduler',
+    label: 'Scheduler',
+    description:
+      'Schedule recurring and one-shot tasks.\n\nOperations:\n' +
+      '- add_cron: Schedule a recurring task using a 5-field cron expression\n' +
+      '- run_at: Schedule a one-shot task at a specific date/time\n' +
+      '- remove: Remove a previously scheduled cron job by its ID\n' +
+      '- list: List all currently scheduled cron jobs',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('add_cron'),
+        schedule: Type.String({ description: 'Cron expression, e.g. "0 9 * * 1" for 9am every Monday' }),
+        prompt: Type.String({ description: 'The instruction/prompt to execute on each trigger' }),
+        maxTokenBudget: Type.Optional(Type.Number({ description: 'Optional max token budget per execution' })),
+      }),
+      Type.Object({
+        type: Type.Literal('run_at'),
+        datetime: Type.String({ description: 'ISO 8601 datetime in local time (no Z suffix), e.g. "2026-02-21T19:30:00". Use the current time from your system prompt to compute relative times.' }),
+        prompt: Type.String({ description: 'The instruction/prompt to execute' }),
+        maxTokenBudget: Type.Optional(Type.Number({ description: 'Optional max token budget for execution' })),
+      }),
+      Type.Object({
+        type: Type.Literal('remove'),
+        jobId: Type.String({ description: 'The job ID returned by scheduler_add_cron' }),
+      }),
+      Type.Object({
+        type: Type.Literal('list'),
+      }),
+    ]),
+    category: 'scheduler',
+    actionMap: {
+      add_cron: 'scheduler_add_cron',
+      run_at: 'scheduler_run_at',
+      remove: 'scheduler_remove_cron',
+      list: 'scheduler_list_jobs',
+    },
+  },
+
+  // ── Skill ──
+  {
+    name: 'skill',
+    label: 'Skill',
+    description:
+      'Manage and discover skills.\n\nOperations:\n' +
+      '- list: List all available skills\n' +
+      '- read: Read the full content of a skill by name\n' +
+      '- propose: Propose a new skill or update an existing one\n' +
+      '- import: Import an external skill from ClawHub or local SKILL.md content\n' +
+      '- search: Search the ClawHub registry for available skills',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('list'),
+      }),
+      Type.Object({
+        type: Type.Literal('read'),
+        name: Type.String(),
+      }),
+      Type.Object({
+        type: Type.Literal('propose'),
+        skill: Type.String({ description: 'Skill name (alphanumeric, hyphens, underscores)' }),
+        content: Type.String({ description: 'Skill content as markdown' }),
+        reason: Type.Optional(Type.String({ description: 'Why this skill is needed' })),
+      }),
+      Type.Object({
+        type: Type.Literal('import'),
+        source: Type.String({ description: 'Skill source: "clawhub:<name>" or raw SKILL.md content' }),
+        autoApprove: Type.Optional(Type.Boolean({ description: 'Auto-approve if screener passes (default: false)' })),
+      }),
+      Type.Object({
+        type: Type.Literal('search'),
+        query: Type.String({ description: 'Search query' }),
+        limit: Type.Optional(Type.Number({ description: 'Max results (1-50, default 20)' })),
+      }),
+    ]),
+    category: 'skill',
+    actionMap: {
+      list: 'skill_list',
+      read: 'skill_read',
+      propose: 'skill_propose',
+      import: 'skill_import',
+      search: 'skill_search',
+    },
+  },
+
+  // ── Workspace ──
+  {
+    name: 'workspace',
+    label: 'Workspace',
+    description:
+      'Read and write files in workspace tiers.\n\nOperations:\n' +
+      '- write: Write a text file to a workspace tier (agent, user, or scratch)\n' +
+      '- read: Read a file from a workspace tier\n' +
+      '- list: List files in a workspace tier directory\n' +
+      '- write_file: Write a base64-encoded binary file to a workspace tier',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('write'),
+        tier: Type.String({ description: '"agent", "user", or "scratch"' }),
+        path: Type.String({ description: 'Relative path within the tier (e.g. "docs/notes.md")' }),
+        content: Type.String({ description: 'File content to write' }),
+      }),
+      Type.Object({
+        type: Type.Literal('read'),
+        tier: Type.String({ description: '"agent", "user", or "scratch"' }),
+        path: Type.String({ description: 'Relative path within the tier' }),
+      }),
+      Type.Object({
+        type: Type.Literal('list'),
+        tier: Type.String({ description: '"agent", "user", or "scratch"' }),
+        path: Type.Optional(Type.String({ description: 'Subdirectory to list (defaults to root)' })),
+      }),
+      Type.Object({
+        type: Type.Literal('write_file'),
+        tier: Type.String({ description: '"agent", "user", or "scratch"' }),
+        path: Type.String({ description: 'Relative path within the tier (e.g. "files/image.png")' }),
+        data: Type.String({ description: 'Base64-encoded binary content' }),
+        mimeType: Type.String({ description: 'MIME type of the file (e.g. "image/png")' }),
+      }),
+    ]),
+    category: 'workspace',
+    actionMap: {
+      write: 'workspace_write',
+      read: 'workspace_read',
+      list: 'workspace_list',
+      write_file: 'workspace_write_file',
+    },
+  },
+
+  // ── Governance ──
+  {
+    name: 'governance',
+    label: 'Governance',
+    description:
+      'Enterprise governance: propose identity changes, list proposals, list agents.\n\nOperations:\n' +
+      '- propose: Propose a change to a shared identity file for governance review\n' +
+      '- list_proposals: List governance proposals, optionally filtered by status\n' +
+      '- list_agents: List all registered agents in the enterprise registry',
+    parameters: Type.Union([
+      Type.Object({
+        type: Type.Literal('propose'),
+        file: Type.String({ description: 'File name: "SOUL.md" or "IDENTITY.md"' }),
+        content: Type.String(),
+        reason: Type.String(),
+        origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
+      }),
+      Type.Object({
+        type: Type.Literal('list_proposals'),
+        status: Type.Optional(Type.String({ description: '"pending", "approved", or "rejected"' })),
+      }),
+      Type.Object({
+        type: Type.Literal('list_agents'),
+        status: Type.Optional(Type.String({ description: 'Filter by status: "active", "suspended", or "archived"' })),
+      }),
+    ]),
+    category: 'governance',
+    actionMap: {
+      propose: 'identity_propose',
+      list_proposals: 'proposal_list',
+      list_agents: 'agent_registry_list',
+    },
+  },
+
+  // ── Audit (singleton) ──
+  {
+    name: 'audit',
     label: 'Query Audit Log',
     description: 'Query the audit log with filters.',
     parameters: Type.Object({
@@ -116,142 +319,12 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
       limit: Type.Optional(Type.Number()),
     }),
     category: 'audit',
+    singletonAction: 'audit_query',
   },
 
-  // ── Identity tools ──
+  // ── Delegate (singleton) ──
   {
-    name: 'identity_write',
-    label: 'Write Identity',
-    description:
-      'Write or update a shared identity file (SOUL.md or IDENTITY.md). ' +
-      'For user preferences, use user_write instead.',
-    parameters: Type.Object({
-      file: Type.String({ description: 'File name: "SOUL.md" or "IDENTITY.md"' }),
-      content: Type.String(),
-      reason: Type.String(),
-      origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
-    }),
-    category: 'identity',
-  },
-  {
-    name: 'user_write',
-    label: 'Write User Preferences',
-    description:
-      'Write or update what you have learned about the current user (USER.md). ' +
-      'Per-user scoped. All changes are audited.',
-    parameters: Type.Object({
-      content: Type.String(),
-      reason: Type.String(),
-      origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
-    }),
-    category: 'identity',
-    injectUserId: true,
-  },
-
-  // ── Scheduler tools ──
-  {
-    name: 'scheduler_add_cron',
-    label: 'Add Cron Job',
-    description:
-      'Schedule a recurring task using a 5-field cron expression (minute hour day month weekday).',
-    parameters: Type.Object({
-      schedule: Type.String({ description: 'Cron expression, e.g. "0 9 * * 1" for 9am every Monday' }),
-      prompt: Type.String({ description: 'The instruction/prompt to execute on each trigger' }),
-      maxTokenBudget: Type.Optional(Type.Number({ description: 'Optional max token budget per execution' })),
-    }),
-    category: 'scheduler',
-  },
-  {
-    name: 'scheduler_run_at',
-    label: 'Run Once At',
-    description:
-      'Schedule a one-shot task at a specific date/time. Executes once, then auto-removed.',
-    parameters: Type.Object({
-      datetime: Type.String({ description: 'ISO 8601 datetime in local time (no Z suffix), e.g. "2026-02-21T19:30:00". Use the current time from your system prompt to compute relative times.' }),
-      prompt: Type.String({ description: 'The instruction/prompt to execute' }),
-      maxTokenBudget: Type.Optional(Type.Number({ description: 'Optional max token budget for execution' })),
-    }),
-    category: 'scheduler',
-  },
-  {
-    name: 'scheduler_remove_cron',
-    label: 'Remove Cron Job',
-    description: 'Remove a previously scheduled cron job by its ID.',
-    parameters: Type.Object({
-      jobId: Type.String({ description: 'The job ID returned by scheduler_add_cron' }),
-    }),
-    category: 'scheduler',
-  },
-  {
-    name: 'scheduler_list_jobs',
-    label: 'List Cron Jobs',
-    description: 'List all currently scheduled cron jobs.',
-    parameters: Type.Object({}),
-    category: 'scheduler',
-  },
-
-  // ── Skill tools ──
-  {
-    name: 'skill_list',
-    label: 'List Skills',
-    description:
-      'List all available skills. Returns skill names and descriptions.',
-    parameters: Type.Object({}),
-    category: 'skills',
-  },
-  {
-    name: 'skill_read',
-    label: 'Read Skill',
-    description:
-      'Read the full content of a skill by name.',
-    parameters: Type.Object({
-      name: Type.String(),
-    }),
-    category: 'skills',
-  },
-  {
-    name: 'skill_propose',
-    label: 'Propose Skill',
-    description:
-      'Propose a new skill or update an existing one. Content is markdown, screened for safety.',
-    parameters: Type.Object({
-      skill: Type.String({ description: 'Skill name (alphanumeric, hyphens, underscores)' }),
-      content: Type.String({ description: 'Skill content as markdown' }),
-      reason: Type.Optional(Type.String({ description: 'Why this skill is needed' })),
-    }),
-    category: 'skills',
-  },
-
-  {
-    name: 'skill_import',
-    label: 'Import Skill',
-    description:
-      'Import an external skill from ClawHub or local SKILL.md content. The skill is ' +
-      'parsed (AgentSkills format), screened for safety (5-layer static analysis), and ' +
-      'a security manifest is auto-generated. Source can be "clawhub:<name>" to fetch from ' +
-      'ClawHub registry, or raw SKILL.md content. Rejected skills are never installed.',
-    parameters: Type.Object({
-      source: Type.String({ description: 'Skill source: "clawhub:<name>" or raw SKILL.md content' }),
-      autoApprove: Type.Optional(Type.Boolean({ description: 'Auto-approve if screener passes (default: false)' })),
-    }),
-    category: 'skills',
-  },
-  {
-    name: 'skill_search',
-    label: 'Search Skills',
-    description:
-      'Search the ClawHub registry for available skills. Returns skill names, descriptions, ' +
-      'and download counts.',
-    parameters: Type.Object({
-      query: Type.String({ description: 'Search query' }),
-      limit: Type.Optional(Type.Number({ description: 'Max results (1-50, default 20)' })),
-    }),
-    category: 'skills',
-  },
-
-  // ── Delegation tools ──
-  {
-    name: 'agent_delegate',
+    name: 'delegate',
     label: 'Delegate Task',
     description:
       'Delegate a task to a sub-agent running in its own sandbox. ' +
@@ -265,11 +338,13 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
       timeoutSec: Type.Optional(Type.Number({ description: 'Timeout in seconds (5-600)' })),
     }),
     category: 'delegation',
+    timeoutMs: 600_000,
+    singletonAction: 'agent_delegate',
   },
 
-  // ── Image generation ──
+  // ── Image (singleton) ──
   {
-    name: 'image_generate',
+    name: 'image',
     label: 'Generate Image',
     description:
       'Generate an image from a text prompt using a configured image model. ' +
@@ -282,91 +357,8 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
       quality: Type.Optional(Type.String({ description: 'Quality level, e.g. "standard" or "hd"' })),
     }),
     category: 'image',
-  },
-
-  // ── Enterprise: Workspace tools ──
-  {
-    name: 'workspace_write',
-    label: 'Write to Workspace',
-    description:
-      'Write a file to a workspace tier (agent, user, or scratch).',
-    parameters: Type.Object({
-      tier: Type.String({ description: '"agent", "user", or "scratch"' }),
-      path: Type.String({ description: 'Relative path within the tier (e.g. "docs/notes.md")' }),
-      content: Type.String({ description: 'File content to write' }),
-    }),
-    category: 'workspace',
-  },
-  {
-    name: 'workspace_read',
-    label: 'Read from Workspace',
-    description:
-      'Read a file from a workspace tier.',
-    parameters: Type.Object({
-      tier: Type.String({ description: '"agent", "user", or "scratch"' }),
-      path: Type.String({ description: 'Relative path within the tier' }),
-    }),
-    category: 'workspace',
-  },
-  {
-    name: 'workspace_list',
-    label: 'List Workspace',
-    description:
-      'List files in a workspace tier directory.',
-    parameters: Type.Object({
-      tier: Type.String({ description: '"agent", "user", or "scratch"' }),
-      path: Type.Optional(Type.String({ description: 'Subdirectory to list (defaults to root)' })),
-    }),
-    category: 'workspace',
-  },
-
-  {
-    name: 'workspace_write_file',
-    label: 'Write Binary File to Workspace',
-    description:
-      'Write a base64-encoded binary file to a workspace tier.',
-    parameters: Type.Object({
-      tier: Type.String({ description: '"agent", "user", or "scratch"' }),
-      path: Type.String({ description: 'Relative path within the tier (e.g. "files/image.png")' }),
-      data: Type.String({ description: 'Base64-encoded binary content' }),
-      mimeType: Type.String({ description: 'MIME type of the file (e.g. "image/png")' }),
-    }),
-    category: 'workspace',
-  },
-
-  // ── Enterprise: Governance tools ──
-  {
-    name: 'identity_propose',
-    label: 'Propose Identity Change',
-    description:
-      'Propose a change to a shared identity file for governance review.',
-    parameters: Type.Object({
-      file: Type.String({ description: 'File name: "SOUL.md" or "IDENTITY.md"' }),
-      content: Type.String(),
-      reason: Type.String(),
-      origin: Type.String({ description: 'Either "user_request" or "agent_initiated"' }),
-    }),
-    category: 'governance',
-  },
-  {
-    name: 'proposal_list',
-    label: 'List Proposals',
-    description:
-      'List governance proposals. Optionally filter by status (pending, approved, rejected).',
-    parameters: Type.Object({
-      status: Type.Optional(Type.String({ description: '"pending", "approved", or "rejected"' })),
-    }),
-    category: 'governance',
-  },
-  {
-    name: 'agent_registry_list',
-    label: 'List Agents',
-    description:
-      'List all registered agents in the enterprise registry.',
-    parameters: Type.Object({
-      status: Type.Optional(Type.String({ description: 'Filter by status: "active", "suspended", or "archived"' })),
-    }),
-    category: 'governance',
+    timeoutMs: 120_000,
+    singletonAction: 'image_generate',
   },
 ] as const;
 
@@ -377,7 +369,17 @@ export const TOOL_NAMES: string[] = TOOL_CATALOG.map(s => s.name);
 export function getToolParamKeys(name: string): string[] {
   const spec = TOOL_CATALOG.find(s => s.name === name);
   if (!spec) throw new Error(`Unknown tool: ${name}`);
-  const schema = spec.parameters as { properties?: Record<string, unknown> };
+  const schema = spec.parameters as any;
+  if (schema.anyOf) {
+    // Union: collect all keys from all members, excluding 'type'
+    const keys = new Set<string>();
+    for (const member of schema.anyOf) {
+      for (const key of Object.keys(member.properties ?? {})) {
+        if (key !== 'type') keys.add(key);
+      }
+    }
+    return [...keys];
+  }
   return Object.keys(schema.properties ?? {});
 }
 
@@ -407,7 +409,7 @@ export function filterTools(ctx: ToolFilterContext): readonly ToolSpec[] {
   return TOOL_CATALOG.filter(spec => {
     switch (spec.category) {
       case 'scheduler':  return ctx.hasHeartbeat;
-      case 'skills':     return ctx.hasSkills;
+      case 'skill':      return ctx.hasSkills;
       case 'workspace':  return ctx.hasWorkspaceTiers;
       case 'governance': return ctx.hasGovernance;
       default:           return true;

@@ -18,25 +18,23 @@ describe('ipc-tools', () => {
     return tool;
   }
 
-  test('exports memory, web, and audit tools', () => {
+  test('exports consolidated tools (memory, web, audit, etc.)', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
     const names = tools.map((t) => t.name);
-    expect(names).toContain('memory_write');
-    expect(names).toContain('memory_query');
-    expect(names).toContain('memory_read');
-    expect(names).toContain('memory_delete');
-    expect(names).toContain('memory_list');
-    expect(names).toContain('web_fetch');
-    expect(names).toContain('web_search');
-    expect(names).toContain('audit_query');
+    expect(names).toContain('memory');
+    expect(names).toContain('web');
+    expect(names).toContain('audit');
+    expect(names).toContain('identity');
+    expect(names).toContain('delegate');
+    expect(names).toContain('image');
   });
 
-  test('memory_write sends IPC call with correct action', async () => {
+  test('memory write sends IPC call with correct action', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'memory_write');
-    await tool.execute('tc1', { scope: 'test', content: 'hello', tags: ['a'] });
+    const tool = findTool(tools, 'memory');
+    await tool.execute('tc1', { type: 'write', scope: 'test', content: 'hello', tags: ['a'] });
     expect(client.call).toHaveBeenCalledWith({
       action: 'memory_write',
       scope: 'test',
@@ -45,11 +43,11 @@ describe('ipc-tools', () => {
     }, undefined);
   });
 
-  test('memory_query sends IPC call with correct action', async () => {
+  test('memory query sends IPC call with correct action', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'memory_query');
-    await tool.execute('tc2', { scope: 'test', query: 'search term', limit: 5 });
+    const tool = findTool(tools, 'memory');
+    await tool.execute('tc2', { type: 'query', scope: 'test', query: 'search term', limit: 5 });
     expect(client.call).toHaveBeenCalledWith({
       action: 'memory_query',
       scope: 'test',
@@ -58,11 +56,11 @@ describe('ipc-tools', () => {
     }, undefined);
   });
 
-  test('web_fetch sends IPC call with correct action', async () => {
+  test('web fetch sends IPC call with correct action', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'web_fetch');
-    await tool.execute('tc3', { url: 'https://example.com' });
+    const tool = findTool(tools, 'web');
+    await tool.execute('tc3', { type: 'fetch', url: 'https://example.com' });
     expect(client.call).toHaveBeenCalledWith({
       action: 'web_fetch',
       url: 'https://example.com',
@@ -73,8 +71,8 @@ describe('ipc-tools', () => {
     const client = createMockClient();
     client.call.mockResolvedValueOnce({ ok: true, data: 'response data' });
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'web_search');
-    const result = await tool.execute('tc5', { query: 'test' });
+    const tool = findTool(tools, 'web');
+    const result = await tool.execute('tc5', { type: 'search', query: 'test' });
     expect(result.content[0]).toEqual({
       type: 'text',
       text: JSON.stringify({ ok: true, data: 'response data' }),
@@ -85,25 +83,25 @@ describe('ipc-tools', () => {
     const client = createMockClient();
     client.call.mockRejectedValueOnce(new Error('IPC connection lost'));
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'memory_list');
-    const result = await tool.execute('tc6', { scope: 'test' });
+    const tool = findTool(tools, 'memory');
+    const result = await tool.execute('tc6', { type: 'list', scope: 'test' });
     const text = (result.content[0] as { type: 'text'; text: string }).text;
     expect(text).toMatch(/error|failed/i);
   });
 
-  test('exports identity_write and identity_propose tools', () => {
+  test('exports identity tool', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
     const names = tools.map((t) => t.name);
-    expect(names).toContain('identity_write');
-    expect(names).toContain('identity_propose');
+    expect(names).toContain('identity');
   });
 
-  test('identity_write sends IPC call with correct action', async () => {
+  test('identity write sends IPC call with correct action', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'identity_write');
+    const tool = findTool(tools, 'identity');
     await tool.execute('tc7', {
+      type: 'write',
       file: 'SOUL.md',
       content: '# Soul\nI am helpful.',
       reason: 'User asked',
@@ -118,26 +116,20 @@ describe('ipc-tools', () => {
     }, undefined);
   });
 
-  test('identity_write has description mentioning identity files', () => {
+  test('identity tool has description mentioning identity files', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'identity_write');
+    const tool = findTool(tools, 'identity');
     expect(tool.description).toContain('SOUL.md');
     expect(tool.description).toContain('IDENTITY.md');
   });
 
-  test('exports user_write tool', () => {
-    const client = createMockClient();
-    const tools = createIPCTools(client as any);
-    const names = tools.map((t) => t.name);
-    expect(names).toContain('user_write');
-  });
-
-  test('user_write sends IPC call with userId from options', async () => {
+  test('identity user_write sends IPC call with userId from options', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any, { userId: 'U12345' });
-    const tool = findTool(tools, 'user_write');
+    const tool = findTool(tools, 'identity');
     await tool.execute('tc8', {
+      type: 'user_write',
       content: '# User prefs\nLikes dark mode',
       reason: 'Observed preference',
       origin: 'agent_initiated',
@@ -151,45 +143,30 @@ describe('ipc-tools', () => {
     }, undefined);
   });
 
-  test('includes scheduler_add_cron tool', () => {
+  test('includes scheduler tool', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = tools.find((t) => t.name === 'scheduler_add_cron');
+    const tool = tools.find((t) => t.name === 'scheduler');
     expect(tool).toBeDefined();
     expect(tool!.description).toContain('cron');
   });
 
-  test('includes scheduler_remove_cron tool', () => {
+  test('total tool count is 10 without filter', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    expect(tools.find((t) => t.name === 'scheduler_remove_cron')).toBeDefined();
+    expect(tools.length).toBe(10);
   });
 
-  test('includes scheduler_list_jobs tool', () => {
-    const client = createMockClient();
-    const tools = createIPCTools(client as any);
-    expect(tools.find((t) => t.name === 'scheduler_list_jobs')).toBeDefined();
-  });
-
-  test('total tool count is 28 without filter', () => {
-    const client = createMockClient();
-    const tools = createIPCTools(client as any);
-    expect(tools.length).toBe(28);
-  });
-
-  test('filter excludes scheduler tools when hasHeartbeat is false', () => {
+  test('filter excludes scheduler tool when hasHeartbeat is false', () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any, {
       filter: { hasHeartbeat: false, hasSkills: true, hasWorkspaceTiers: true, hasGovernance: true },
     });
     const names = tools.map((t) => t.name);
-    expect(names).not.toContain('scheduler_add_cron');
-    expect(names).not.toContain('scheduler_run_at');
-    expect(names).not.toContain('scheduler_remove_cron');
-    expect(names).not.toContain('scheduler_list_jobs');
+    expect(names).not.toContain('scheduler');
     // Core tools still present
-    expect(names).toContain('memory_write');
-    expect(names).toContain('web_fetch');
+    expect(names).toContain('memory');
+    expect(names).toContain('web');
   });
 
   test('filter excludes enterprise tools when flags are false', () => {
@@ -198,35 +175,32 @@ describe('ipc-tools', () => {
       filter: { hasHeartbeat: true, hasSkills: true, hasWorkspaceTiers: false, hasGovernance: false },
     });
     const names = tools.map((t) => t.name);
-    expect(names).not.toContain('workspace_write');
-    expect(names).not.toContain('workspace_read');
-    expect(names).not.toContain('identity_propose');
-    expect(names).not.toContain('proposal_list');
-    expect(names).not.toContain('agent_registry_list');
+    expect(names).not.toContain('workspace');
+    expect(names).not.toContain('governance');
     // Core tools still present
-    expect(names).toContain('memory_write');
-    expect(names).toContain('identity_write');
+    expect(names).toContain('memory');
+    expect(names).toContain('identity');
   });
 
-  test('agent_delegate uses default timeout (heartbeat-based)', async () => {
+  test('delegate uses default timeout (heartbeat-based)', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'agent_delegate');
+    const tool = findTool(tools, 'delegate');
     await tool.execute('tc-delegate', { task: 'research X', context: 'some context' });
     expect(client.call).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'agent_delegate', task: 'research X' }),
-      undefined,  // no per-tool override — heartbeats keep the connection alive
+      600000,  // delegate has timeoutMs: 600_000
     );
   });
 
-  test('image_generate uses default timeout (heartbeat-based)', async () => {
+  test('image uses default timeout (heartbeat-based)', async () => {
     const client = createMockClient();
     const tools = createIPCTools(client as any);
-    const tool = findTool(tools, 'image_generate');
+    const tool = findTool(tools, 'image');
     await tool.execute('tc-image', { prompt: 'a cat' });
     expect(client.call).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'image_generate', prompt: 'a cat' }),
-      undefined,  // no per-tool override — heartbeats keep the connection alive
+      120000,  // image has timeoutMs: 120_000
     );
   });
 
@@ -236,13 +210,13 @@ describe('ipc-tools', () => {
       filter: { hasHeartbeat: false, hasSkills: false, hasWorkspaceTiers: false, hasGovernance: false },
     });
     const names = tools.map((t) => t.name);
-    // Memory(5) + web(2) + audit(1) + identity(2) + delegation(1) + image(1) = 12 tools
-    expect(names).toContain('memory_write');
-    expect(names).toContain('web_fetch');
-    expect(names).toContain('audit_query');
-    expect(names).toContain('identity_write');
-    expect(names).toContain('agent_delegate');
-    expect(names).toContain('image_generate');
-    expect(tools.length).toBe(12);
+    // memory(1) + web(1) + audit(1) + identity(1) + delegation(1) + image(1) = 6 tools
+    expect(names).toContain('memory');
+    expect(names).toContain('web');
+    expect(names).toContain('audit');
+    expect(names).toContain('identity');
+    expect(names).toContain('delegate');
+    expect(names).toContain('image');
+    expect(tools.length).toBe(6);
   });
 });

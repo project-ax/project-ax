@@ -34,10 +34,27 @@ export function createIPCTools(client: IPCClient, opts?: IPCToolsOptions): Agent
     parameters: spec.parameters,
     async execute(_id: string, params: unknown) {
       const p = params as Record<string, unknown>;
-      const callParams = spec.injectUserId
-        ? { ...p, userId: opts?.userId ?? '' }
-        : p;
-      return ipcCall(spec.name, callParams, spec.timeoutMs);
+      let action: string;
+      let callParams: Record<string, unknown>;
+
+      if (spec.actionMap) {
+        // Multi-op: extract type, resolve action
+        const { type, ...rest } = p;
+        action = spec.actionMap[type as string];
+        if (!action) return text(`Error: unknown type "${type}" for tool "${spec.name}"`);
+        callParams = rest;
+      } else {
+        // Singleton
+        action = spec.singletonAction ?? spec.name;
+        callParams = p;
+      }
+
+      // Inject userId only for identity tool's user_write type
+      if (spec.injectUserId && (p.type === 'user_write' || !spec.actionMap)) {
+        callParams = { ...callParams, userId: opts?.userId ?? '' };
+      }
+
+      return ipcCall(action, callParams, spec.timeoutMs);
     },
   }));
 }

@@ -1,10 +1,10 @@
 /**
  * Sync tests: verify the tool catalog stays in sync with consumers.
  *
- * - tool-catalog ↔ mcp-server: tool names and parameter keys match
- * - tool-catalog ↔ system prompt: every tool is documented in the
+ * - tool-catalog <-> mcp-server: tool names and parameter keys match
+ * - tool-catalog <-> system prompt: every tool is documented in the
  *   appropriate prompt module so the LLM knows to use it
- * - tool-catalog ↔ IPC schemas: every tool has a Zod schema
+ * - tool-catalog <-> IPC schemas: every tool's actions have Zod schemas
  */
 
 import { describe, test, expect, vi } from 'vitest';
@@ -30,7 +30,7 @@ function getTools(server: ReturnType<typeof createIPCMcpServer>): Record<string,
   return (server.instance as any)._registeredTools;
 }
 
-describe('tool-catalog ↔ mcp-server sync', () => {
+describe('tool-catalog <-> mcp-server sync', () => {
   test('MCP tool names exactly match TOOL_NAMES', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client);
@@ -39,7 +39,7 @@ describe('tool-catalog ↔ mcp-server sync', () => {
     expect(mcpToolNames).toEqual(catalogNames);
   });
 
-  test('each MCP tool parameter keys match catalog getToolParamKeys', () => {
+  test('each MCP tool parameter keys are a superset of catalog getToolParamKeys', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
@@ -51,15 +51,20 @@ describe('tool-catalog ↔ mcp-server sync', () => {
       // Extract Zod schema keys from the MCP tool's inputSchema
       // Zod v4 stores shape at inputSchema.def.shape
       const zodShape = mcpTool.inputSchema?.def?.shape ?? {};
-      const mcpKeys = Object.keys(zodShape).sort();
-      const catalogKeys = getToolParamKeys(name).sort();
+      const mcpKeys = new Set(Object.keys(zodShape));
+      const catalogKeys = getToolParamKeys(name);
 
-      expect(mcpKeys, `Parameter keys mismatch for tool "${name}"`).toEqual(catalogKeys);
+      // For union-based tools, MCP uses flat optional fields (superset)
+      // while catalog uses discriminated unions. MCP keys should include
+      // all catalog keys plus the 'type' discriminator.
+      for (const key of catalogKeys) {
+        expect(mcpKeys.has(key), `MCP tool "${name}" missing param key "${key}" from catalog`).toBe(true);
+      }
     }
   });
 });
 
-// ── tool-catalog ↔ system prompt sync ────────────────────────────────
+// ── tool-catalog <-> system prompt sync ────────────────────────────────
 //
 // Tools registered in the API's tools[] are only half the story.
 // The system prompt must ALSO document each tool so the LLM knows
@@ -86,74 +91,92 @@ function makePromptContext(overrides: Partial<PromptContext> = {}): PromptContex
   };
 }
 
-describe('tool-catalog ↔ system prompt sync', () => {
-  test('every scheduler_* tool in catalog is documented in HeartbeatModule', () => {
-    const schedulerTools = TOOL_CATALOG.filter(t => t.name.startsWith('scheduler_'));
-    expect(schedulerTools.length).toBeGreaterThan(0);
+describe('tool-catalog <-> system prompt sync', () => {
+  test('scheduler tool type values are documented in HeartbeatModule', () => {
+    const schedulerTool = TOOL_CATALOG.find(t => t.name === 'scheduler');
+    expect(schedulerTool).toBeDefined();
 
     const mod = new HeartbeatModule();
     const ctx = makePromptContext();
     const rendered = mod.render(ctx).join('\n');
 
-    for (const tool of schedulerTools) {
-      expect(rendered, `scheduler tool "${tool.name}" missing from HeartbeatModule system prompt`).toContain(tool.name);
+    // The prompt should reference the consolidated 'scheduler' tool name
+    expect(rendered, 'scheduler tool name missing from HeartbeatModule').toContain('scheduler');
+
+    // And document the type values: add_cron, run_at, remove, list
+    for (const typeValue of Object.keys(schedulerTool!.actionMap!)) {
+      expect(rendered, `scheduler type "${typeValue}" missing from HeartbeatModule`).toContain(typeValue);
     }
   });
 
-  test('skill_propose tool is documented in SkillsModule', () => {
+  test('skill propose operation is documented in SkillsModule', () => {
     const mod = new SkillsModule();
-    const ctx = makePromptContext({ skills: ['# Dummy'] });
+    const ctx = makePromptContext({ skills: [{ name: 'Dummy', description: 'dummy', path: 'dummy.md' }] });
     const rendered = mod.render(ctx).join('\n');
-    expect(rendered, 'skill_propose missing from SkillsModule system prompt').toContain('skill_propose');
+    // Should reference the consolidated skill tool with propose type
+    expect(rendered, 'skill propose missing from SkillsModule system prompt').toContain('propose');
+    expect(rendered, 'skill tool missing from SkillsModule system prompt').toContain('skill');
   });
 
-  test('agent_delegate tool is documented in DelegationModule', () => {
+  test('delegate tool is documented in DelegationModule', () => {
     const mod = new DelegationModule();
     const ctx = makePromptContext();
     const rendered = mod.render(ctx).join('\n');
-    expect(rendered, 'agent_delegate missing from DelegationModule system prompt').toContain('agent_delegate');
+    expect(rendered, 'delegate missing from DelegationModule system prompt').toContain('delegate');
     // Should recommend claude-code for coding tasks
     expect(rendered, 'DelegationModule should recommend claude-code for coding').toContain('claude-code');
     // Should tell the LLM to keep context minimal
     expect(rendered, 'DelegationModule should warn against dumping full identity').toContain('Do NOT paste');
   });
 
-  test('every identity/user tool in catalog is documented in IdentityModule', () => {
-    const identityTools = TOOL_CATALOG.filter(t =>
-      t.name === 'identity_write' || t.name === 'user_write'
-    );
-    expect(identityTools.length).toBeGreaterThan(0);
-
+  test('identity tool operations are documented in IdentityModule', () => {
     const mod = new IdentityModule();
     const ctx = makePromptContext();
     const rendered = mod.render(ctx).join('\n');
 
-    for (const tool of identityTools) {
-      expect(rendered, `identity tool "${tool.name}" missing from IdentityModule system prompt`).toContain(tool.name);
-    }
+    // Should reference the consolidated identity tool
+    expect(rendered, 'identity tool missing from IdentityModule system prompt').toContain('identity');
+    // Should document both write and user_write operations
+    expect(rendered, 'write operation missing from IdentityModule').toContain('write');
+    expect(rendered, 'user_write operation missing from IdentityModule').toContain('user_write');
   });
 });
 
-// ── tool-catalog ↔ IPC schemas sync ──────────────────────────────────
+// ── tool-catalog <-> IPC schemas sync ──────────────────────────────────
 
-describe('tool-catalog ↔ IPC schemas sync', () => {
-  test('every tool in catalog has a corresponding IPC schema', () => {
+describe('tool-catalog <-> IPC schemas sync', () => {
+  test('every tool action in catalog has a corresponding IPC schema', () => {
     for (const tool of TOOL_CATALOG) {
-      expect(IPC_SCHEMAS, `IPC schema missing for tool "${tool.name}"`).toHaveProperty(tool.name);
+      if (tool.actionMap) {
+        // Multi-op tool: every action in the actionMap must have an IPC schema
+        for (const [typeValue, ipcAction] of Object.entries(tool.actionMap)) {
+          expect(IPC_SCHEMAS, `IPC schema missing for action "${ipcAction}" (tool "${tool.name}", type "${typeValue}")`).toHaveProperty(ipcAction);
+        }
+      } else if (tool.singletonAction) {
+        // Singleton tool: the singletonAction must have an IPC schema
+        expect(IPC_SCHEMAS, `IPC schema missing for singleton action "${tool.singletonAction}" (tool "${tool.name}")`).toHaveProperty(tool.singletonAction);
+      }
     }
   });
 
-  test('every IPC_SCHEMAS action has a corresponding tool in TOOL_CATALOG or is an internal-only action', () => {
-    // Some IPC actions exist only in IPC_SCHEMAS without a tool catalog entry
-    // because they're host-internal (e.g. browser_*, llm_call).
-    // The catalog contains agent-facing tools; IPC schemas cover all actions.
-    // This test verifies that every CATALOG tool has a schema (no gaps in the other direction).
-    const schemaActions = new Set(Object.keys(IPC_SCHEMAS));
-    const catalogNames = new Set(TOOL_NAMES);
+  test('every IPC_SCHEMAS action is either mapped from a catalog tool or is a known internal action', () => {
+    // Build set of all IPC actions referenced by the catalog
+    const catalogActions = new Set<string>();
+    for (const tool of TOOL_CATALOG) {
+      if (tool.actionMap) {
+        for (const action of Object.values(tool.actionMap)) {
+          catalogActions.add(action);
+        }
+      } else if (tool.singletonAction) {
+        catalogActions.add(tool.singletonAction);
+      }
+    }
 
-    // Every catalog tool MUST have a schema
-    for (const name of catalogNames) {
-      expect(schemaActions.has(name), `Tool "${name}" in catalog but missing from IPC_SCHEMAS`).toBe(true);
+    const schemaActions = new Set(Object.keys(IPC_SCHEMAS));
+
+    // Every catalog action MUST have a schema
+    for (const action of catalogActions) {
+      expect(schemaActions.has(action), `Catalog action "${action}" missing from IPC_SCHEMAS`).toBe(true);
     }
 
     // Every schema action should either be in the catalog OR be a known internal action
@@ -173,11 +196,11 @@ describe('tool-catalog ↔ IPC schemas sync', () => {
     ]);
 
     for (const action of schemaActions) {
-      const inCatalog = catalogNames.has(action);
+      const inCatalog = catalogActions.has(action);
       const isInternal = knownInternalActions.has(action);
       expect(
         inCatalog || isInternal,
-        `IPC action "${action}" is neither in TOOL_CATALOG nor in knownInternalActions — update the test or add it to the catalog`,
+        `IPC action "${action}" is neither mapped from TOOL_CATALOG nor in knownInternalActions — update the test or add it to the catalog`,
       ).toBe(true);
     }
   });

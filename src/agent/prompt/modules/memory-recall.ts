@@ -28,9 +28,9 @@ export class MemoryRecallModule extends BasePromptModule {
       'search your memory first.',
       '',
       '**How to use memory:**',
-      '- Call `memory_query` with a relevant scope and query to search past entries',
-      '- Call `memory_read` to read a specific entry by ID',
-      '- Call `memory_write` to store important facts, decisions, or user preferences',
+      '- Call `memory({ type: "query", ... })` with a relevant scope and query to search past entries',
+      '- Call `memory({ type: "read", ... })` to read a specific entry by ID',
+      '- Call `memory({ type: "write", ... })` to store important facts, decisions, or user preferences',
       '',
       '**When to search memory:**',
       '- The user asks "did we..." or "what was..." or "remember when..."',
@@ -52,8 +52,8 @@ export class MemoryRecallModule extends BasePromptModule {
   renderMinimal(_ctx: PromptContext): string[] {
     return [
       '## Memory',
-      'Search memory (`memory_query`) before answering about prior work or preferences.',
-      'Write important facts via `memory_write`. Mental notes don\'t survive restarts.',
+      'Search memory (`memory({ type: "query" })`) before answering about prior work or preferences.',
+      'Write important facts via `memory({ type: "write" })`. Mental notes don\'t survive restarts.',
     ];
   }
 }

@@ -4,7 +4,7 @@ import type { AgentType } from '../../types.js';
 /**
  * Compact skill metadata for progressive disclosure.
  * Only the summary is injected into the system prompt; the agent calls
- * `skill_read` to load full instructions on demand.
+ * `skill({ type: "read" })` to load full instructions on demand.
  */
 export interface SkillSummary {
   name: string;

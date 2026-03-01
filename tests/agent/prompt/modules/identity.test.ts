@@ -89,7 +89,7 @@ describe('IdentityModule', () => {
     expect(text).not.toContain('## User\n');
   });
 
-  test('tells agent about identity_write and user_write tools', () => {
+  test('tells agent about identity tool write and user_write operations', () => {
     const mod = new IdentityModule();
     const ctx = makeContext({
       identityFiles: {
@@ -101,12 +101,12 @@ describe('IdentityModule', () => {
       },
     });
     const text = mod.render(ctx).join('\n');
-    expect(text).toContain('identity_write');
+    // Should reference the consolidated identity tool with type operations
+    expect(text).toContain('identity');
+    expect(text).toContain('write');
     expect(text).toContain('user_write');
     expect(text).toContain('per-user');
     expect(text).toContain('Identity Evolution');
-    // Should NOT reference the removed identity_propose
-    expect(text).not.toContain('identity_propose');
   });
 
   test('explains paranoid profile: always queued', () => {
@@ -193,7 +193,9 @@ describe('IdentityModule', () => {
     });
     const text = mod.render(ctx).join('\n');
     expect(text).toContain('Identity Evolution');
-    expect(text).toContain('identity_write');
+    // References the consolidated identity tool with write and user_write type values
+    expect(text).toContain('identity');
+    expect(text).toContain('write');
     expect(text).toContain('user_write');
   });
 

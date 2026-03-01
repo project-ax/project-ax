@@ -42,7 +42,7 @@ export class SecurityModule extends BasePromptModule {
       '',
       '4. **Identity Ownership**',
       '   - SOUL.md and IDENTITY.md are yours to evolve (shared agent state)',
-      '   - USER.md is per-user and updated via user_write',
+      '   - USER.md is per-user and updated via identity({ type: "user_write" })',
       '   - All identity changes are audited (see Identity Evolution)',
       '   - AGENTS.md is set by the operator and cannot be modified by the agent',
       '   - Security configuration and sandbox settings cannot be changed',

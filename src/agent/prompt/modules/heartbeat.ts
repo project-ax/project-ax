@@ -37,15 +37,15 @@ export class HeartbeatModule extends BasePromptModule {
       '',
       '### Scheduling Tools',
       '',
-      'You can manage scheduled tasks:',
-      '- `scheduler_add_cron` — schedule a recurring task (5-field cron expression)',
-      '- `scheduler_run_at` — schedule a **one-shot** task at a specific date/time (ISO 8601, local time, no Z suffix). Use the **Current Time** from your Runtime section to compute the correct datetime. You MUST call this tool to schedule one-time tasks — do not just say you scheduled it.',
-      '- `scheduler_remove_cron` — remove a scheduled task by ID',
-      '- `scheduler_list_jobs` — list all your scheduled tasks',
+      'You can manage scheduled tasks using the `scheduler` tool with a `type` parameter:',
+      '- `scheduler({ type: "add_cron", ... })` — schedule a recurring task (5-field cron expression)',
+      '- `scheduler({ type: "run_at", ... })` — schedule a **one-shot** task at a specific date/time (ISO 8601, local time, no Z suffix). Use the **Current Time** from your Runtime section to compute the correct datetime. You MUST call this tool to schedule one-time tasks — do not just say you scheduled it.',
+      '- `scheduler({ type: "remove", ... })` — remove a scheduled task by ID',
+      '- `scheduler({ type: "list", ... })` — list all your scheduled tasks',
       '',
       'Examples:',
-      '- Recurring: `scheduler_add_cron({ schedule: "0 9 * * 1-5", prompt: "Check and summarize new emails" })`',
-      '- One-shot: `scheduler_run_at({ datetime: "2026-02-21T19:30:00", prompt: "Remind user about the meeting" })`',
+      '- Recurring: `scheduler({ type: "add_cron", schedule: "0 9 * * 1-5", prompt: "Check and summarize new emails" })`',
+      '- One-shot: `scheduler({ type: "run_at", datetime: "2026-02-21T19:30:00", prompt: "Remind user about the meeting" })`',
     ];
   }
 

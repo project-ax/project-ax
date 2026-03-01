@@ -240,7 +240,7 @@ function createIPCToolDefinitions(client: IPCClient, opts?: IPCToolDefsOptions):
   // resolve to unknown in this context but IPC just forwards them as-is.
   const p = (v: unknown) => v as Record<string, unknown>;
 
-  const TOOLS_WITH_ORIGIN = new Set(['identity_write', 'user_write']);
+  const TOOLS_WITH_ORIGIN = new Set(['identity_write', 'user_write', 'identity_propose']);
   const catalog = opts?.filter ? filterTools(opts.filter) : TOOL_CATALOG;
 
   return catalog.map(spec => ({
@@ -250,17 +250,34 @@ function createIPCToolDefinitions(client: IPCClient, opts?: IPCToolDefsOptions):
     parameters: spec.parameters,
     async execute(_id: string, params: unknown) {
       process.stderr.write(`[diag] tool_execute name=${spec.name}\n`);
-      let callParams = spec.injectUserId
-        ? { ...p(params), userId: opts?.userId ?? '' }
-        : p(params);
+      const raw = p(params);
+      let action: string;
+      let callParams: Record<string, unknown>;
+
+      if (spec.actionMap) {
+        const { type, ...rest } = raw;
+        action = spec.actionMap[type as string];
+        if (!action) return text(`Error: unknown type "${type}" for tool "${spec.name}"`);
+        callParams = rest;
+      } else {
+        action = spec.singletonAction ?? spec.name;
+        callParams = raw;
+      }
+
+      // Inject userId only for user_write action
+      if (spec.injectUserId && action === 'user_write') {
+        callParams = { ...callParams, userId: opts?.userId ?? '' };
+      }
+
       // Normalize enum-like fields for weaker models that send free text
-      if (TOOLS_WITH_ORIGIN.has(spec.name) && 'origin' in callParams) {
+      if (TOOLS_WITH_ORIGIN.has(action) && 'origin' in callParams) {
         callParams = { ...callParams, origin: normalizeOrigin(callParams.origin) };
       }
-      if (spec.name === 'identity_write' && 'file' in callParams) {
+      if (action === 'identity_write' && 'file' in callParams) {
         callParams = { ...callParams, file: normalizeIdentityFile(callParams.file) };
       }
-      return ipcCall(spec.name, callParams, spec.timeoutMs);
+
+      return ipcCall(action, callParams, spec.timeoutMs);
     },
   })) as ToolDefinition[];
 }

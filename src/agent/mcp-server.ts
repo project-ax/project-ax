@@ -46,6 +46,20 @@ export interface MCPServerOptions {
   filter?: ToolFilterContext;
 }
 
+// ── Action maps for tools with irregular IPC action names ──
+const SCHEDULER_ACTIONS: Record<string, string> = {
+  add_cron: 'scheduler_add_cron',
+  run_at: 'scheduler_run_at',
+  remove: 'scheduler_remove_cron',
+  list: 'scheduler_list_jobs',
+};
+
+const GOVERNANCE_ACTIONS: Record<string, string> = {
+  propose: 'identity_propose',
+  list_proposals: 'proposal_list',
+  list_agents: 'agent_registry_list',
+};
+
 export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): McpSdkServerConfigWithInstance {
   async function ipcCall(action: string, params: Record<string, unknown> = {}) {
     try {
@@ -61,157 +75,187 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
     ? new Set(filterTools(opts.filter).map(s => s.name))
     : null; // null = no filtering, include all
 
-  // Define all MCP tools, then filter based on context
+  // Define all MCP tools (10 consolidated), then filter based on context
   const allTools = [
-    // ── Memory tools ──
-    tool('memory_write', 'Store a factual memory entry with scope, content, and optional tags. For name, personality, or style changes use identity_write or user_write instead.', {
-      scope: z.string(),
-      content: z.string(),
-      tags: z.array(z.string()).optional(),
-    }, (args) => ipcCall('memory_write', args)),
+    // ── Memory ──
+    tool('memory',
+      'Store, search, read, delete, and list memory entries.\n\n' +
+      'Operations:\n' +
+      '- write: Store a memory entry (requires scope, content)\n' +
+      '- query: Search entries (requires scope, optional query/limit/tags)\n' +
+      '- read: Read entry by ID (requires id)\n' +
+      '- delete: Delete entry by ID (requires id)\n' +
+      '- list: List entries in scope (requires scope, optional limit)',
+      {
+        type: z.enum(['write', 'query', 'read', 'delete', 'list']),
+        scope: z.string().optional(),
+        content: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        query: z.string().optional(),
+        limit: z.number().optional(),
+        id: z.string().optional(),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        return ipcCall(`memory_${type}`, params);
+      },
+    ),
 
-    tool('memory_query', 'Search memory entries by scope and optional query string.', {
-      scope: z.string(),
-      query: z.string().optional(),
-      limit: z.number().optional(),
-      tags: z.array(z.string()).optional(),
-    }, (args) => ipcCall('memory_query', args)),
+    // ── Web ──
+    tool('web',
+      'Fetch URLs and search the web (proxied through host with SSRF protection).\n\n' +
+      'Operations:\n' +
+      '- fetch: Fetch content from a URL (requires url)\n' +
+      '- search: Search the web (requires query)',
+      {
+        type: z.enum(['fetch', 'search']),
+        url: z.string().optional(),
+        method: z.enum(['GET', 'HEAD']).optional(),
+        headers: z.record(z.string(), z.string()).optional(),
+        timeoutMs: z.number().optional(),
+        query: z.string().optional(),
+        maxResults: z.number().optional(),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        return ipcCall(`web_${type}`, params);
+      },
+    ),
 
-    tool('memory_read', 'Read a specific memory entry by ID.', {
-      id: z.string(),
-    }, (args) => ipcCall('memory_read', args)),
+    // ── Identity ──
+    tool('identity',
+      'Write or update identity files or user preferences.\n\n' +
+      'Operations:\n' +
+      '- write: Update SOUL.md or IDENTITY.md (requires file, content, reason, origin)\n' +
+      '- user_write: Update user preferences USER.md (requires content, reason, origin)',
+      {
+        type: z.enum(['write', 'user_write']),
+        file: z.enum(['SOUL.md', 'IDENTITY.md']).optional(),
+        content: z.string(),
+        reason: z.string(),
+        origin: z.string().describe('"user_request" or "agent_initiated"'),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        const action = type === 'write' ? 'identity_write' : 'user_write';
+        const normalized = { ...params, origin: normalizeOrigin(params.origin) };
+        if (type === 'user_write') {
+          return ipcCall(action, { ...normalized, userId: opts?.userId ?? '' });
+        }
+        return ipcCall(action, normalized);
+      },
+    ),
 
-    tool('memory_delete', 'Delete a memory entry by ID.', {
-      id: z.string(),
-    }, (args) => ipcCall('memory_delete', args)),
+    // ── Scheduler ──
+    tool('scheduler',
+      'Schedule recurring and one-shot tasks.\n\n' +
+      'Operations:\n' +
+      '- add_cron: Schedule recurring task (requires schedule, prompt)\n' +
+      '- run_at: Schedule one-shot task (requires datetime, prompt)\n' +
+      '- remove: Remove a scheduled job (requires jobId)\n' +
+      '- list: List all scheduled jobs',
+      {
+        type: z.enum(['add_cron', 'run_at', 'remove', 'list']),
+        schedule: z.string().optional().describe('Cron expression, e.g. "0 9 * * 1" for 9am every Monday'),
+        prompt: z.string().optional().describe('The instruction/prompt to execute'),
+        maxTokenBudget: z.number().optional().describe('Optional max token budget per execution'),
+        datetime: z.string().optional().describe('ISO 8601 datetime string, e.g. "2026-02-21T19:30:00"'),
+        jobId: z.string().optional().describe('The job ID returned by scheduler_add_cron'),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        return ipcCall(SCHEDULER_ACTIONS[type], params);
+      },
+    ),
 
-    tool('memory_list', 'List memory entries in a scope.', {
-      scope: z.string(),
-      limit: z.number().optional(),
-    }, (args) => ipcCall('memory_list', args)),
+    // ── Skill ──
+    tool('skill',
+      'Manage and discover skills.\n\n' +
+      'Operations:\n' +
+      '- list: List all available skills\n' +
+      '- read: Read full content of a skill (requires name)\n' +
+      '- propose: Propose a new skill (requires skill, content)\n' +
+      '- import: Import from ClawHub or SKILL.md (requires source)\n' +
+      '- search: Search ClawHub registry (requires query)',
+      {
+        type: z.enum(['list', 'read', 'propose', 'import', 'search']),
+        name: z.string().optional(),
+        skill: z.string().optional().describe('Skill name (alphanumeric, hyphens, underscores)'),
+        content: z.string().optional().describe('Skill content as markdown'),
+        reason: z.string().optional().describe('Why this skill is needed'),
+        source: z.string().optional().describe('Skill source: "clawhub:<name>" or raw SKILL.md content'),
+        autoApprove: z.boolean().optional().describe('Auto-approve if screener passes'),
+        query: z.string().optional().describe('Search query'),
+        limit: z.number().optional().describe('Max results (1-50, default 20)'),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        return ipcCall(`skill_${type}`, params);
+      },
+    ),
 
-    // ── Web tools ──
-    tool('web_search', 'Search the web (proxied through host).', {
-      query: z.string(),
-      maxResults: z.number().optional(),
-    }, (args) => ipcCall('web_search', args)),
+    // ── Workspace ──
+    tool('workspace',
+      'Read and write files in workspace tiers.\n\n' +
+      'Operations:\n' +
+      '- write: Write a text file (requires tier, path, content)\n' +
+      '- read: Read a file (requires tier, path)\n' +
+      '- list: List files in a directory (requires tier, optional path)\n' +
+      '- write_file: Write a base64-encoded binary file (requires tier, path, data, mimeType)',
+      {
+        type: z.enum(['write', 'read', 'list', 'write_file']),
+        tier: z.string().describe('"agent", "user", or "scratch"'),
+        path: z.string().optional().describe('Relative path within the tier'),
+        content: z.string().optional().describe('File content (for write)'),
+        data: z.string().optional().describe('Base64-encoded binary content (for write_file)'),
+        mimeType: z.string().optional().describe('MIME type (for write_file, e.g. "image/png")'),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        return ipcCall(`workspace_${type}`, params);
+      },
+    ),
 
-    tool('web_fetch', 'Fetch content from a URL (proxied through host with SSRF protection).', {
-      url: z.string(),
-      method: z.enum(['GET', 'HEAD']).optional(),
-      headers: z.record(z.string(), z.string()).optional(),
-      timeoutMs: z.number().optional(),
-    }, (args) => ipcCall('web_fetch', args)),
+    // ── Governance ──
+    tool('governance',
+      'Enterprise governance: propose identity changes, list proposals, list agents.\n\n' +
+      'Operations:\n' +
+      '- propose: Propose a change to a shared identity file (requires file, content, reason, origin)\n' +
+      '- list_proposals: List governance proposals (optional status filter)\n' +
+      '- list_agents: List registered agents (optional status filter)',
+      {
+        type: z.enum(['propose', 'list_proposals', 'list_agents']),
+        file: z.string().optional().describe('"SOUL.md" or "IDENTITY.md"'),
+        content: z.string().optional(),
+        reason: z.string().optional(),
+        origin: z.string().optional().describe('"user_request" or "agent_initiated"'),
+        status: z.string().optional().describe('"pending", "approved", "rejected", "active", "suspended", or "archived"'),
+      },
+      (args) => {
+        const { type, ...rest } = args;
+        const params = Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined));
+        if (type === 'propose') {
+          return ipcCall(GOVERNANCE_ACTIONS[type], { ...params, origin: normalizeOrigin(params.origin) });
+        }
+        return ipcCall(GOVERNANCE_ACTIONS[type], params);
+      },
+    ),
 
-    // ── Audit tool ──
-    tool('audit_query', 'Query the audit log with filters.', {
+    // ── Audit (singleton) ──
+    tool('audit', 'Query the audit log with filters.', {
       action: z.string().optional(),
       sessionId: z.string().optional(),
       limit: z.number().optional(),
     }, (args) => ipcCall('audit_query', args)),
 
-    // ── Identity tools ──
-    tool(
-      'identity_write',
-      'Write or update a shared identity file (SOUL.md or IDENTITY.md). ' +
-      'For user preferences, use user_write instead.',
-      {
-        file: z.enum(['SOUL.md', 'IDENTITY.md']),
-        content: z.string(),
-        reason: z.string(),
-        origin: z.string().describe('Either "user_request" or "agent_initiated"'),
-      },
-      (args) => ipcCall('identity_write', { ...args, origin: normalizeOrigin(args.origin) }),
-    ),
-
-    tool(
-      'user_write',
-      'Write or update what you have learned about the current user (USER.md). ' +
-      'Per-user scoped. All changes are audited.',
-      {
-        content: z.string(),
-        reason: z.string(),
-        origin: z.string().describe('Either "user_request" or "agent_initiated"'),
-      },
-      (args) => ipcCall('user_write', { ...args, userId: opts?.userId ?? '', origin: normalizeOrigin(args.origin) }),
-    ),
-
-    // ── Scheduler tools ──
-    tool(
-      'scheduler_add_cron',
-      'Schedule a recurring task using a 5-field cron expression (minute hour day month weekday).',
-      {
-        schedule: z.string().describe('Cron expression, e.g. "0 9 * * 1" for 9am every Monday'),
-        prompt: z.string().describe('The instruction/prompt to execute on each trigger'),
-        maxTokenBudget: z.number().optional().describe('Optional max token budget per execution'),
-      },
-      (args) => ipcCall('scheduler_add_cron', args),
-    ),
-
-    tool(
-      'scheduler_run_at',
-      'Schedule a one-shot task at a specific date/time. Executes once, then auto-removed.',
-      {
-        datetime: z.string().describe('ISO 8601 datetime string, e.g. "2026-02-21T19:30:00"'),
-        prompt: z.string().describe('The instruction/prompt to execute'),
-        maxTokenBudget: z.number().optional().describe('Optional max token budget for execution'),
-      },
-      (args) => ipcCall('scheduler_run_at', args),
-    ),
-
-    tool(
-      'scheduler_remove_cron',
-      'Remove a previously scheduled cron job by its ID.',
-      {
-        jobId: z.string().describe('The job ID returned by scheduler_add_cron'),
-      },
-      (args) => ipcCall('scheduler_remove_cron', args),
-    ),
-
-    tool(
-      'scheduler_list_jobs',
-      'List all currently scheduled cron jobs.',
-      {},
-      () => ipcCall('scheduler_list_jobs', {}),
-    ),
-
-    // ── Skill tools ──
-    tool('skill_list', 'List all available skills. Returns skill names and descriptions.', {},
-      () => ipcCall('skill_list', {})),
-
-    tool('skill_read', 'Read the full content of a skill by name.', {
-      name: z.string(),
-    }, (args) => ipcCall('skill_read', args)),
-
-    tool('skill_propose',
-      'Propose a new skill or update an existing one. Content is markdown, screened for safety.',
-      {
-        skill: z.string().describe('Skill name (alphanumeric, hyphens, underscores)'),
-        content: z.string().describe('Skill content as markdown'),
-        reason: z.string().optional().describe('Why this skill is needed'),
-      },
-      (args) => ipcCall('skill_propose', args)),
-
-    tool('skill_import',
-      'Import an external skill from ClawHub or local SKILL.md content. ' +
-      'Source can be "clawhub:<name>" or raw SKILL.md content.',
-      {
-        source: z.string().describe('Skill source: "clawhub:<name>" or raw SKILL.md content'),
-        autoApprove: z.boolean().optional().describe('Auto-approve if screener passes'),
-      },
-      (args) => ipcCall('skill_import', args)),
-
-    tool('skill_search',
-      'Search the ClawHub registry for available skills.',
-      {
-        query: z.string().describe('Search query'),
-        limit: z.number().optional().describe('Max results (1-50, default 20)'),
-      },
-      (args) => ipcCall('skill_search', args)),
-
-    // ── Delegation tools ──
-    tool(
-      'agent_delegate',
+    // ── Delegate (singleton) ──
+    tool('delegate',
       'Delegate a task to a sub-agent running in its own sandbox. ' +
       'Subject to depth and concurrency limits.',
       {
@@ -226,8 +270,8 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
       (args) => ipcCall('agent_delegate', args),
     ),
 
-    // ── Image generation ──
-    tool('image_generate',
+    // ── Image (singleton) ──
+    tool('image',
       'Generate an image from a text prompt using a configured image model. ' +
       'Returns a JSON object with a `url` field. Display the image in your response ' +
       'using markdown: ![description](url)',
@@ -239,48 +283,6 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
       },
       (args) => ipcCall('image_generate', args),
     ),
-
-    // ── Enterprise: Workspace tools ──
-
-    tool('workspace_write', 'Write a file to a workspace tier (agent, user, or scratch).', {
-      tier: z.string().describe('"agent", "user", or "scratch"'),
-      path: z.string().describe('Relative path within the tier'),
-      content: z.string().describe('File content'),
-    }, (args) => ipcCall('workspace_write', args)),
-
-    tool('workspace_read', 'Read a file from a workspace tier.', {
-      tier: z.string().describe('"agent", "user", or "scratch"'),
-      path: z.string().describe('Relative path within the tier'),
-    }, (args) => ipcCall('workspace_read', args)),
-
-    tool('workspace_list', 'List files in a workspace tier directory.', {
-      tier: z.string().describe('"agent", "user", or "scratch"'),
-      path: z.string().optional().describe('Subdirectory to list (defaults to root)'),
-    }, (args) => ipcCall('workspace_list', args)),
-
-    tool('workspace_write_file', 'Write a base64-encoded binary file to a workspace tier.', {
-      tier: z.string().describe('"agent", "user", or "scratch"'),
-      path: z.string().describe('Relative path (e.g. "files/image.png")'),
-      data: z.string().describe('Base64-encoded binary content'),
-      mimeType: z.string().describe('MIME type (e.g. "image/png")'),
-    }, (args) => ipcCall('workspace_write_file', args)),
-
-    // ── Enterprise: Governance tools ──
-
-    tool('identity_propose', 'Propose a change to a shared identity file for governance review.', {
-      file: z.string().describe('"SOUL.md" or "IDENTITY.md"'),
-      content: z.string(),
-      reason: z.string(),
-      origin: z.string().describe('"user_request" or "agent_initiated"'),
-    }, (args) => ipcCall('identity_propose', { ...args, origin: normalizeOrigin(args.origin) })),
-
-    tool('proposal_list', 'List governance proposals. Optionally filter by status.', {
-      status: z.string().optional().describe('"pending", "approved", or "rejected"'),
-    }, (args) => ipcCall('proposal_list', args)),
-
-    tool('agent_registry_list', 'List all registered agents in the enterprise registry.', {
-      status: z.string().optional().describe('"active", "suspended", or "archived"'),
-    }, (args) => ipcCall('agent_registry_list', args)),
   ];
 
   // Filter tools if context was provided

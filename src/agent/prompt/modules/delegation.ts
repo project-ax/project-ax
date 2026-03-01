@@ -5,7 +5,7 @@ import type { PromptContext } from '../types.js';
 
 /**
  * Delegation module: tells the agent how and when to delegate tasks to
- * sub-agents using `agent_delegate`. Priority 75 — after skills, before
+ * sub-agents using `delegate`. Priority 75 — after skills, before
  * heartbeat. Optional — excluded during bootstrap.
  */
 export class DelegationModule extends BasePromptModule {
@@ -22,7 +22,7 @@ export class DelegationModule extends BasePromptModule {
     return [
       '## Task Delegation',
       '',
-      'You can delegate work to a **sub-agent** using `agent_delegate`. The sub-agent',
+      'You can delegate work to a **sub-agent** using `delegate`. The sub-agent',
       'runs in its own isolated sandbox and returns a text response when finished.',
       '',
       '### When to delegate',
@@ -71,7 +71,7 @@ export class DelegationModule extends BasePromptModule {
   renderMinimal(_ctx: PromptContext): string[] {
     return [
       '## Delegation',
-      'Use `agent_delegate` to delegate subtasks to a sub-agent.',
+      'Use `delegate` to delegate subtasks to a sub-agent.',
       'Set `runner: "claude-code"` for coding tasks. Default runner is `pi-coding-agent`.',
       'Keep context minimal — a few sentences of relevant background, not your full identity or history.',
     ];

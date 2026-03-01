@@ -35,15 +35,15 @@ describe('IPC MCP Server', () => {
     expect(server.instance).toBeDefined();
   });
 
-  test('memory_write calls IPC client with correct action', async () => {
+  test('memory write calls IPC client with correct action', async () => {
     const client = createMockClient({ id: 'mem_1' });
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    expect(tools['memory_write']).toBeDefined();
+    expect(tools['memory']).toBeDefined();
 
-    const result = await tools['memory_write'].handler(
-      { scope: 'test', content: 'hello', tags: ['a'] },
+    const result = await tools['memory'].handler(
+      { type: 'write', scope: 'test', content: 'hello', tags: ['a'] },
       {},
     );
 
@@ -56,13 +56,13 @@ describe('IPC MCP Server', () => {
     expect(result.content[0].text).toContain('"id":"mem_1"');
   });
 
-  test('memory_query calls IPC client with correct action', async () => {
+  test('memory query calls IPC client with correct action', async () => {
     const client = createMockClient([{ id: 'mem_1', content: 'hi' }]);
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['memory_query'].handler(
-      { scope: 'test', query: 'search term', limit: 5 },
+    const result = await tools['memory'].handler(
+      { type: 'query', scope: 'test', query: 'search term', limit: 5 },
       {},
     );
 
@@ -75,12 +75,12 @@ describe('IPC MCP Server', () => {
     expect(result.content[0].text).toContain('mem_1');
   });
 
-  test('web_search calls IPC client with correct action', async () => {
+  test('web search calls IPC client with correct action', async () => {
     const client = createMockClient({ results: [] });
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    await tools['web_search'].handler({ query: 'test query', maxResults: 3 }, {});
+    await tools['web'].handler({ type: 'search', query: 'test query', maxResults: 3 }, {});
 
     expect(client.call).toHaveBeenCalledWith({
       action: 'web_search',
@@ -94,13 +94,13 @@ describe('IPC MCP Server', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['memory_read'].handler({ id: 'nonexistent' }, {});
+    const result = await tools['memory'].handler({ type: 'read', id: 'nonexistent' }, {});
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('connection refused');
   });
 
-  test('strips taint from top-level web_fetch response', async () => {
+  test('strips taint from top-level web fetch response', async () => {
     const client = createMockClient({
       status: 200,
       headers: { 'content-type': 'text/html' },
@@ -110,14 +110,14 @@ describe('IPC MCP Server', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_fetch'].handler({ url: 'https://example.com' }, {});
+    const result = await tools['web'].handler({ type: 'fetch', url: 'https://example.com' }, {});
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed.body).toBe('<h1>Hello</h1>');
     expect(parsed.taint).toBeUndefined();
   });
 
-  test('strips taint from nested objects in web_search results array', async () => {
+  test('strips taint from nested objects in web search results array', async () => {
     const client = createMockClient([
       { title: 'Result 1', url: 'https://a.com', snippet: 'A', taint: { source: 'web_search', trust: 'external' } },
       { title: 'Result 2', url: 'https://b.com', snippet: 'B', taint: { source: 'web_search', trust: 'external' } },
@@ -125,7 +125,7 @@ describe('IPC MCP Server', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_search'].handler({ query: 'test' }, {});
+    const result = await tools['web'].handler({ type: 'search', query: 'test' }, {});
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed).toHaveLength(2);
@@ -134,26 +134,24 @@ describe('IPC MCP Server', () => {
     expect(parsed[1].taint).toBeUndefined();
   });
 
-  test('includes skill tools', () => {
+  test('includes skill tool', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
     const names = Object.keys(tools);
 
-    expect(names).toContain('skill_list');
-    expect(names).toContain('skill_read');
-    expect(names).toContain('skill_propose');
+    expect(names).toContain('skill');
   });
 
-  test('identity_write calls IPC client with correct action', async () => {
+  test('identity write calls IPC client with correct action', async () => {
     const client = createMockClient({ ok: true, queued: false });
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    expect(tools['identity_write']).toBeDefined();
+    expect(tools['identity']).toBeDefined();
 
-    const result = await tools['identity_write'].handler(
-      { file: 'SOUL.md', content: '# Witty Bot', reason: 'User asked to be more witty', origin: 'user_request' },
+    const result = await tools['identity'].handler(
+      { type: 'write', file: 'SOUL.md', content: '# Witty Bot', reason: 'User asked to be more witty', origin: 'user_request' },
       {},
     );
 
@@ -167,41 +165,26 @@ describe('IPC MCP Server', () => {
     expect(result.content[0].text).toContain('"ok":true');
   });
 
-  test('all 28 IPC tools are registered without filter', () => {
+  test('all 10 consolidated tools are registered without filter', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
     const expectedTools = [
-      'memory_write', 'memory_query', 'memory_read', 'memory_delete', 'memory_list',
-      'web_search', 'web_fetch',
-      'audit_query',
-      'identity_write',
-      'user_write',
-      'scheduler_add_cron',
-      'scheduler_run_at',
-      'scheduler_remove_cron',
-      'scheduler_list_jobs',
-      'skill_list',
-      'skill_read',
-      'skill_propose',
-      'skill_import',
-      'skill_search',
-      'agent_delegate',
-      'image_generate',
-      // Enterprise tools
-      'workspace_write', 'workspace_read', 'workspace_list', 'workspace_write_file',
-      'identity_propose', 'proposal_list', 'agent_registry_list',
+      'memory', 'web', 'audit', 'identity',
+      'scheduler', 'skill',
+      'delegate', 'image',
+      'workspace', 'governance',
     ];
 
     const registeredNames = Object.keys(tools);
     for (const name of expectedTools) {
       expect(registeredNames, `expected tool "${name}" to be registered`).toContain(name);
     }
-    expect(registeredNames.length).toBe(28);
+    expect(registeredNames.length).toBe(10);
   });
 
-  test('filter excludes scheduler and skills tools when flags are false', () => {
+  test('filter excludes scheduler and skill tools when flags are false', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client, {
       filter: { hasHeartbeat: false, hasSkills: false, hasWorkspaceTiers: true, hasGovernance: true },
@@ -209,16 +192,14 @@ describe('IPC MCP Server', () => {
     const tools = getTools(server);
     const names = Object.keys(tools);
 
-    expect(names).not.toContain('scheduler_add_cron');
-    expect(names).not.toContain('scheduler_run_at');
-    expect(names).not.toContain('skill_list');
-    expect(names).not.toContain('skill_read');
+    expect(names).not.toContain('scheduler');
+    expect(names).not.toContain('skill');
     // Core tools present
-    expect(names).toContain('memory_write');
-    expect(names).toContain('web_fetch');
-    expect(names).toContain('identity_write');
+    expect(names).toContain('memory');
+    expect(names).toContain('web');
+    expect(names).toContain('identity');
     // Enterprise workspace still present
-    expect(names).toContain('workspace_write');
+    expect(names).toContain('workspace');
   });
 
   test('filter with all flags false returns only core tools', () => {
@@ -229,43 +210,25 @@ describe('IPC MCP Server', () => {
     const tools = getTools(server);
     const names = Object.keys(tools);
 
-    // Core: memory(5) + web(2) + audit(1) + identity(2) + delegation(1) + image(1) = 12
-    expect(names).toContain('memory_write');
-    expect(names).toContain('web_fetch');
-    expect(names).toContain('audit_query');
-    expect(names).toContain('identity_write');
-    expect(names).toContain('agent_delegate');
-    expect(names).not.toContain('scheduler_add_cron');
-    expect(names).not.toContain('skill_list');
-    expect(names).not.toContain('workspace_write');
-    expect(names).not.toContain('identity_propose');
+    // Core: memory(1) + web(1) + audit(1) + identity(1) + delegation(1) + image(1) = 6
+    expect(names).toContain('memory');
+    expect(names).toContain('web');
+    expect(names).toContain('audit');
+    expect(names).toContain('identity');
+    expect(names).toContain('delegate');
+    expect(names).not.toContain('scheduler');
+    expect(names).not.toContain('skill');
+    expect(names).not.toContain('workspace');
+    expect(names).not.toContain('governance');
   });
 
-  test('includes scheduler_add_cron tool', () => {
+  test('includes scheduler tool', () => {
     const client = createMockClient();
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
     const toolNames = Object.keys(tools);
 
-    expect(toolNames).toContain('scheduler_add_cron');
-  });
-
-  test('includes scheduler_remove_cron tool', () => {
-    const client = createMockClient();
-    const server = createIPCMcpServer(client);
-    const tools = getTools(server);
-    const toolNames = Object.keys(tools);
-
-    expect(toolNames).toContain('scheduler_remove_cron');
-  });
-
-  test('includes scheduler_list_jobs tool', () => {
-    const client = createMockClient();
-    const server = createIPCMcpServer(client);
-    const tools = getTools(server);
-    const toolNames = Object.keys(tools);
-
-    expect(toolNames).toContain('scheduler_list_jobs');
+    expect(toolNames).toContain('scheduler');
   });
 
   test('user_write calls IPC client with userId from options', async () => {
@@ -273,10 +236,10 @@ describe('IPC MCP Server', () => {
     const server = createIPCMcpServer(client, { userId: 'U12345' });
     const tools = getTools(server);
 
-    expect(tools['user_write']).toBeDefined();
+    expect(tools['identity']).toBeDefined();
 
-    const result = await tools['user_write'].handler(
-      { content: '# User prefs', reason: 'Learned from chat', origin: 'agent_initiated' },
+    const result = await tools['identity'].handler(
+      { type: 'user_write', content: '# User prefs', reason: 'Learned from chat', origin: 'agent_initiated' },
       {},
     );
 

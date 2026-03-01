@@ -3,8 +3,8 @@ import { TOOL_CATALOG, TOOL_NAMES, getToolParamKeys, normalizeOrigin, normalizeI
 import type { ToolFilterContext, ToolCategory } from '../../src/agent/tool-catalog.js';
 
 describe('tool-catalog', () => {
-  test('exports exactly 28 tools', () => {
-    expect(TOOL_CATALOG.length).toBe(28);
+  test('exports exactly 10 tools', () => {
+    expect(TOOL_CATALOG.length).toBe(10);
   });
 
   test('TOOL_NAMES matches TOOL_CATALOG names', () => {
@@ -25,25 +25,25 @@ describe('tool-catalog', () => {
     }
   });
 
-  test('only user_write has injectUserId', () => {
+  test('only identity has injectUserId', () => {
     const withInject = TOOL_CATALOG.filter(s => s.injectUserId);
     expect(withInject.length).toBe(1);
-    expect(withInject[0].name).toBe('user_write');
+    expect(withInject[0].name).toBe('identity');
   });
 
-  test('getToolParamKeys returns correct keys for memory_write', () => {
-    const keys = getToolParamKeys('memory_write');
-    expect(keys).toEqual(['scope', 'content', 'tags']);
+  test('getToolParamKeys returns correct keys for memory (union)', () => {
+    const keys = getToolParamKeys('memory');
+    expect(keys.sort()).toEqual(['content', 'id', 'limit', 'query', 'scope', 'tags']);
   });
 
-  test('getToolParamKeys returns correct keys for web_fetch', () => {
-    const keys = getToolParamKeys('web_fetch');
-    expect(keys).toEqual(['url', 'method', 'headers', 'timeoutMs']);
+  test('getToolParamKeys returns correct keys for web (union)', () => {
+    const keys = getToolParamKeys('web');
+    expect(keys.sort()).toEqual(['headers', 'maxResults', 'method', 'query', 'timeoutMs', 'url']);
   });
 
-  test('getToolParamKeys returns correct keys for scheduler_list_jobs (empty params)', () => {
-    const keys = getToolParamKeys('scheduler_list_jobs');
-    expect(keys).toEqual([]);
+  test('getToolParamKeys returns correct keys for audit (singleton, direct object)', () => {
+    const keys = getToolParamKeys('audit');
+    expect(keys.sort()).toEqual(['action', 'limit', 'sessionId']);
   });
 
   test('getToolParamKeys throws for unknown tool', () => {
@@ -52,66 +52,62 @@ describe('tool-catalog', () => {
 
   test('contains all expected tool names', () => {
     const expected = [
-      'memory_write', 'memory_query', 'memory_read', 'memory_delete', 'memory_list',
-      'web_fetch', 'web_search',
-      'audit_query',
-      'identity_write', 'user_write',
-      'scheduler_add_cron', 'scheduler_run_at', 'scheduler_remove_cron', 'scheduler_list_jobs',
-      'skill_list', 'skill_read', 'skill_propose', 'skill_import', 'skill_search',
-      'agent_delegate',
-      'image_generate',
-      // Enterprise tools
-      'workspace_write', 'workspace_read', 'workspace_list', 'workspace_write_file',
-      'identity_propose', 'proposal_list', 'agent_registry_list',
+      'memory', 'web', 'identity', 'scheduler', 'skill',
+      'workspace', 'governance', 'audit', 'delegate', 'image',
     ];
     expect(TOOL_NAMES).toEqual(expected);
   });
 
-  test('skill tools exist in catalog', () => {
-    const skillTools = TOOL_CATALOG.filter(t => t.name.startsWith('skill_'));
-    expect(skillTools.map(t => t.name).sort()).toEqual([
-      'skill_import', 'skill_list', 'skill_propose', 'skill_read', 'skill_search',
+  test('skill tool exists in catalog', () => {
+    const skillTool = TOOL_CATALOG.find(t => t.name === 'skill');
+    expect(skillTool).toBeDefined();
+    expect(skillTool!.actionMap).toBeDefined();
+    expect(Object.keys(skillTool!.actionMap!).sort()).toEqual([
+      'import', 'list', 'propose', 'read', 'search',
     ]);
   });
 
-  test('skill_propose has correct params', () => {
-    const keys = getToolParamKeys('skill_propose');
-    expect(keys.sort()).toEqual(['content', 'reason', 'skill']);
+  test('skill tool has correct param keys (union of all members)', () => {
+    const keys = getToolParamKeys('skill');
+    expect(keys.sort()).toEqual(['autoApprove', 'content', 'limit', 'name', 'query', 'reason', 'skill', 'source']);
   });
 
-  test('skill_read has correct params', () => {
-    const keys = getToolParamKeys('skill_read');
-    expect(keys).toEqual(['name']);
-  });
-
-  test('skill_list has no params', () => {
-    const keys = getToolParamKeys('skill_list');
-    expect(keys).toEqual([]);
+  test('scheduler tool has correct param keys (union of all members)', () => {
+    const keys = getToolParamKeys('scheduler');
+    expect(keys.sort()).toEqual(['datetime', 'jobId', 'maxTokenBudget', 'prompt', 'schedule']);
   });
 
   // Regression: weaker models (Gemini, Kimi) send free-text for enum fields,
   // causing AJV validateToolArguments to reject before execute() runs.
   // The tool schemas now use Type.String() and normalization coerces values.
-  test('identity_write and user_write use String type for origin (not enum)', () => {
-    for (const name of ['identity_write', 'user_write']) {
-      const spec = TOOL_CATALOG.find(s => s.name === name)!;
-      const originSchema = (spec.parameters as any).properties.origin;
-      // Should be a plain string schema, NOT a union of literals
-      expect(originSchema.type, `${name}.origin should be "string" type`).toBe('string');
-      expect(originSchema.anyOf, `${name}.origin should not have anyOf (enum)`).toBeUndefined();
+  test('identity tool union members use String type for origin (not enum)', () => {
+    const spec = TOOL_CATALOG.find(s => s.name === 'identity')!;
+    // Identity is a union — check each member that has an origin field
+    const schema = spec.parameters as any;
+    expect(schema.anyOf).toBeDefined();
+    for (const member of schema.anyOf) {
+      if (member.properties.origin) {
+        expect(member.properties.origin.type, `identity member origin should be "string" type`).toBe('string');
+        expect(member.properties.origin.anyOf, `identity member origin should not have anyOf (enum)`).toBeUndefined();
+      }
     }
   });
 
-  test('identity_write uses String type for file (not enum)', () => {
-    const spec = TOOL_CATALOG.find(s => s.name === 'identity_write')!;
-    const fileSchema = (spec.parameters as any).properties.file;
-    expect(fileSchema.type, 'identity_write.file should be "string" type').toBe('string');
+  test('identity write member uses String type for file (not enum)', () => {
+    const spec = TOOL_CATALOG.find(s => s.name === 'identity')!;
+    const schema = spec.parameters as any;
+    // Find the 'write' member (has a 'file' property)
+    const writeMember = schema.anyOf.find((m: any) =>
+      m.properties.type?.const === 'write' && m.properties.file
+    );
+    expect(writeMember).toBeDefined();
+    expect(writeMember.properties.file.type, 'identity write member file should be "string" type').toBe('string');
   });
 
   test('every tool has a valid category', () => {
     const validCategories: ToolCategory[] = [
       'memory', 'web', 'audit', 'identity',
-      'scheduler', 'skills', 'delegation', 'image',
+      'scheduler', 'skill', 'delegation', 'image',
       'workspace', 'governance',
     ];
     for (const spec of TOOL_CATALOG) {
@@ -122,7 +118,7 @@ describe('tool-catalog', () => {
   test('every category has at least one tool', () => {
     const categories: ToolCategory[] = [
       'memory', 'web', 'audit', 'identity',
-      'scheduler', 'skills', 'delegation', 'image',
+      'scheduler', 'skill', 'delegation', 'image',
       'workspace', 'governance',
     ];
     for (const cat of categories) {
@@ -210,102 +206,78 @@ describe('filterTools', () => {
   test('all flags false returns only always-on categories', () => {
     const result = filterTools(NO_FLAGS);
     const names = result.map(s => s.name);
-    // memory(5) + web(2) + audit(1) + identity(2) + delegation(1) + image(1) = 12
+    // memory(1) + web(1) + audit(1) + identity(1) + delegation(1) + image(1) = 6
     const alwaysOn = TOOL_CATALOG.filter(s =>
-      !['scheduler', 'skills', 'workspace', 'governance'].includes(s.category)
+      !['scheduler', 'skill', 'workspace', 'governance'].includes(s.category)
     );
     expect(result.length).toBe(alwaysOn.length);
 
     // Verify excluded categories
     for (const spec of result) {
-      expect(['scheduler', 'skills', 'workspace', 'governance']).not.toContain(spec.category);
+      expect(['scheduler', 'skill', 'workspace', 'governance']).not.toContain(spec.category);
     }
   });
 
-  test('hasHeartbeat includes scheduler tools', () => {
+  test('hasHeartbeat includes scheduler tool', () => {
     const result = filterTools({ ...NO_FLAGS, hasHeartbeat: true });
     const names = result.map(s => s.name);
-    expect(names).toContain('scheduler_add_cron');
-    expect(names).toContain('scheduler_run_at');
-    expect(names).toContain('scheduler_remove_cron');
-    expect(names).toContain('scheduler_list_jobs');
+    expect(names).toContain('scheduler');
   });
 
-  test('hasHeartbeat=false excludes scheduler tools', () => {
+  test('hasHeartbeat=false excludes scheduler tool', () => {
     const result = filterTools({ ...ALL_FLAGS, hasHeartbeat: false });
     const names = result.map(s => s.name);
-    expect(names).not.toContain('scheduler_add_cron');
-    expect(names).not.toContain('scheduler_run_at');
+    expect(names).not.toContain('scheduler');
   });
 
-  test('hasSkills includes skill tools', () => {
+  test('hasSkills includes skill tool', () => {
     const result = filterTools({ ...NO_FLAGS, hasSkills: true });
     const names = result.map(s => s.name);
-    expect(names).toContain('skill_list');
-    expect(names).toContain('skill_read');
-    expect(names).toContain('skill_propose');
+    expect(names).toContain('skill');
   });
 
-  test('hasSkills=false excludes skill tools', () => {
+  test('hasSkills=false excludes skill tool', () => {
     const result = filterTools({ ...ALL_FLAGS, hasSkills: false });
     const names = result.map(s => s.name);
-    expect(names).not.toContain('skill_list');
-    expect(names).not.toContain('skill_read');
-    expect(names).not.toContain('skill_propose');
+    expect(names).not.toContain('skill');
   });
 
-  test('hasWorkspaceTiers includes workspace tools', () => {
+  test('hasWorkspaceTiers includes workspace tool', () => {
     const result = filterTools({ ...NO_FLAGS, hasWorkspaceTiers: true });
     const names = result.map(s => s.name);
-    expect(names).toContain('workspace_write');
-    expect(names).toContain('workspace_read');
-    expect(names).toContain('workspace_list');
-    expect(names).toContain('workspace_write_file');
+    expect(names).toContain('workspace');
   });
 
-  test('hasWorkspaceTiers=false excludes workspace tools', () => {
+  test('hasWorkspaceTiers=false excludes workspace tool', () => {
     const result = filterTools({ ...ALL_FLAGS, hasWorkspaceTiers: false });
     const names = result.map(s => s.name);
-    expect(names).not.toContain('workspace_write');
-    expect(names).not.toContain('workspace_read');
-    expect(names).not.toContain('workspace_list');
-    expect(names).not.toContain('workspace_write_file');
+    expect(names).not.toContain('workspace');
   });
 
-  test('hasGovernance includes governance tools', () => {
+  test('hasGovernance includes governance tool', () => {
     const result = filterTools({ ...NO_FLAGS, hasGovernance: true });
     const names = result.map(s => s.name);
-    expect(names).toContain('identity_propose');
-    expect(names).toContain('proposal_list');
-    expect(names).toContain('agent_registry_list');
+    expect(names).toContain('governance');
   });
 
-  test('hasGovernance=false excludes governance tools', () => {
+  test('hasGovernance=false excludes governance tool', () => {
     const result = filterTools({ ...ALL_FLAGS, hasGovernance: false });
     const names = result.map(s => s.name);
-    expect(names).not.toContain('identity_propose');
-    expect(names).not.toContain('proposal_list');
-    expect(names).not.toContain('agent_registry_list');
+    expect(names).not.toContain('governance');
   });
 
   test('core tools are always present regardless of flags', () => {
     const result = filterTools(NO_FLAGS);
     const names = result.map(s => s.name);
     // Memory
-    expect(names).toContain('memory_write');
-    expect(names).toContain('memory_query');
-    expect(names).toContain('memory_read');
-    expect(names).toContain('memory_delete');
-    expect(names).toContain('memory_list');
+    expect(names).toContain('memory');
     // Web
-    expect(names).toContain('web_fetch');
-    expect(names).toContain('web_search');
+    expect(names).toContain('web');
     // Audit
-    expect(names).toContain('audit_query');
+    expect(names).toContain('audit');
     // Identity
-    expect(names).toContain('identity_write');
-    expect(names).toContain('user_write');
+    expect(names).toContain('identity');
     // Delegation
-    expect(names).toContain('agent_delegate');
+    expect(names).toContain('delegate');
   });
 });

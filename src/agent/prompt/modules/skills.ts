@@ -4,7 +4,7 @@ import type { PromptContext } from '../types.js';
 
 /**
  * Skills module: progressive disclosure of available skills.
- * Only compact summaries are injected; the agent calls `skill_read`
+ * Only compact summaries are injected; the agent calls `skill({ type: "read" })`
  * to load full instructions on demand.
  * Priority 70 — late in prompt, after context.
  */
@@ -26,7 +26,7 @@ export class SkillsModule extends BasePromptModule {
       '## Available Skills',
       '',
       'Before replying, scan this list for a skill that matches the current task.',
-      'If exactly one skill clearly applies: call `skill_read` to load its full',
+      'If exactly one skill clearly applies: call `skill({ type: "read" })` to load its full',
       'instructions, then follow them. If multiple could apply: choose the most',
       'specific one, then read and follow it. If none clearly apply: do not load',
       'any skill — just respond normally.',
@@ -39,7 +39,7 @@ export class SkillsModule extends BasePromptModule {
       '',
       '### Creating Skills',
       '',
-      'You can create new skills using `skill_propose`. Skills are markdown',
+      'You can create new skills using `skill({ type: "propose" })`. Skills are markdown',
       'instruction files — like checklists, workflows, or domain-specific knowledge.',
       '',
       '**When to create a skill:**',
@@ -56,7 +56,7 @@ export class SkillsModule extends BasePromptModule {
   renderMinimal(ctx: PromptContext): string[] {
     return [
       '## Skills',
-      `${ctx.skills.length} skills available. Use \`skill_read\` to load as needed.`,
+      `${ctx.skills.length} skills available. Use \`skill({ type: "read" })\` to load as needed.`,
     ];
   }
 }

@@ -48,7 +48,9 @@ describe('SkillsModule', () => {
     expect(text).toContain('| Daily Standup | Generates daily standup summaries |');
     expect(text).toContain('| Code Review | Reviews pull requests for quality |');
     // Should NOT contain full skill content — only compact table
-    expect(text).toContain('skill_read');
+    // References consolidated skill tool with type: "read"
+    expect(text).toContain('skill');
+    expect(text).toContain('read');
   });
 
   test('priority is 70', () => {
@@ -60,7 +62,7 @@ describe('SkillsModule', () => {
     const mod = new SkillsModule();
     const ctx = makeContext({ skills: [makeSkill('Test Skill', 'Do stuff')] });
     const rendered = mod.render(ctx).join('\n');
-    expect(rendered).toContain('skill_propose');
+    expect(rendered).toContain('propose');
   });
 
   test('includes auto-continue hint', () => {
@@ -92,6 +94,7 @@ describe('SkillsModule', () => {
     });
     const text = mod.renderMinimal!(ctx).join('\n');
     expect(text).toContain('3 skills available');
-    expect(text).toContain('skill_read');
+    expect(text).toContain('skill');
+    expect(text).toContain('read');
   });
 });

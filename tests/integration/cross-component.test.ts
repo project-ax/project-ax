@@ -443,35 +443,47 @@ describe('Tool Catalog → IPC Handler Completeness', () => {
     }
   });
 
-  test('every tool in TOOL_CATALOG has an IPC_SCHEMAS entry and a handler', async () => {
+  test('every IPC action in TOOL_CATALOG has an IPC_SCHEMAS entry and a handler', async () => {
     for (const tool of TOOL_CATALOG) {
-      // 1. Schema must exist
-      expect(IPC_SCHEMAS, `IPC schema missing for tool "${tool.name}"`).toHaveProperty(tool.name);
-
-      // 2. Handler must exist (send valid payload, verify no "No handler" error)
-      const payload: Record<string, unknown> = { action: tool.name };
-
-      // Build a minimal valid payload from the tool catalog params
-      const paramSchema = tool.parameters as { properties?: Record<string, { type?: string; const?: string; enum?: string[] }> };
-      for (const [key, spec] of Object.entries(paramSchema.properties ?? {})) {
-        // Generate sensible defaults for required params
-        if (spec.const) { payload[key] = spec.const; }
-        else if (spec.enum) { payload[key] = spec.enum[0]; }
-        else if (key === 'id') { payload[key] = '00000000-0000-0000-0000-000000000000'; }
-        else if (key === 'url') { payload[key] = 'https://example.com'; }
-        else if (key === 'datetime') { payload[key] = new Date(Date.now() + 60_000).toISOString(); }
-        else if (key === 'messages') { payload[key] = [{ role: 'user', content: 'test' }]; }
-        else if (key === 'userId') { payload[key] = 'test-user'; }
-        else { payload[key] = typeof spec.type === 'string' && spec.type === 'number' ? 1 : 'test'; }
+      // Collect all IPC actions this tool maps to
+      const actions: string[] = [];
+      if (tool.actionMap) {
+        actions.push(...Object.values(tool.actionMap));
+      } else if (tool.singletonAction) {
+        actions.push(tool.singletonAction);
       }
 
-      const result = JSON.parse(await handleIPC(JSON.stringify(payload), ctx));
+      for (const action of actions) {
+        // 1. Schema must exist
+        expect(IPC_SCHEMAS, `IPC schema missing for action "${action}" (tool "${tool.name}")`).toHaveProperty(action);
 
-      if (!result.ok) {
-        expect(
-          result.error,
-          `Tool "${tool.name}" has no handler in createIPCHandler`,
-        ).not.toContain('No handler for action');
+        // 2. Handler must exist (send valid payload, verify no "No handler" error)
+        const payload: Record<string, unknown> = { action };
+
+        // Build a minimal valid payload from the IPC schema
+        const schema = IPC_SCHEMAS[action];
+        const shape = (schema as any)?._def?.shape ?? (schema as any)?.def?.shape ?? {};
+        for (const [key, fieldSchema] of Object.entries(shape)) {
+          if (key === 'action') continue;
+          const spec = fieldSchema as any;
+          if (key === 'id') { payload[key] = '00000000-0000-0000-0000-000000000000'; }
+          else if (key === 'url') { payload[key] = 'https://example.com'; }
+          else if (key === 'datetime') { payload[key] = new Date(Date.now() + 60_000).toISOString(); }
+          else if (key === 'messages') { payload[key] = [{ role: 'user', content: 'test' }]; }
+          else if (key === 'userId') { payload[key] = 'test-user'; }
+          else if (spec?._def?.typeName === 'ZodEnum') { payload[key] = spec._def.values[0]; }
+          else if (spec?._def?.typeName === 'ZodOptional') { /* skip optional */ }
+          else { payload[key] = 'test'; }
+        }
+
+        const result = JSON.parse(await handleIPC(JSON.stringify(payload), ctx));
+
+        if (!result.ok) {
+          expect(
+            result.error,
+            `Action "${action}" (tool "${tool.name}") has no handler in createIPCHandler`,
+          ).not.toContain('No handler for action');
+        }
       }
     }
   });

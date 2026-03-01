@@ -563,14 +563,11 @@ describe('pi-session (proxy mode — LLM via Anthropic SDK)', () => {
     const tools = receivedRequests[0].body.tools as Array<{ name: string }>;
     const toolNames = tools.map(t => t.name);
 
-    // Scheduler tools must be present (HEARTBEAT.md exists)
-    expect(toolNames).toContain('scheduler_add_cron');
-    expect(toolNames).toContain('scheduler_remove_cron');
-    expect(toolNames).toContain('scheduler_list_jobs');
+    // Scheduler tool must be present (HEARTBEAT.md exists)
+    expect(toolNames).toContain('scheduler');
 
-    // Identity and user_write tools must be present
-    expect(toolNames).toContain('identity_write');
-    expect(toolNames).toContain('user_write');
+    // Identity tool must be present (consolidated from identity_write + user_write)
+    expect(toolNames).toContain('identity');
   }, 30_000);
 
   test('proxy stream function handles tool_use responses', async () => {
@@ -700,7 +697,7 @@ describe('pi-session (proxy mode — LLM via Anthropic SDK)', () => {
       if (callCount === 1) {
         res.end(buildSSETextResponse('', {
           stop_reason: 'tool_use',
-          tool_use: [{ id: 'tc_mem', name: 'memory_query', input: { scope: 'test', query: 'something' } }],
+          tool_use: [{ id: 'tc_mem', name: 'memory', input: { type: 'query', scope: 'test', query: 'something' } }],
         }));
       } else {
         res.end(buildSSETextResponse('Memory searched.'));

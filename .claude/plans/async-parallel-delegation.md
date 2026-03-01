@@ -6,21 +6,21 @@ When the LLM returns multiple `agent_delegate` tool calls in a single response, 
 
 The orchestration infrastructure (`src/host/orchestration/`) is already built — Supervisor, Directory, Orchestrator, messaging — but NOT wired into delegation. The current `handleDelegate` in `server.ts:255` still synchronously awaits `processCompletion()` for each child agent.
 
-**Solution:** Make `agent_delegate` fire-and-forget **by default**. Child agents register with the Orchestrator and run concurrently. The LLM uses existing `agent_orch_status` / `agent_orch_list` to poll for completion and read results from `handle.metadata.result`. A new `wait` boolean parameter preserves the blocking behavior for sequential chains where one agent's output feeds the next. No new tools needed.
+**Solution:** Make the `delegate` tool fire-and-forget **by default**. Child agents register with the Orchestrator and run concurrently. The LLM uses existing `agent_orch_status` / `agent_orch_list` to poll for completion and read results from `handle.metadata.result`. A new `wait` boolean parameter preserves the blocking behavior for sequential chains where one agent's output feeds the next. No new tools needed.
 
 ## Flow
 
 ### Parallel — `wait` omitted or `false` (default)
 
 ```
-LLM response: 3x agent_delegate tool calls (independent tasks)
+LLM response: 3x delegate tool calls (independent tasks)
 
 Sequential tool execution (pi-agent-core, unchanged):
-  1. agent_delegate("Research A") → registers child in Orchestrator, spawns in background
+  1. delegate({ task: "Research A" }) → registers child in Orchestrator, spawns in background
      → returns {handleId: "uuid-1", status: "started"}  (~ms)
-  2. agent_delegate("Research B") → same
+  2. delegate({ task: "Research B" }) → same
      → returns {handleId: "uuid-2", status: "started"}  (~ms)
-  3. agent_delegate("Research C") → same
+  3. delegate({ task: "Research C" }) → same
      → returns {handleId: "uuid-3", status: "started"}  (~ms)
 
 All 3 children running concurrently via Orchestrator.
@@ -37,13 +37,13 @@ Total: ~17s (max of 3) instead of ~51s (sum of 3)
 ```
 LLM needs output from agent A before it can formulate agent B's task:
 
-  1. agent_delegate({ task: "Research topic X", wait: true })
+  1. delegate({ task: "Research topic X", wait: true })
      → blocks until child finishes
      → returns {response: "findings about X..."}  (~17s)
 
   2. LLM reads findings, formulates summary task
 
-  3. agent_delegate({ task: "Summarize: <findings>", wait: true })
+  3. delegate({ task: "Summarize: <findings>", wait: true })
      → blocks until child finishes
      → returns {response: "summary..."}  (~17s)
 
@@ -173,11 +173,11 @@ Key details:
 - Result/error always stored in `handle.metadata` regardless of mode
 - Supervisor state transitions: `spawning → running → completed/failed`
 
-### 4. Update agent_delegate tool description and add `wait` parameter
+### 4. Update `delegate` tool description and add `wait` parameter
 
 **File:** `src/agent/tool-catalog.ts`
 
-Update description to document both modes:
+The `delegate` tool is a singleton (no `type` param) with `singletonAction: 'agent_delegate'`. Update its description to document both modes:
 ```typescript
 description:
   'Delegate a task to a sub-agent running in its own sandbox. ' +
@@ -210,7 +210,7 @@ parameters: Type.Object({
 Teach the LLM **both** the parallel and sequential patterns:
 
 **Parallel (default, `wait` omitted):**
-- `agent_delegate` returns immediately with `{handleId, status: "started"}`
+- `delegate` returns immediately with `{handleId, status: "started"}`
 - Delegate ALL independent tasks first, then poll for results
 - Use `agent_orch_list` with `state: ["completed","failed"]` to see which children finished
 - Use `agent_orch_status(handleId)` to read individual results from `metadata.result`
@@ -218,7 +218,7 @@ Teach the LLM **both** the parallel and sequential patterns:
 - Pattern: fan-out → poll → collect
 
 **Sequential (`wait: true`):**
-- `agent_delegate` with `wait: true` blocks and returns `{response: "..."}` directly
+- `delegate({ wait: true })` blocks and returns `{response: "..."}` directly
 - Use when the **next delegation depends on this one's output**
 - No polling needed — result comes back in the same tool response
 - Pattern: delegate → read result → delegate next
@@ -241,12 +241,12 @@ Teach the LLM **both** the parallel and sequential patterns:
 
 **File:** `tests/e2e/scenarios/agent-delegation.test.ts`
 
-**Existing test updates** — default `agent_delegate` (no `wait`) now returns `{handleId, status: "started"}` instead of `{response}`:
+**Existing test updates** — default `delegate` (no `wait`) now returns `{handleId, status: "started"}` instead of `{response}`:
 - Tests that check `result.response` → either add `wait: true` to preserve behavior, or assert `result.handleId` exists + `result.status === "started"` and poll via `agent_orch_status`
-- Multi-turn test: after `agent_delegate` tool call, the tool result shape depends on `wait`
+- Multi-turn test: after `delegate` tool call, the tool result shape depends on `wait`
 
 **New parallel test cases (fire-and-forget, `wait` omitted):**
-1. **Fire-and-forget**: `agent_delegate` returns `{handleId, status: "started"}` immediately
+1. **Fire-and-forget**: `delegate` returns `{handleId, status: "started"}` immediately
 2. **Result in Orchestrator**: after background settles, `agent_orch_status(handleId)` has `metadata.result`
 3. **Parallel timing**: 3 delegates with artificial delay, total time ≈ max (not sum)
 4. **Partial failure**: 1 of 3 throws, handle shows `state: "failed"` with `metadata.error`
@@ -274,7 +274,7 @@ Teach the LLM **both** the parallel and sequential patterns:
 
 ## What's NOT Changing
 
-- **No new tool** — existing `agent_orch_status` / `agent_orch_list` do the job for async polling
+- **No new tool** — existing orchestration IPC actions (`agent_orch_status` / `agent_orch_list`) do the job for async polling
 - **No changes to `IPCHandlerOptions`** — already has `orchestrator?: Orchestrator`
 - **No changes to orchestration handlers** — `agent_orch_status` already returns `metadata` in snapshot
 - **No changes to `scripted-llm.ts`** — no multi-tool-use helper needed
@@ -285,5 +285,5 @@ Teach the LLM **both** the parallel and sequential patterns:
 2. `npm test` — all existing tests pass (with delegation test updates)
 3. New parallel-delegate tests pass
 4. New `wait: true` sequential tests pass
-5. Manual: run a prompt triggering 3 independent `agent_delegate` calls → confirm all 3 spawn at ~same timestamp, `agent_orch_list` returns all results
+5. Manual: run a prompt triggering 3 independent `delegate` calls → confirm all 3 spawn at ~same timestamp, `agent_orch_list` returns all results
 6. Manual: run a prompt with dependent tasks → confirm LLM uses `wait: true` and chains results correctly

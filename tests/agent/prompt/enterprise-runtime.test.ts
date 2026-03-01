@@ -61,8 +61,10 @@ describe('RuntimeModule enterprise features', () => {
     const content = lines.join('\n');
 
     expect(content).toContain('### Governance');
-    expect(content).toContain('identity_propose');
-    expect(content).toContain('proposal_list');
+    // References the consolidated governance tool with type operations
+    expect(content).toContain('governance');
+    expect(content).toContain('propose');
+    expect(content).toContain('list_proposals');
   });
 
   test('includes all enterprise sections when all fields set', () => {

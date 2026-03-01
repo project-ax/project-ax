@@ -83,15 +83,15 @@ export class RuntimeModule extends BasePromptModule {
     }
     if (ctx.hasWorkspaceTiers) {
       lines.push('', '### Workspace Tiers',
-        '- **agent**: Shared files (read-only in sandbox). Use `workspace_write` with tier "agent" to write.',
-        '- **user**: Your personal persistent files. Use `workspace_write` with tier "user".',
+        '- **agent**: Shared files (read-only in sandbox). Use `workspace({ type: "write", tier: "agent" })` to write.',
+        '- **user**: Your personal persistent files. Use `workspace({ type: "write", tier: "user" })`.',
         '- **scratch**: Ephemeral per-session files. Deleted when session ends.',
       );
     }
     if (ctx.hasGovernance) {
       lines.push('', '### Governance',
-        'Identity changes go through a proposal system. Use `identity_propose` to suggest changes.',
-        'Use `proposal_list` to check pending proposals.',
+        'Identity changes go through a proposal system. Use `governance({ type: "propose" })` to suggest changes.',
+        'Use `governance({ type: "list_proposals" })` to check pending proposals.',
       );
     }
 

@@ -42,19 +42,22 @@ describe('MemoryRecallModule', () => {
     expect(mod.shouldInclude(ctx)).toBe(false);
   });
 
-  test('render includes memory_query instruction', () => {
+  test('render includes memory query instruction', () => {
     const text = mod.render(makeContext()).join('\n');
-    expect(text).toContain('memory_query');
+    expect(text).toContain('memory');
+    expect(text).toContain('query');
   });
 
-  test('render includes memory_write instruction', () => {
+  test('render includes memory write instruction', () => {
     const text = mod.render(makeContext()).join('\n');
-    expect(text).toContain('memory_write');
+    expect(text).toContain('memory');
+    expect(text).toContain('write');
   });
 
-  test('render includes memory_read instruction', () => {
+  test('render includes memory read instruction', () => {
     const text = mod.render(makeContext()).join('\n');
-    expect(text).toContain('memory_read');
+    expect(text).toContain('memory');
+    expect(text).toContain('read');
   });
 
   test('render includes proactive search guidance', () => {
@@ -70,8 +73,9 @@ describe('MemoryRecallModule', () => {
 
   test('renderMinimal is compact', () => {
     const text = mod.renderMinimal!(makeContext()).join('\n');
-    expect(text).toContain('memory_query');
-    expect(text).toContain('memory_write');
+    expect(text).toContain('memory');
+    expect(text).toContain('query');
+    expect(text).toContain('write');
     expect(text.length).toBeLessThan(mod.render(makeContext()).join('\n').length);
   });
 });

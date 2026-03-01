@@ -205,11 +205,12 @@ describe('system prompt uses relative paths', () => {
   // All three runners now use PromptBuilder, which delegates to SkillsModule.
   // Check that the module contains the relative path pattern.
 
-  test('SkillsModule uses skill_read for progressive disclosure, not absolute paths', async () => {
+  test('SkillsModule uses skill tool for progressive disclosure, not absolute paths', async () => {
     const { readFileSync } = await import('node:fs');
     const source = readFileSync(resolve('src/agent/prompt/modules/skills.ts'), 'utf-8');
-    // Progressive disclosure: module renders compact summaries, agent loads via skill_read
-    expect(source).toContain('skill_read');
+    // Progressive disclosure: module renders compact summaries, agent loads via skill({ type: "read" })
+    expect(source).toContain('skill');
+    expect(source).toContain('read');
     // Must not embed absolute filesystem paths
     expect(source).not.toMatch(/\/home\//);
     expect(source).not.toMatch(/\/Users\//);
@@ -305,7 +306,7 @@ describe('stripTaint handles all nesting patterns', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_fetch'].handler({ url: 'https://example.com' }, {});
+    const result = await tools['web'].handler({ type: 'fetch', url: 'https://example.com' }, {});
     const parsed = JSON.parse(result.content[0].text);
 
     // No taint at any level
@@ -334,7 +335,7 @@ describe('stripTaint handles all nesting patterns', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_search'].handler({ query: 'test' }, {});
+    const result = await tools['web'].handler({ type: 'search', query: 'test' }, {});
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed.taint).toBeUndefined();
@@ -354,7 +355,7 @@ describe('stripTaint handles all nesting patterns', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_fetch'].handler({ url: 'https://example.com' }, {});
+    const result = await tools['web'].handler({ type: 'fetch', url: 'https://example.com' }, {});
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed.count).toBe(42);
@@ -372,7 +373,7 @@ describe('stripTaint handles all nesting patterns', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_fetch'].handler({ url: 'https://example.com' }, {});
+    const result = await tools['web'].handler({ type: 'fetch', url: 'https://example.com' }, {});
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed.items).toEqual([]);
@@ -390,7 +391,7 @@ describe('IPC error messages do not expose host paths', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['memory_read'].handler({ id: 'test' }, {});
+    const result = await tools['memory'].handler({ type: 'read', id: 'test' }, {});
 
     expect(result.isError).toBe(true);
     // Error text is present
@@ -405,7 +406,7 @@ describe('IPC error messages do not expose host paths', () => {
     const server = createIPCMcpServer(client);
     const tools = getTools(server);
 
-    const result = await tools['web_fetch'].handler({ url: 'https://example.com' }, {});
+    const result = await tools['web'].handler({ type: 'fetch', url: 'https://example.com' }, {});
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('taint');
@@ -458,29 +459,14 @@ describe('MCP server tool registry security', () => {
     const tools = getTools(server);
 
     const expected = [
-      'memory_write', 'memory_query', 'memory_read', 'memory_delete', 'memory_list',
-      'web_search', 'web_fetch',
-      'audit_query',
-      'identity_write',
-      'user_write',
-      'scheduler_add_cron',
-      'scheduler_run_at',
-      'scheduler_remove_cron',
-      'scheduler_list_jobs',
-      'skill_list',
-      'skill_read',
-      'skill_propose',
-      'skill_import',
-      'skill_search',
-      'image_generate',
+      'memory', 'web', 'identity', 'scheduler', 'skill',
+      'audit', 'delegate', 'image',
       // Enterprise tools
-      'workspace_write', 'workspace_read', 'workspace_list', 'workspace_write_file',
-      'identity_propose', 'proposal_list', 'agent_registry_list',
-      'agent_delegate',
+      'workspace', 'governance',
     ];
 
     expect(Object.keys(tools).sort()).toEqual(expected.sort());
-    expect(Object.keys(tools).length).toBe(28);
+    expect(Object.keys(tools).length).toBe(10);
   });
 
   test('tool results are JSON strings, not raw objects with taint', () => {
@@ -499,18 +485,17 @@ describe('MCP server tool registry security', () => {
 // ── IPC Tools ────────────────────────────────────────────────────────
 
 describe('IPC tools do not expose paths', () => {
-  test('ipc-tools exports memory, web, audit, and skill tools', async () => {
+  test('ipc-tools exports consolidated memory, web, audit, and skill tools', async () => {
     const { createIPCTools } = await import('../src/agent/ipc-tools.js');
     const client = createMockClient();
     const tools = createIPCTools(client);
     const names = tools.map(t => t.name);
 
-    expect(names).toContain('memory_write');
-    expect(names).toContain('web_search');
-    expect(names).toContain('web_fetch');
-    expect(names).toContain('audit_query');
-    expect(names).toContain('skill_list');
-    expect(names).toContain('skill_read');
-    expect(names).toContain('skill_propose');
+    expect(names).toContain('memory');
+    expect(names).toContain('web');
+    expect(names).toContain('audit');
+    expect(names).toContain('skill');
+    expect(names).toContain('delegate');
+    expect(names).toContain('image');
   });
 });
