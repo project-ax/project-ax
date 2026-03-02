@@ -4,6 +4,7 @@ Provider implementations: image, channel, skills, sandbox, memory, LLM.
 
 ## Entries
 
+- 2026-03-02 16:09 — Add SQLite items store (Task 2 of 10) [memory.md](memory.md)
 - 2026-03-02 16:04 — Add MemoryFS v2 core types (Task 1 of 10) [memory.md](memory.md)
 - 2026-03-02 14:30 — Refactor credential providers: keychain default, plaintext fallback [credentials.md](credentials.md)
 - 2026-03-01 19:30 — Create MemoryFS implementation plan [memory.md](memory.md)

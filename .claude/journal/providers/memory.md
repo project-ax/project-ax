@@ -2,6 +2,14 @@
 
 Memory provider implementations, MemoryFS planning.
 
+## [2026-03-02 16:09] — Add SQLite items store (Task 2 of 10)
+
+**Task:** Create the SQLite-backed items store for CRUD on MemoryFSItem rows
+**What I did:** Wrote test file first (TDD) with 10 tests covering insert/read, findByHash with scope isolation, reinforce (increment + timestamp), listByCategory, listByScope with limit, deleteById, searchContent with LIKE, agentId scoping, and getAllForCategory. Then implemented ItemsStore class using openDatabase() from src/utils/sqlite.ts with snake_case SQL columns mapped to camelCase MemoryFSItem via rowToItem().
+**Files touched:** src/providers/memory/memoryfs/items-store.ts (new), tests/providers/memory/memoryfs/items-store.test.ts (new)
+**Outcome:** Success — all 10 tests pass
+**Notes:** Uses CREATE TABLE IF NOT EXISTS + 4 indexes (scope, category+scope, hash+scope, agent_id+scope). findByHash uses IS NULL for agent_id when no agentId provided, ensuring scope isolation. reinforce() updates both reinforcement_count and last_reinforced_at atomically.
+
 ## [2026-03-02 16:04] — Add MemoryFS v2 core types (Task 1 of 10)
 
 **Task:** Create the core types module for the MemoryFS provider
