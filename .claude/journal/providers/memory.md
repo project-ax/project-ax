@@ -2,6 +2,14 @@
 
 Memory provider implementations, MemoryFS planning.
 
+## [2026-03-02 16:04] — Add MemoryFS v2 core types (Task 1 of 10)
+
+**Task:** Create the core types module for the MemoryFS provider
+**What I did:** Created types.ts with six memory types (profile, event, knowledge, behavior, skill, tool), MemoryFSItem interface, MemoryFSConfig interface, RefId type alias, and DEFAULT_CATEGORIES constant. Wrote test file first (TDD), verified failure, then implemented.
+**Files touched:** src/providers/memory/memoryfs/types.ts (new), tests/providers/memory/memoryfs/types.test.ts (new)
+**Outcome:** Success — all 3 tests pass
+**Notes:** LLMProvider imported from ../../llm/types.js. This is the foundation for the remaining 9 tasks in the MemoryFS v2 plan.
+
 ## [2026-03-01 19:30] — Create MemoryFS implementation plan
 
 **Task:** Review memory-proposal.md and memory-feedback.md, create a detailed implementation plan
