@@ -2,6 +2,14 @@
 
 Memory provider implementations, MemoryFS planning.
 
+## [2026-03-02 16:19] — Add salience scoring with memU formula (Task 5 of 10)
+
+**Task:** Implement memU's salience scoring formula: similarity * log(reinforcement + 1) * exp(-0.693 * days / half_life). Pure math, no I/O.
+**What I did:** Wrote test file first (TDD) with 7 tests covering positive scores, reinforcement ordering, recency ordering, half-life decay verification, null recency fallback, zero reinforcement edge case, and similarity ordering. Verified failure, then implemented salienceScore function. Had to fix two tests from the task spec that used reinforcementCount: 0 for ratio comparisons — log(0+1) = 0 makes the score 0, producing NaN ratios. Changed to reinforcementCount: 1 and added a dedicated zero-reinforcement test.
+**Files touched:** src/providers/memory/memoryfs/salience.ts (new), tests/providers/memory/memoryfs/salience.test.ts (new)
+**Outcome:** Success — all 7 tests pass
+**Notes:** Formula uses ln(2) = 0.693 for proper half-life decay. Null lastReinforcedAt gets a fixed 0.5 recency factor. Zero reinforcement correctly produces 0 score since log(1) = 0.
+
 ## [2026-03-02 16:15] — Add summary file I/O with atomic writes (Task 4 of 10)
 
 **Task:** Implement read/write for category summary .md files with safePath() for path safety and atomic writes via temp-then-rename.

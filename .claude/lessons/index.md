@@ -75,6 +75,7 @@
 - Node.js Buffer -> fetch body: use standalone ArrayBuffer to avoid detached buffer errors [providers/channel.md](providers/channel.md)
 - Node.js fetch body does not accept Buffer in strict TypeScript [providers/channel.md](providers/channel.md)
 - pi-agent-core only supports text — image blocks must bypass it [providers/memory.md](providers/memory.md)
+- Salience formula produces 0 at zero reinforcement — test ratios need nonzero counts [providers/memory.md](providers/memory.md)
 
 ### host
 
