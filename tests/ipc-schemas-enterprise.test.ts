@@ -1,8 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import {
   WorkspaceWriteSchema,
-  WorkspaceReadSchema,
-  WorkspaceListSchema,
   IdentityProposeSchema,
   ProposalListSchema,
   ProposalReviewSchema,
@@ -44,40 +42,6 @@ describe('Enterprise IPC Schemas', () => {
       extra: 'should_fail',
     });
     expect(result.success).toBe(false);
-  });
-
-  test('WorkspaceReadSchema accepts valid input', () => {
-    const result = WorkspaceReadSchema.safeParse({
-      action: 'workspace_read',
-      tier: 'agent',
-      path: 'readme.md',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test('WorkspaceListSchema accepts valid input with optional path', () => {
-    const result = WorkspaceListSchema.safeParse({
-      action: 'workspace_list',
-      tier: 'user',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test('WorkspaceListSchema rejects scratch tier (removed)', () => {
-    const result = WorkspaceListSchema.safeParse({
-      action: 'workspace_list',
-      tier: 'scratch',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  test('WorkspaceListSchema accepts path', () => {
-    const result = WorkspaceListSchema.safeParse({
-      action: 'workspace_list',
-      tier: 'user',
-      path: 'docs',
-    });
-    expect(result.success).toBe(true);
   });
 
   // ── Governance schemas ──
@@ -167,7 +131,7 @@ describe('Enterprise IPC Schemas', () => {
 
   test('all enterprise actions are registered in IPC_SCHEMAS', () => {
     const enterpriseActions = [
-      'workspace_write', 'workspace_read', 'workspace_list',
+      'workspace_write', 'workspace_write_file',
       'identity_propose', 'proposal_list', 'proposal_review',
       'agent_registry_list', 'agent_registry_get',
     ];

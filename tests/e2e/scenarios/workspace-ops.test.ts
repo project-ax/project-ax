@@ -1,12 +1,11 @@
 /**
- * Scenario: Workspace read/write operations
+ * Scenario: Workspace write operations
  *
- * Tests the workspace_write, workspace_read, and workspace_list IPC actions
- * across agent and user tiers.
+ * Tests the workspace_write and workspace_write_file IPC actions
+ * across agent and user tiers. Read/list operations are handled
+ * by local tools since tiers are mounted in the sandbox.
  *
  * Note: workspace_write returns { written: true, tier, path }
- *       workspace_read returns { content, tier, path }
- *       workspace_list returns { files: [...], tier, path }
  *       The IPC server wraps all with { ok: true, ... }
  */
 
@@ -35,24 +34,6 @@ describe('E2E Scenario: Workspace Operations', () => {
     expect(result.tier).toBe('agent');
   });
 
-  test('workspace_write then workspace_read round-trip', async () => {
-    harness = await TestHarness.create();
-
-    await harness.ipcCall('workspace_write', {
-      tier: 'user',
-      path: 'temp-data.json',
-      content: '{"key": "value"}',
-    });
-
-    const readResult = await harness.ipcCall('workspace_read', {
-      tier: 'user',
-      path: 'temp-data.json',
-    });
-
-    expect(readResult.ok).toBe(true);
-    expect(readResult.content).toBe('{"key": "value"}');
-  });
-
   test('workspace_write to user tier', async () => {
     harness = await TestHarness.create();
 
@@ -64,30 +45,6 @@ describe('E2E Scenario: Workspace Operations', () => {
 
     expect(result.ok).toBe(true);
     expect(result.written).toBe(true);
-  });
-
-  test('workspace_list shows files in a tier', async () => {
-    harness = await TestHarness.create();
-
-    // Write two files
-    await harness.ipcCall('workspace_write', {
-      tier: 'agent',
-      path: 'file1.md',
-      content: 'File one',
-    });
-    await harness.ipcCall('workspace_write', {
-      tier: 'agent',
-      path: 'file2.md',
-      content: 'File two',
-    });
-
-    const listResult = await harness.ipcCall('workspace_list', {
-      tier: 'agent',
-    });
-
-    expect(listResult.ok).toBe(true);
-    // workspace_list returns { files: [...] }
-    expect(listResult.files.length).toBe(2);
   });
 
   test('workspace operations are audited', async () => {
@@ -121,20 +78,6 @@ describe('E2E Scenario: Workspace Operations', () => {
     expect(result.finalText).toContain('research findings');
     expect(result.toolCalls.length).toBe(1);
     expect(result.toolCalls[0]!.name).toBe('workspace_write');
-  });
-
-  test('workspace_read for nonexistent file returns error', async () => {
-    harness = await TestHarness.create();
-
-    const result = await harness.ipcCall('workspace_read', {
-      tier: 'agent',
-      path: 'nonexistent.md',
-    });
-
-    // workspace_read handler returns { ok: false, error: '...' } for missing files
-    // which gets merged with the outer { ok: true } — the inner ok: false wins
-    expect(result).toBeDefined();
-    expect(result.error).toBeDefined();
   });
 
   test('workspace_write to agent tier in paranoid mode is queued', async () => {

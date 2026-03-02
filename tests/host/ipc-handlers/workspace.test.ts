@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createWorkspaceHandlers } from '../../../src/host/ipc-handlers/workspace.js';
@@ -81,47 +81,6 @@ describe('Workspace IPC handlers', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('blocked');
-  });
-
-  test('workspace_read returns file content', async () => {
-    writeFileSync(join(userWsDir, 'readme.md'), '# Readme', 'utf-8');
-
-    const providers = stubProviders();
-    const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
-
-    const result = await handlers.workspace_read({ tier: 'user', path: 'readme.md' }, ctx);
-    expect(result.content).toBe('# Readme');
-  });
-
-  test('workspace_read returns error for missing file', async () => {
-    const providers = stubProviders();
-    const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
-
-    const result = await handlers.workspace_read({ tier: 'user', path: 'nope.md' }, ctx);
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('not found');
-  });
-
-  test('workspace_list returns directory entries', async () => {
-    writeFileSync(join(userWsDir, 'a.txt'), 'a', 'utf-8');
-    writeFileSync(join(userWsDir, 'b.txt'), 'b', 'utf-8');
-    mkdirSync(join(userWsDir, 'subdir'));
-
-    const providers = stubProviders();
-    const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
-
-    const result = await handlers.workspace_list({ tier: 'user' }, ctx);
-    expect(result.files).toHaveLength(3);
-    const names = result.files.map((f: any) => f.name).sort();
-    expect(names).toEqual(['a.txt', 'b.txt', 'subdir']);
-  });
-
-  test('workspace_list returns empty for non-existent path', async () => {
-    const providers = stubProviders();
-    const handlers = createWorkspaceHandlers(providers, { agentName: 'main', profile: 'balanced' });
-
-    const result = await handlers.workspace_list({ tier: 'user', path: 'nonexistent' }, ctx);
-    expect(result.files).toEqual([]);
   });
 
   test('workspace_write creates nested directories', async () => {

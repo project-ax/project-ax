@@ -1,11 +1,14 @@
 /**
- * IPC handlers: enterprise workspace operations (workspace_write, workspace_read, workspace_list).
+ * IPC handlers: enterprise workspace write operations (workspace_write, workspace_write_file).
  *
  * Two-tier workspace model:
  * - agent: shared agent workspace (read-only in sandbox, write via host IPC)
  * - user:  per-user persistent workspace (read-write)
+ *
+ * Read/list operations are handled directly by local tools in the sandbox
+ * since tiers are mounted/symlinked into the agent's filesystem.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import type { ProviderRegistry } from '../../types.js';
 import type { IPCContext } from '../ipc-server.js';
@@ -77,20 +80,6 @@ export function createWorkspaceHandlers(providers: ProviderRegistry, opts: Works
       return { written: true, tier: req.tier, path: req.path };
     },
 
-    workspace_read: async (req: any, ctx: IPCContext) => {
-      const tierDir = resolveTierDir(req.tier, ctx);
-      if (!existsSync(tierDir)) {
-        return { ok: false, error: `Workspace tier "${req.tier}" not initialized` };
-      }
-      const filePath = safePathFromRelative(tierDir, req.path);
-      try {
-        const content = readFileSync(filePath, 'utf-8');
-        return { content, tier: req.tier, path: req.path };
-      } catch {
-        return { ok: false, error: `File not found: ${req.path}` };
-      }
-    },
-
     workspace_write_file: async (req: any, ctx: IPCContext) => {
       const tierDir = resolveTierDir(req.tier, ctx);
       mkdirSync(tierDir, { recursive: true });
@@ -125,22 +114,5 @@ export function createWorkspaceHandlers(providers: ProviderRegistry, opts: Works
       return { written: true, tier: req.tier, path: req.path, size: data.length };
     },
 
-    workspace_list: async (req: any, ctx: IPCContext) => {
-      const tierDir = resolveTierDir(req.tier, ctx);
-      const subDir = req.path ? safePathFromRelative(tierDir, req.path) : tierDir;
-      if (!existsSync(subDir)) {
-        return { files: [] };
-      }
-      try {
-        const entries = readdirSync(subDir, { withFileTypes: true });
-        const files = entries.map((e: any) => ({
-          name: e.name,
-          type: e.isDirectory() ? 'directory' : 'file',
-        }));
-        return { files, tier: req.tier, path: req.path ?? '.' };
-      } catch {
-        return { files: [] };
-      }
-    },
   };
 }

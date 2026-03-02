@@ -201,16 +201,14 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
 
     // ── Workspace ──
     tool('workspace',
-      'Read and write files in workspace tiers.\n\n' +
+      'Write files to persistent workspace tiers (agent or user). Reading and listing is done via local tools since tiers are mounted in the sandbox.\n\n' +
       'Operations:\n' +
       '- write: Write a text file (requires tier, path, content)\n' +
-      '- read: Read a file (requires tier, path)\n' +
-      '- list: List files in a directory (requires tier, optional path)\n' +
       '- write_file: Write a base64-encoded binary file (requires tier, path, data, mimeType)',
       {
-        type: z.enum(['write', 'read', 'list', 'write_file']),
+        type: z.enum(['write', 'write_file']),
         tier: z.string().describe('"agent" or "user"'),
-        path: z.string().optional().describe('Relative path within the tier'),
+        path: z.string().describe('Relative path within the tier'),
         content: z.string().optional().describe('File content (for write)'),
         data: z.string().optional().describe('Base64-encoded binary content (for write_file)'),
         mimeType: z.string().optional().describe('MIME type (for write_file, e.g. "image/png")'),

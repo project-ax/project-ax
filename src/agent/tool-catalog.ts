@@ -235,10 +235,8 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
     name: 'workspace',
     label: 'Workspace',
     description:
-      'Read and write files in persistent workspace tiers.\n\nOperations:\n' +
+      'Write files to persistent workspace tiers (agent or user). Reading and listing is done via local tools since tiers are mounted in the sandbox.\n\nOperations:\n' +
       '- write: Write a text file to a workspace tier (agent or user)\n' +
-      '- read: Read a file from a workspace tier\n' +
-      '- list: List files in a workspace tier directory\n' +
       '- write_file: Write a base64-encoded binary file to a workspace tier',
     parameters: Type.Union([
       Type.Object({
@@ -246,16 +244,6 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
         tier: Type.String({ description: '"agent" or "user"' }),
         path: Type.String({ description: 'Relative path within the tier (e.g. "docs/notes.md")' }),
         content: Type.String({ description: 'File content to write' }),
-      }),
-      Type.Object({
-        type: Type.Literal('read'),
-        tier: Type.String({ description: '"agent" or "user"' }),
-        path: Type.String({ description: 'Relative path within the tier' }),
-      }),
-      Type.Object({
-        type: Type.Literal('list'),
-        tier: Type.String({ description: '"agent" or "user"' }),
-        path: Type.Optional(Type.String({ description: 'Subdirectory to list (defaults to root)' })),
       }),
       Type.Object({
         type: Type.Literal('write_file'),
@@ -268,8 +256,6 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
     category: 'workspace',
     actionMap: {
       write: 'workspace_write',
-      read: 'workspace_read',
-      list: 'workspace_list',
       write_file: 'workspace_write_file',
     },
   },

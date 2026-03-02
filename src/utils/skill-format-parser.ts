@@ -95,7 +95,7 @@ function parseInstallSpecs(raw: unknown): AgentSkillInstaller[] {
 const PERMISSION_MAP: Record<string, string> = {
   'full-disk-access': 'workspace_write',
   'disk-full-access': 'workspace_write',
-  'read-files': 'workspace_read',
+  'read-files': 'workspace_write',
   'write-files': 'workspace_write',
   'web-access': 'web_fetch',
   'web-search': 'web_search',

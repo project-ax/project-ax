@@ -2,6 +2,14 @@
 
 Prompt builder, identity module, bootstrap prompt fixes, delegation module, prompt optimizations.
 
+## [2026-03-02 11:03] — Fix /scratch path mismatch and remove redundant workspace.read/list
+
+**Task:** Fix fictional paths in agent system prompt, remove stale ./workspace references, remove redundant workspace_read/workspace_list IPC operations
+**What I did:** (1) Removed sanitizeWorkspacePath dead code from runtime.ts, replaced with static "Working Directory: ." label. (2) Replaced fictional /scratch, /agent, /user path literals with functional tier descriptions. (3) Removed workspace_read and workspace_list from: tool-catalog, IPC handlers, IPC schemas, MCP server, manifest generator, skill format parser. (4) Updated all corresponding tests across 5 test files.
+**Files touched:** src/agent/prompt/modules/runtime.ts, src/agent/tool-catalog.ts, src/host/ipc-handlers/workspace.ts, src/ipc-schemas.ts, src/agent/mcp-server.ts, src/utils/manifest-generator.ts, src/utils/skill-format-parser.ts, tests/agent/prompt/modules/runtime.test.ts, tests/agent/prompt/enterprise-runtime.test.ts, tests/host/ipc-handlers/workspace.test.ts, tests/ipc-schemas-enterprise.test.ts, tests/e2e/scenarios/workspace-ops.test.ts
+**Outcome:** Success — build passes, all 2004 tests pass, no stale references remain
+**Notes:** Missed enterprise-runtime.test.ts on first pass — it had assertions on '### Workspace' heading and /agent, /user paths. Lesson: always grep for related test assertions before running.
+
 ## [2026-02-25 16:33] — Add minimal-context guidance to DelegationModule
 
 **Task:** Tell the LLM to keep delegation context lean — no dumping SOUL.md or full conversation history

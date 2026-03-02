@@ -284,16 +284,6 @@ export const WorkspaceWriteSchema = ipcAction('workspace_write', {
   content: safeString(500_000),
 });
 
-export const WorkspaceReadSchema = ipcAction('workspace_read', {
-  tier: z.enum(['agent', 'user']),
-  path: safeString(1024),
-});
-
-export const WorkspaceListSchema = ipcAction('workspace_list', {
-  tier: z.enum(['agent', 'user']),
-  path: safeString(1024).optional(),
-});
-
 export const WorkspaceWriteFileSchema = ipcAction('workspace_write_file', {
   tier: z.enum(['agent', 'user']),
   path: safeString(1024),
