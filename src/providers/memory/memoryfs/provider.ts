@@ -38,38 +38,43 @@ async function embedItem(
 
 /**
  * Backfill embeddings for items that don't have them yet.
+ * Iterates all scopes so no items are missed.
  * Runs in the background — non-blocking, non-critical.
  */
 async function backfillEmbeddings(
   store: ItemsStore,
   embeddingStore: EmbeddingStore,
   client: EmbeddingClient,
-  scope = 'default',
   batchSize = 50,
 ): Promise<void> {
   if (!client.available) return;
 
   try {
-    const allIds = store.listIdsByScope(scope);
-    const unembedded = await embeddingStore.listUnembedded(allIds);
+    const scopes = store.listAllScopes();
+    if (scopes.length === 0) return;
 
-    if (unembedded.length === 0) return;
-    logger.info('backfill_start', { count: unembedded.length, scope });
+    for (const scope of scopes) {
+      const allIds = store.listIdsByScope(scope);
+      const unembedded = await embeddingStore.listUnembedded(allIds);
 
-    // Process in batches
-    for (let i = 0; i < unembedded.length; i += batchSize) {
-      const batchIds = unembedded.slice(i, i + batchSize);
-      const items = store.getByIds(batchIds);
-      if (items.length === 0) continue;
+      if (unembedded.length === 0) continue;
+      logger.info('backfill_start', { count: unembedded.length, scope });
 
-      const vectors = await client.embed(items.map(it => it.content));
-      for (let j = 0; j < items.length; j++) {
-        await embeddingStore.upsert(items[j].id, items[j].scope, vectors[j]);
+      // Process in batches
+      for (let i = 0; i < unembedded.length; i += batchSize) {
+        const batchIds = unembedded.slice(i, i + batchSize);
+        const items = store.getByIds(batchIds);
+        if (items.length === 0) continue;
+
+        const vectors = await client.embed(items.map(it => it.content));
+        for (let j = 0; j < items.length; j++) {
+          await embeddingStore.upsert(items[j].id, items[j].scope, vectors[j]);
+        }
+        logger.debug('backfill_batch', { scope, done: Math.min(i + batchSize, unembedded.length), total: unembedded.length });
       }
-      logger.debug('backfill_batch', { done: Math.min(i + batchSize, unembedded.length), total: unembedded.length });
-    }
 
-    logger.info('backfill_done', { count: unembedded.length, scope });
+      logger.info('backfill_done', { count: unembedded.length, scope });
+    }
   } catch (err) {
     logger.warn('backfill_failed', { error: (err as Error).message });
   }
@@ -140,39 +145,43 @@ export async function create(config: Config): Promise<MemoryProvider> {
       if (q.embedding) {
         try {
           const similar = await embeddingStore.findSimilar(q.embedding, limit, scope);
-          if (similar.length > 0) {
-            const itemIds = similar.map(s => s.itemId);
-            const items = store.getByIds(itemIds);
-            const distanceMap = new Map(similar.map(s => [s.itemId, s.distance]));
-
-            // Rank by salience × similarity
-            const ranked = items.map(item => {
-              const distance = distanceMap.get(item.id) ?? 1;
-              const similarity = 1 / (1 + distance);
-              return {
-                item,
-                score: salienceScore({
-                  similarity,
-                  reinforcementCount: item.reinforcementCount,
-                  lastReinforcedAt: item.lastReinforcedAt,
-                  recencyDecayDays: 30,
-                }),
-              };
-            });
-            ranked.sort((a, b) => b.score - a.score);
-
-            return ranked.slice(0, limit).map(({ item }) => ({
-              id: item.id,
-              scope: item.scope,
-              content: item.content,
-              taint: item.taint ? JSON.parse(item.taint) : undefined,
-              createdAt: new Date(item.createdAt),
-              agentId: item.agentId,
-            }));
+          if (similar.length === 0) {
+            // No similar items found — return empty rather than falling through
+            // to unfiltered keyword/listing search which would return irrelevant results
+            return [];
           }
+
+          const itemIds = similar.map(s => s.itemId);
+          const items = store.getByIds(itemIds);
+          const distanceMap = new Map(similar.map(s => [s.itemId, s.distance]));
+
+          // Rank by salience × similarity
+          const ranked = items.map(item => {
+            const distance = distanceMap.get(item.id) ?? 1;
+            const similarity = 1 / (1 + distance);
+            return {
+              item,
+              score: salienceScore({
+                similarity,
+                reinforcementCount: item.reinforcementCount,
+                lastReinforcedAt: item.lastReinforcedAt,
+                recencyDecayDays: 30,
+              }),
+            };
+          });
+          ranked.sort((a, b) => b.score - a.score);
+
+          return ranked.slice(0, limit).map(({ item }) => ({
+            id: item.id,
+            scope: item.scope,
+            content: item.content,
+            taint: item.taint ? JSON.parse(item.taint) : undefined,
+            createdAt: new Date(item.createdAt),
+            agentId: item.agentId,
+          }));
         } catch (err) {
           logger.warn('embedding_query_failed', { error: (err as Error).message });
-          // Fall through to keyword search
+          // Fall through to keyword search only on error (graceful degradation)
         }
       }
 

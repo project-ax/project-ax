@@ -2,6 +2,18 @@
 
 Memory provider implementations, MemoryFS planning.
 
+## [2026-03-03 03:00] — Fix 3 PR review issues in embedding search
+
+**Task:** Address codex review comments on PR #57: (P1) embedding query falls through to unfiltered listing, (P2) backfill only covers 'default' scope, (P2) scoped similarity search uses incorrect global-MATCH-then-filter
+**What I did:**
+- Fixed P1: `query()` now returns `[]` when embedding search yields empty results instead of falling through to unfiltered keyword/listing search. Error fallthrough preserved for graceful degradation.
+- Fixed P2 (backfill): Changed `backfillEmbeddings()` to iterate all scopes via new `ItemsStore.listAllScopes()` method instead of hardcoded 'default'.
+- Fixed P2 (scoped search): Added `embedding BLOB` column to `embedding_meta` table, storing raw vectors on upsert. Scoped `findSimilar()` now uses `vec_distance_l2()` scalar function with `WHERE scope = ?` for correct within-scope brute-force search instead of the broken global MATCH + post-filter approach. Unscoped queries still use fast vec0 MATCH.
+- Added 4 new tests: scoped nearest-neighbor correctness, empty scope returns empty, `listAllScopes`, and embedding query empty result behavior.
+**Files touched:** `src/providers/memory/memoryfs/provider.ts`, `src/providers/memory/memoryfs/embedding-store.ts`, `src/providers/memory/memoryfs/items-store.ts`, `tests/providers/memory/memoryfs/embedding-store.test.ts`, `tests/providers/memory/memoryfs/items-store.test.ts`, `tests/providers/memory/memoryfs/provider.test.ts`
+**Outcome:** Success — all 2149 tests pass (201 files)
+**Notes:** The `vec_distance_l2()` approach trades ANN speed for correctness on scoped queries. For memory store sizes (hundreds to low thousands per scope), brute-force is fine.
+
 ## [2026-03-03 02:26] — Add embedding-based semantic search to MemoryFS
 
 **Task:** Replace keyword (LIKE) search with vector embedding similarity search for MemoryFS memory recall, using @dao-xyz/sqlite3-vec for vector storage and OpenAI embeddings API for embedding generation.

@@ -138,6 +138,14 @@ export class ItemsStore {
     return rows.map(r => r.id);
   }
 
+  /** Return all distinct scopes that have items. */
+  listAllScopes(): string[] {
+    const rows = this.db.prepare(
+      'SELECT DISTINCT scope FROM items',
+    ).all() as Array<{ scope: string }>;
+    return rows.map(r => r.scope);
+  }
+
   deleteById(id: string): void {
     this.db.prepare('DELETE FROM items WHERE id = ?').run(id);
   }

@@ -1,5 +1,11 @@
 # Provider Lessons: Memory
 
+### vec0 MATCH is global — use vec_distance_l2() for scoped vector queries
+**Date:** 2026-03-03
+**Context:** PR review found that scoped similarity search did global MATCH with 3x limit then post-filtered by scope, which misses in-scope nearest neighbors when cross-scope items dominate the global top-k.
+**Lesson:** sqlite-vec's vec0 `embedding MATCH ?` query does not support WHERE clauses for pre-filtering. For scoped queries, store the raw embedding BLOB in a regular table (embedding_meta) and use `vec_distance_l2(embedding, ?) as distance` with `WHERE scope = ?` for correct within-scope brute-force search. Reserve vec0 MATCH for unscoped/global queries where ANN indexing provides speed benefits.
+**Tags:** sqlite-vec, vec0, scoped-search, embedding, vector-search
+
 ### MemoryFS provider must handle missing config.history fields with defaults
 **Date:** 2026-03-03
 **Context:** Adding embedding support to MemoryFS. Tests pass minimal mock configs without `config.history` populated. Accessing `config.history.embedding_model` threw TypeError.

@@ -35,15 +35,25 @@ export class EmbeddingStore {
     this.db = await createDatabase({ database: this.dbPath });
     this.db.open();
 
-    // Metadata table for scope filtering + tracking which items have embeddings
+    // Metadata table for scope filtering + tracking which items have embeddings.
+    // The embedding BLOB column stores a copy of the vector for scoped brute-force
+    // queries via vec_distance_l2(), since vec0 MATCH doesn't support WHERE filtering.
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS embedding_meta (
         item_id    TEXT PRIMARY KEY,
         scope      TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        embedding  BLOB
       )
     `);
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_emeta_scope ON embedding_meta(scope)');
+
+    // Migration: add embedding column if upgrading from older schema
+    try {
+      this.db.exec('ALTER TABLE embedding_meta ADD COLUMN embedding BLOB');
+    } catch {
+      // Column already exists — expected on non-first run
+    }
 
     // vec0 virtual table for vector similarity search
     this.db.exec(
@@ -102,13 +112,14 @@ export class EmbeddingStore {
       mapStmt.run([lastRow.rid, itemId]);
     }
 
-    // Upsert metadata
+    // Upsert metadata (includes embedding BLOB for scoped brute-force queries)
+    const embeddingBuf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
     const metaStmt = await db.prepare(
-      `INSERT INTO embedding_meta(item_id, scope, created_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(item_id) DO UPDATE SET scope = excluded.scope`,
+      `INSERT INTO embedding_meta(item_id, scope, created_at, embedding)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(item_id) DO UPDATE SET scope = excluded.scope, embedding = excluded.embedding`,
     );
-    metaStmt.run([itemId, scope, new Date().toISOString()]);
+    metaStmt.run([itemId, scope, new Date().toISOString(), embeddingBuf]);
   }
 
   /**
@@ -124,36 +135,20 @@ export class EmbeddingStore {
     const db = this.db!;
 
     if (scope && scope !== '*') {
-      // Scope-filtered query: get candidate rowids from meta, then vector search
-      // vec0 WHERE clause supports rowid IN (...) for pre-filtering
+      // Scoped query: brute-force exact distances using vec_distance_l2() on
+      // the embedding_meta table, filtered by scope. This avoids the incorrect
+      // global-MATCH-then-filter approach that could miss in-scope neighbors.
+      const queryBuf = Buffer.from(query.buffer, query.byteOffset, query.byteLength);
       const scopeStmt = await db.prepare(
-        'SELECT r.rowid FROM embedding_meta m JOIN embedding_rowmap r ON r.item_id = m.item_id WHERE m.scope = ?',
+        `SELECT item_id, vec_distance_l2(embedding, ?) as distance
+         FROM embedding_meta
+         WHERE scope = ? AND embedding IS NOT NULL
+         ORDER BY distance ASC
+         LIMIT ?`,
       );
-      const scopeRows = scopeStmt.all([scope]) as Array<{ rowid: number }>;
+      const results = scopeStmt.all([queryBuf, scope, limit]) as Array<{ item_id: string; distance: number }>;
 
-      if (scopeRows.length === 0) return [];
-
-      // For small result sets, do vector search on all then filter
-      // For larger sets, we'd want to pre-filter but vec0 doesn't support arbitrary WHERE
-      // Simple approach: search broadly, then filter by scope
-      const searchStmt = await db.prepare(
-        `SELECT rowid, distance FROM item_embeddings WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
-      );
-      const results = searchStmt.all([query, limit * 3]) as Array<{ rowid: number; distance: number }>;
-
-      const scopeRowSet = new Set(scopeRows.map(r => r.rowid));
-      const filtered = results.filter(r => scopeRowSet.has(r.rowid));
-
-      // Map rowids to item IDs
-      const output: SimilarityResult[] = [];
-      for (const row of filtered.slice(0, limit)) {
-        const mapStmt = await db.prepare('SELECT item_id FROM embedding_rowmap WHERE rowid = ?');
-        const mapped = mapStmt.get([row.rowid]) as { item_id: string } | undefined;
-        if (mapped) {
-          output.push({ itemId: mapped.item_id, distance: row.distance });
-        }
-      }
-      return output;
+      return results.map(r => ({ itemId: r.item_id, distance: r.distance }));
     }
 
     // Unscoped: straight vector search
