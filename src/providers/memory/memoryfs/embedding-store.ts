@@ -1,15 +1,17 @@
 /**
  * EmbeddingStore — Vector store backed by sqlite-vec's vec0 virtual table.
  *
- * Uses @dao-xyz/sqlite3-vec to auto-load the sqlite-vec extension into
- * better-sqlite3. Stores embedding vectors alongside item IDs and supports
+ * Uses better-sqlite3 + sqlite-vec to load the sqlite-vec extension.
+ * Stores embedding vectors alongside item IDs and supports
  * nearest-neighbor similarity search.
  *
  * Separate from ItemsStore — operates on its own database file (_vec.db)
  * to avoid extension compatibility issues with the existing SQLite adapter.
  */
 
-import sqliteVec, { type Database } from '@dao-xyz/sqlite3-vec';
+import Database from 'better-sqlite3';
+import type BetterSqlite3 from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
 import { getLogger } from '../../../logger.js';
 
 const logger = getLogger().child({ component: 'embedding-store' });
@@ -20,20 +22,35 @@ export interface SimilarityResult {
 }
 
 export class EmbeddingStore {
-  private db: Database | null = null;
+  private db: BetterSqlite3.Database | null = null;
   private readonly dbPath: string;
   readonly dimensions: number;
   private _ready: Promise<void>;
+  /** True when sqlite-vec loaded successfully and vec0 tables are available. */
+  private _available = false;
 
   constructor(dbPath: string, dimensions: number) {
     this.dbPath = dbPath;
     this.dimensions = dimensions;
-    this._ready = this.init();
+    this._ready = Promise.resolve().then(() => this.init());
   }
 
-  private async init(): Promise<void> {
-    const db: Database = await sqliteVec.createDatabase({ database: this.dbPath });
-    db.open();
+  /** Whether the vec0 extension loaded and the store is operational. */
+  get available(): boolean {
+    return this._available;
+  }
+
+  private init(): void {
+    let db: BetterSqlite3.Database;
+    try {
+      const created = new Database(this.dbPath);
+      created.pragma('journal_mode = WAL');
+      sqliteVec.load(created);
+      db = created;
+    } catch (err) {
+      logger.warn('sqlite_vec_load_failed', { error: (err as Error).message });
+      return; // Degrade gracefully — vector search will be unavailable
+    }
     this.db = db;
 
     // Metadata table for scope filtering + tracking which items have embeddings.
@@ -57,9 +74,14 @@ export class EmbeddingStore {
     }
 
     // vec0 virtual table for vector similarity search
-    db.exec(
-      `CREATE VIRTUAL TABLE IF NOT EXISTS item_embeddings USING vec0(embedding float[${this.dimensions}])`,
-    );
+    try {
+      db.exec(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS item_embeddings USING vec0(embedding float[${this.dimensions}])`,
+      );
+    } catch (err) {
+      logger.warn('vec0_unavailable', { error: (err as Error).message });
+      return; // Degrade gracefully — keyword search still works
+    }
 
     // Mapping table: vec0 rowid -> item_id (vec0 uses integer rowids internally)
     db.exec(`
@@ -70,6 +92,7 @@ export class EmbeddingStore {
     `);
     db.exec('CREATE INDEX IF NOT EXISTS idx_rowmap_item ON embedding_rowmap(item_id)');
 
+    this._available = true;
     logger.debug('init', { dbPath: this.dbPath, dimensions: this.dimensions });
   }
 
@@ -81,46 +104,43 @@ export class EmbeddingStore {
   /** Insert or update an embedding for the given item. */
   async upsert(itemId: string, scope: string, embedding: Float32Array): Promise<void> {
     await this._ready;
+    if (!this._available) return;
     const db = this.db!;
 
     // Check if item already has an embedding
-    const existingStmt = await db.prepare(
+    const existingStmt = db.prepare(
       'SELECT rowid FROM embedding_rowmap WHERE item_id = ?',
     );
-    const existing = existingStmt.get([itemId]) as { rowid: number } | undefined;
+    const existing = existingStmt.get(itemId) as { rowid: number } | undefined;
 
     if (existing) {
       // Update existing embedding
-      const updateStmt = await db.prepare(
+      const updateStmt = db.prepare(
         'UPDATE item_embeddings SET embedding = ? WHERE rowid = ?',
       );
-      updateStmt.run([embedding, existing.rowid]);
+      updateStmt.run(embedding, existing.rowid);
     } else {
       // Insert new embedding — vec0 auto-assigns rowid
-      const insertVecStmt = await db.prepare(
+      const insertVecStmt = db.prepare(
         'INSERT INTO item_embeddings(embedding) VALUES (?)',
       );
-      insertVecStmt.run([embedding]);
-
-      // Get the auto-assigned rowid
-      const lastRowStmt = await db.prepare('SELECT last_insert_rowid() as rid');
-      const lastRow = lastRowStmt.get() as { rid: number };
+      const result = insertVecStmt.run(embedding);
 
       // Map rowid -> item_id
-      const mapStmt = await db.prepare(
+      const mapStmt = db.prepare(
         'INSERT INTO embedding_rowmap(rowid, item_id) VALUES (?, ?)',
       );
-      mapStmt.run([lastRow.rid, itemId]);
+      mapStmt.run(result.lastInsertRowid, itemId);
     }
 
     // Upsert metadata (includes embedding BLOB for scoped brute-force queries)
     const embeddingBuf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
-    const metaStmt = await db.prepare(
+    const metaStmt = db.prepare(
       `INSERT INTO embedding_meta(item_id, scope, created_at, embedding)
        VALUES (?, ?, ?, ?)
        ON CONFLICT(item_id) DO UPDATE SET scope = excluded.scope, embedding = excluded.embedding`,
     );
-    metaStmt.run([itemId, scope, new Date().toISOString(), embeddingBuf]);
+    metaStmt.run(itemId, scope, new Date().toISOString(), embeddingBuf);
   }
 
   /**
@@ -133,6 +153,7 @@ export class EmbeddingStore {
     scope?: string,
   ): Promise<SimilarityResult[]> {
     await this._ready;
+    if (!this._available) return [];
     const db = this.db!;
 
     if (scope && scope !== '*') {
@@ -140,28 +161,28 @@ export class EmbeddingStore {
       // the embedding_meta table, filtered by scope. This avoids the incorrect
       // global-MATCH-then-filter approach that could miss in-scope neighbors.
       const queryBuf = Buffer.from(query.buffer, query.byteOffset, query.byteLength);
-      const scopeStmt = await db.prepare(
+      const scopeStmt = db.prepare(
         `SELECT item_id, vec_distance_l2(embedding, ?) as distance
          FROM embedding_meta
          WHERE scope = ? AND embedding IS NOT NULL
          ORDER BY distance ASC
          LIMIT ?`,
       );
-      const results = scopeStmt.all([queryBuf, scope, limit]) as Array<{ item_id: string; distance: number }>;
+      const results = scopeStmt.all(queryBuf, scope, limit) as Array<{ item_id: string; distance: number }>;
 
       return results.map(r => ({ itemId: r.item_id, distance: r.distance }));
     }
 
     // Unscoped: straight vector search
-    const searchStmt = await db.prepare(
+    const searchStmt = db.prepare(
       `SELECT rowid, distance FROM item_embeddings WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
     );
-    const results = searchStmt.all([query, limit]) as Array<{ rowid: number; distance: number }>;
+    const results = searchStmt.all(query, limit) as Array<{ rowid: number; distance: number }>;
 
     const output: SimilarityResult[] = [];
+    const mapStmt = db.prepare('SELECT item_id FROM embedding_rowmap WHERE rowid = ?');
     for (const row of results) {
-      const mapStmt = await db.prepare('SELECT item_id FROM embedding_rowmap WHERE rowid = ?');
-      const mapped = mapStmt.get([row.rowid]) as { item_id: string } | undefined;
+      const mapped = mapStmt.get(row.rowid) as { item_id: string } | undefined;
       if (mapped) {
         output.push({ itemId: mapped.item_id, distance: row.distance });
       }
@@ -172,28 +193,30 @@ export class EmbeddingStore {
   /** Check if an item has an embedding stored. */
   async hasEmbedding(itemId: string): Promise<boolean> {
     await this._ready;
-    const stmt = await this.db!.prepare('SELECT 1 FROM embedding_meta WHERE item_id = ?');
-    return stmt.get([itemId]) !== undefined;
+    if (!this._available) return false;
+    const stmt = this.db!.prepare('SELECT 1 FROM embedding_meta WHERE item_id = ?');
+    return stmt.get(itemId) !== undefined;
   }
 
   /** Delete embedding for a given item. */
   async delete(itemId: string): Promise<void> {
     await this._ready;
+    if (!this._available) return;
     const db = this.db!;
 
     // Find the rowid for this item
-    const mapStmt = await db.prepare('SELECT rowid FROM embedding_rowmap WHERE item_id = ?');
-    const mapped = mapStmt.get([itemId]) as { rowid: number } | undefined;
+    const mapStmt = db.prepare('SELECT rowid FROM embedding_rowmap WHERE item_id = ?');
+    const mapped = mapStmt.get(itemId) as { rowid: number } | undefined;
 
     if (mapped) {
-      const delVecStmt = await db.prepare('DELETE FROM item_embeddings WHERE rowid = ?');
-      delVecStmt.run([mapped.rowid]);
-      const delMapStmt = await db.prepare('DELETE FROM embedding_rowmap WHERE item_id = ?');
-      delMapStmt.run([itemId]);
+      const delVecStmt = db.prepare('DELETE FROM item_embeddings WHERE rowid = ?');
+      delVecStmt.run(mapped.rowid);
+      const delMapStmt = db.prepare('DELETE FROM embedding_rowmap WHERE item_id = ?');
+      delMapStmt.run(itemId);
     }
 
-    const delMetaStmt = await db.prepare('DELETE FROM embedding_meta WHERE item_id = ?');
-    delMetaStmt.run([itemId]);
+    const delMetaStmt = db.prepare('DELETE FROM embedding_meta WHERE item_id = ?');
+    delMetaStmt.run(itemId);
   }
 
   /**
@@ -202,7 +225,7 @@ export class EmbeddingStore {
    */
   async listUnembedded(allItemIds: string[]): Promise<string[]> {
     await this._ready;
-    if (allItemIds.length === 0) return [];
+    if (!this._available || allItemIds.length === 0) return [];
 
     const embedded = new Set<string>();
     // Batch check in groups to avoid huge SQL queries
@@ -210,10 +233,10 @@ export class EmbeddingStore {
     for (let i = 0; i < allItemIds.length; i += batchSize) {
       const batch = allItemIds.slice(i, i + batchSize);
       const placeholders = batch.map(() => '?').join(',');
-      const stmt = await this.db!.prepare(
+      const stmt = this.db!.prepare(
         `SELECT item_id FROM embedding_meta WHERE item_id IN (${placeholders})`,
       );
-      const rows = stmt.all(batch) as Array<{ item_id: string }>;
+      const rows = stmt.all(...batch) as Array<{ item_id: string }>;
       for (const row of rows) embedded.add(row.item_id);
     }
 
@@ -223,7 +246,7 @@ export class EmbeddingStore {
   /** Close the database connection. */
   async close(): Promise<void> {
     await this._ready;
-    if (this.db) {
+    if (this._available && this.db) {
       this.db.close();
       this.db = null;
     }

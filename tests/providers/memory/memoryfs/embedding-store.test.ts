@@ -1,8 +1,27 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { EmbeddingStore } from '../../../../src/providers/memory/memoryfs/embedding-store.js';
+
+const mockControl = vi.hoisted(() => ({
+  shouldFailLoad: false,
+}));
+
+vi.mock('sqlite-vec', async (importOriginal) => {
+  const original = await importOriginal<typeof import('sqlite-vec')>();
+  return {
+    ...original,
+    load: (...args: Parameters<typeof original.load>) => {
+      if (mockControl.shouldFailLoad) {
+        throw new Error('no such module: vec0');
+      }
+      return original.load(...args);
+    },
+  };
+});
+
+// Import after vi.mock so the mock is in place
+const { EmbeddingStore } = await import('../../../../src/providers/memory/memoryfs/embedding-store.js');
 
 describe('EmbeddingStore', () => {
   let tmpDir: string;
@@ -15,6 +34,7 @@ describe('EmbeddingStore', () => {
   }
 
   afterEach(async () => {
+    mockControl.shouldFailLoad = false;
     if (store) await store.close();
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -182,5 +202,31 @@ describe('EmbeddingStore', () => {
 
     const results = await s.findSimilar(new Float32Array([0.1, 0.2, 0.3]), 10, 'scope-nonexistent');
     expect(results).toEqual([]);
+  });
+
+  describe('graceful degradation when vec0 is unavailable', () => {
+    it('does not throw when sqlite-vec fails to load', async () => {
+      mockControl.shouldFailLoad = true;
+
+      const s = createStore();
+      // Should NOT throw — degrades gracefully
+      await s.ready();
+      expect(s.available).toBe(false);
+    });
+
+    it('returns safe defaults when unavailable', async () => {
+      mockControl.shouldFailLoad = true;
+
+      const s = createStore();
+      await s.ready();
+
+      // All methods should return safe no-op values
+      await s.upsert('item-1', 'default', new Float32Array([0.1, 0.2, 0.3]));
+      expect(await s.hasEmbedding('item-1')).toBe(false);
+      expect(await s.findSimilar(new Float32Array([0.1, 0.2, 0.3]), 10)).toEqual([]);
+      expect(await s.listUnembedded(['item-1', 'item-2'])).toEqual([]);
+      await s.delete('item-1'); // should not throw
+      await s.close(); // should not throw
+    });
   });
 });
