@@ -170,6 +170,17 @@ export const SkillSearchSchema = ipcAction('skill_search', {
   limit: z.number().int().min(1).max(50).optional(),
 });
 
+export const SkillInstallSchema = ipcAction('skill_install', {
+  skill: safeString(200),
+  phase: z.enum(['inspect', 'execute']),
+  stepIndex: z.number().int().min(0).max(50).optional(),       // required for 'execute'
+  inspectToken: safeString(128).optional(),                     // required for 'execute'; SHA-256 hex from inspect
+});
+
+export const SkillInstallStatusSchema = ipcAction('skill_install_status', {
+  skill: safeString(200),
+});
+
 // ── Audit ────────────────────────────────────────────
 
 export const AuditQuerySchema = ipcAction('audit_query', {

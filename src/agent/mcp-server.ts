@@ -184,9 +184,11 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
       '- read: Read full content of a skill (requires name)\n' +
       '- propose: Propose a new skill (requires skill, content)\n' +
       '- import: Import from ClawHub or SKILL.md (requires source)\n' +
-      '- search: Search ClawHub registry (requires query)',
+      '- search: Search ClawHub registry (requires query)\n' +
+      '- install: Install skill dependencies (two-phase: inspect then execute)\n' +
+      '- install_status: Check install progress for a skill',
       {
-        type: z.enum(['list', 'read', 'propose', 'import', 'search']),
+        type: z.enum(['list', 'read', 'propose', 'import', 'search', 'install', 'install_status']),
         name: z.string().optional(),
         skill: z.string().optional().describe('Skill name (alphanumeric, hyphens, underscores)'),
         content: z.string().optional().describe('Skill content as markdown'),
@@ -195,6 +197,9 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
         autoApprove: z.boolean().optional().describe('Auto-approve if screener passes'),
         query: z.string().optional().describe('Search query'),
         limit: z.number().optional().describe('Max results (1-50, default 20)'),
+        phase: z.string().optional().describe('"inspect" to check what\'s needed, or "execute" to run one approved step'),
+        stepIndex: z.number().optional().describe('Step index to execute (required for execute phase)'),
+        inspectToken: z.string().optional().describe('SHA-256 token from inspect response; required for execute phase'),
       },
       (args) => {
         const { type, ...rest } = args;

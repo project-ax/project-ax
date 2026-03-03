@@ -12,7 +12,7 @@
  */
 
 import { parse as parseYaml } from 'yaml';
-import type { ParsedAgentSkill, AgentSkillInstaller } from '../providers/skills/types.js';
+import type { ParsedAgentSkill, SkillInstallStep } from '../providers/skills/types.js';
 
 // ═══════════════════════════════════════════════════════
 // Frontmatter extraction
@@ -71,21 +71,49 @@ function resolveMetadata(fm: Record<string, unknown>): Record<string, unknown> |
 }
 
 // ═══════════════════════════════════════════════════════
-// Install spec normalization
+// Install step normalization
 // ═══════════════════════════════════════════════════════
 
-function parseInstallSpecs(raw: unknown): AgentSkillInstaller[] {
+// Backward-compat: old kind/package → new run command
+const KIND_TO_RUN: Record<string, (pkg: string) => string> = {
+  brew:   pkg => `brew install ${pkg}`,
+  node:   pkg => `npm install -g ${pkg}`,
+  npm:    pkg => `npm install -g ${pkg}`,
+  pip:    pkg => `pip install ${pkg}`,
+  go:     pkg => `go install ${pkg}@latest`,
+  cargo:  pkg => `cargo install ${pkg}`,
+  uv:     pkg => `uv tool install ${pkg}`,
+};
+
+function parseInstallSteps(raw: unknown): SkillInstallStep[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
-    .map(item => ({
-      kind: String(item.kind ?? 'unknown'),
-      // brew uses "formula", node/go use "package"
-      package: String(item.formula ?? item.package ?? ''),
-      bins: Array.isArray(item.bins) ? item.bins.map(String) : undefined,
-      os: Array.isArray(item.os) ? item.os.map(String) : undefined,
-      label: typeof item.label === 'string' ? item.label : undefined,
-    }));
+    .map(item => {
+      // New format: has `run` field
+      if (typeof item.run === 'string') {
+        return {
+          run: item.run,
+          label: typeof item.label === 'string' ? item.label : undefined,
+          bin: typeof item.bin === 'string' ? item.bin : undefined,
+          os: Array.isArray(item.os) ? item.os.map(String) : undefined,
+        };
+      }
+
+      // Old format: kind/package/formula/bins → convert to new format
+      const kind = String(item.kind ?? 'unknown');
+      const pkg = String(item.formula ?? item.package ?? '');
+      const bins = Array.isArray(item.bins) ? item.bins.map(String) : undefined;
+      const converter = KIND_TO_RUN[kind];
+      const run = converter ? converter(pkg) : `${kind} install ${pkg}`;
+
+      return {
+        run,
+        label: typeof item.label === 'string' ? item.label : undefined,
+        bin: bins?.[0],  // First binary as representative check
+        os: Array.isArray(item.os) ? item.os.map(String) : undefined,
+      };
+    });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -150,7 +178,7 @@ export function parseAgentSkill(raw: string): ParsedAgentSkill {
         : undefined,
     },
 
-    install: parseInstallSpecs(meta?.install),
+    install: parseInstallSteps(meta?.install),
     os: Array.isArray(meta?.os) ? (meta.os as unknown[]).map(String) : undefined,
 
     // Flat legacy fields

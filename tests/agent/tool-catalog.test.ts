@@ -63,13 +63,13 @@ describe('tool-catalog', () => {
     expect(skillTool).toBeDefined();
     expect(skillTool!.actionMap).toBeDefined();
     expect(Object.keys(skillTool!.actionMap!).sort()).toEqual([
-      'import', 'list', 'propose', 'read', 'search',
+      'import', 'install', 'install_status', 'list', 'propose', 'read', 'search',
     ]);
   });
 
   test('skill tool has correct param keys (union of all members)', () => {
     const keys = getToolParamKeys('skill');
-    expect(keys.sort()).toEqual(['autoApprove', 'content', 'limit', 'name', 'query', 'reason', 'skill', 'source']);
+    expect(keys.sort()).toEqual(['autoApprove', 'content', 'inspectToken', 'limit', 'name', 'phase', 'query', 'reason', 'skill', 'source', 'stepIndex']);
   });
 
   test('scheduler tool has correct param keys (union of all members)', () => {
