@@ -1,5 +1,17 @@
 # Provider Lessons: Memory
 
+### LLM extraction rephrases facts — content-hash dedup only catches exact matches
+**Date:** 2026-03-03
+**Context:** Running acceptance tests for MemoryFS v2. Sent "Remember I use TypeScript" twice. Expected dedup via content hash. Got 3 items: "Uses TypeScript for all projects", "User uses TypeScript for all projects. Apply this context...", "The user uses TypeScript for all of their projects."
+**Lesson:** Content-hash dedup (sha256 of normalized lowercase content) works perfectly for identical text (whitespace/case invariant) but fails for LLM-extracted items because the LLM rephrases facts differently each extraction. To achieve semantic dedup, either: (1) constrain extraction prompt to produce canonical minimal phrasings, (2) use embedding similarity to detect near-duplicates before insert, or (3) both.
+**Tags:** memoryfs, dedup, llm, extraction, content-hash, semantic-duplicates
+
+### LLM summary generator wraps output in markdown code fences
+**Date:** 2026-03-03
+**Context:** Acceptance test IT-4 found that 4 of 10 category summary .md files start with ` ```markdown ` instead of `# category_name`. The LLM returns the summary wrapped in code fences.
+**Lesson:** When asking an LLM to generate structured text (markdown summaries), the response often includes code fences (` ```markdown ... ``` `). Always strip code fences from LLM output before writing to files, AND instruct the LLM not to use them in the prompt. Belt and suspenders — LLMs don't reliably follow formatting instructions.
+**Tags:** memoryfs, llm, summary, markdown, code-fences, output-parsing
+
 ### LLM extraction must throw on parse failure for .catch() fallback to work
 **Date:** 2026-03-03
 **Context:** Wiring LLM extraction into `memorize()` with `.catch(() => extractByRegex(...))` fallback. The `extractByLLM` function initially returned `[]` on invalid JSON, which is a valid result (LLM says "nothing to remember"). The `.catch()` never fired, so regex fallback never ran when LLM returned garbage.

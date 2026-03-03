@@ -100,7 +100,7 @@ export async function create(config: Config): Promise<ChannelProvider> {
     warn(...msgs: unknown[]) { slackLogger.warn(msgs.join(' ')); },
     error(...msgs: unknown[]) { slackLogger.error(msgs.join(' ')); },
     setLevel() { /* controlled by our logger */ },
-    getLevel() { return LogLevel.DEBUG; },
+    getLevel() { return LogLevel.INFO; },
     setName() { /* ignored — component binding already set */ },
   };
 
@@ -120,7 +120,7 @@ export async function create(config: Config): Promise<ChannelProvider> {
   const app = new App({
     token: botToken,
     receiver,
-    logLevel: LogLevel.DEBUG,
+    logLevel: LogLevel.INFO,
     logger: boltLogger,
   });
 

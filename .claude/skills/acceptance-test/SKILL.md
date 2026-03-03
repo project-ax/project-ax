@@ -150,7 +150,7 @@ For each criterion, write a test case using the templates below. **Prefer struct
 
 **Setup:**
 - <config, seed data, running services>
-- Session ID: `acceptance-test-<feature>-<number>` (for conversation persistence)
+- Session ID: `acceptance:<feature>:it<number>` (3+ colon-separated segments required)
 
 **Sequence:**
 1. [Step description]
@@ -202,25 +202,96 @@ Write all test cases to `tests/acceptance/<feature-name>/test-plan.md` with this
 
 ## Phase 3: Test Execution
 
-### Server management
+### Test isolation: use a temporary AX_HOME
 
-Before running behavioral or integration tests, ensure the AX server is running:
+**CRITICAL**: Never run acceptance tests against the user's real `~/.ax` directory. Always create an isolated temporary home so tests don't pollute real data.
+
+#### Test fixtures
+
+Acceptance tests use dedicated config, identity, and credentials files — never the user's `~/.ax`:
+
+| File | Purpose |
+|------|---------|
+| `tests/acceptance/fixtures/ax.yaml` | Test config — models, providers, embedding settings, memory recall |
+| `tests/acceptance/fixtures/IDENTITY.md` | Deterministic agent identity (neutral, concise, no emojis) |
+| `tests/acceptance/fixtures/SOUL.md` | Deterministic agent personality (predictable, factual) |
+| `.env.test` (project root) | API keys for tests — copy from `tests/acceptance/fixtures/.env.test.example` |
+
+Edit `fixtures/ax.yaml` to change which models the tests use (default LLM, embedding model, etc.) without affecting the user's real `~/.ax/ax.yaml`.
+
+Credentials live in `.env.test` in the project root (gitignored). Copy the example file and fill in your keys:
+```bash
+cp tests/acceptance/fixtures/.env.test.example .env.test
+# Edit .env.test with your API keys
+```
+
+#### Setup
 
 ```bash
-# Check health
-curl -sf --unix-socket ~/.ax/ax.sock http://localhost/health
+# Create isolated test home
+FIXTURES="tests/acceptance/fixtures"
+TEST_HOME="/tmp/ax-acceptance-$(date +%s)"
+mkdir -p "$TEST_HOME/data"
 
-# If not running, start it in the background
-npm start &
+# Copy test config and credentials (from project, not from ~/.ax)
+cp "$FIXTURES/ax.yaml" "$TEST_HOME/ax.yaml"
+cp .env.test "$TEST_HOME/.env"
+
+echo "Test home: $TEST_HOME"
+```
+
+After the server starts and creates the agent directory structure, **copy test identity files and remove bootstrap files** so the agent doesn't enter the first-run bootstrapping flow:
+
+```bash
+# Wait for server to create agent dirs, then install test identity
+cp "$FIXTURES/IDENTITY.md" "$TEST_HOME/agents/main/agent/identity/IDENTITY.md"
+cp "$FIXTURES/SOUL.md" "$TEST_HOME/agents/main/agent/identity/SOUL.md"
+rm -f "$TEST_HOME/agents/main/agent/identity/BOOTSTRAP.md"
+rm -f "$TEST_HOME/agents/main/agent/BOOTSTRAP.md"
+```
+
+All subsequent commands in the test session MUST set `AX_HOME=$TEST_HOME`. The test home path should be stored and reused throughout the entire test run.
+
+### Server management
+
+Before running behavioral or integration tests, start the AX server in the isolated test home:
+
+```bash
+# LOG_SYNC=1 forces synchronous file writes so `tail -f` shows entries
+# immediately. Without it, pino buffers ~4KB before flushing.
+AX_HOME="$TEST_HOME" LOG_LEVEL=debug LOG_SYNC=1 NODE_NO_WARNINGS=1 \
+  tsx src/cli/index.ts serve > "$TEST_HOME/server-stdout.log" 2>&1 &
+SERVER_PID=$!
 
 # Wait for ready (poll up to 30s)
 for i in $(seq 1 30); do
-  curl -sf --unix-socket ~/.ax/ax.sock http://localhost/health && break
+  curl -sf --unix-socket "$TEST_HOME/ax.sock" http://localhost/health && break
   sleep 1
 done
+
+# Verify
+curl -sf --unix-socket "$TEST_HOME/ax.sock" http://localhost/health \
+  && echo "SERVER_READY" || echo "SERVER_FAILED_TO_START"
 ```
 
-If the server fails to start, check `~/.ax/logs/` for error output and report the issue before continuing. Do not proceed with behavioral/integration tests if the server is down.
+If the server fails to start, check `$TEST_HOME/data/ax.log` and `$TEST_HOME/server-stdout.log` for errors. Do not proceed with behavioral/integration tests if the server is down.
+
+**User can tail logs in another terminal:**
+```bash
+tail -f /tmp/ax-acceptance-*/data/ax.log
+```
+
+### Session ID format
+
+AX requires session IDs with **3 or more colon-separated segments**. Two-segment IDs like `acceptance:bt1` will be rejected. Always use at least 3 segments:
+
+```bash
+# WRONG — will fail with "Invalid session_id"
+--session "acceptance:bt1"
+
+# CORRECT — 3+ colon-separated segments
+--session "acceptance:memoryfs:bt1"
+```
 
 ### Running structural tests
 
@@ -229,34 +300,42 @@ Execute directly using file reads and grep. For each structural test:
 2. Check for the expected patterns, interfaces, exports
 3. Record **PASS** or **FAIL** with evidence (the actual content found or not found)
 
+Structural tests can be run in parallel via subagents since they only read source files and don't touch the server.
+
 ### Running behavioral tests
+
+**Run behavioral tests SEQUENTIALLY** (not in parallel) to avoid shared-DB interference. Multiple agents writing to the same SQLite memory store concurrently can corrupt assertions (e.g., one test checks "exactly 1 item" while another is inserting).
 
 For each behavioral test:
 1. Complete any setup steps
-2. Send each message using `ax send`:
+2. Send each message using `ax send` with the isolated test home:
    ```bash
-   # Non-streaming for easier capture
-   ax send --no-stream --session "acceptance:<feature>:<test-id>" "<message>"
+   AX_HOME="$TEST_HOME" NODE_NO_WARNINGS=1 tsx src/cli/index.ts send \
+     --no-stream --session "acceptance:<feature>:<test-id>" "<message>"
    ```
 3. Capture the response
 4. Check the structural side effects:
    - Read any files that should have been created/modified
-   - Check the audit log at `~/.ax/data/audit.db` or `~/.ax/data/audit.jsonl`
-   - Query the message DB at `~/.ax/data/messages.db`
-   - Check memory store at `~/.ax/data/memory.db`
+   - Check the audit log: `sqlite3 "$TEST_HOME/data/audit.db" "SELECT ..."`
+   - Check memory store: `sqlite3 "$TEST_HOME/data/memory/_store.db" "SELECT ..."`
+   - Check embedding store: `sqlite3 "$TEST_HOME/data/memory/_vec.db" "SELECT ..."`
 5. Evaluate behavioral expectations using judgment (not exact string matching)
 6. Record PASS or FAIL with evidence
 
 ### Running integration tests
 
+Run integration tests SEQUENTIALLY for the same shared-DB reasons.
+
 For each integration test:
 1. Complete setup
 2. Execute the sequence step by step, using a **persistent session ID** so conversation state carries over:
    ```bash
-   SESSION="acceptance:<feature>:IT-<number>"
-   ax send --no-stream --session "$SESSION" "<step 1 message>"
+   SESSION="acceptance:<feature>:it1"
+   AX_HOME="$TEST_HOME" NODE_NO_WARNINGS=1 tsx src/cli/index.ts send \
+     --no-stream --session "$SESSION" "<step 1 message>"
    # verify step 1
-   ax send --no-stream --session "$SESSION" "<step 2 message>"
+   AX_HOME="$TEST_HOME" NODE_NO_WARNINGS=1 tsx src/cli/index.ts send \
+     --no-stream --session "$SESSION" "<step 2 message>"
    # verify step 2
    ```
 3. After all steps, verify the expected final state
@@ -389,7 +468,7 @@ Create a prioritized list of fixes and save to `tests/acceptance/<feature-name>/
 (continue)
 ```
 
-Also add each fix to the **TodoWrite tool** so they're tracked in the current session.
+Also add each fix to the **TaskCreate tool** so they're tracked in the current session.
 
 ## Workflow Summary
 
@@ -405,13 +484,26 @@ Also add each fix to the **TodoWrite tool** so they're tracked in the current se
 9. Save results to tests/acceptance/<feature>/results.md
 10. For failures: trace to source, classify root cause and severity
 11. Save fix list to tests/acceptance/<feature>/fixes.md
-12. Add fixes to TodoWrite for tracking
+12. Add fixes to TaskCreate for tracking
+```
+
+### Cleanup
+
+After all tests are complete, stop the server and optionally remove the temp home:
+
+```bash
+pkill -f "tsx src/cli/index.ts serve" 2>/dev/null
+# Optionally keep for debugging:
+# rm -rf "$TEST_HOME"
 ```
 
 ## Tips
 
+- **Always use an isolated AX_HOME.** Never run acceptance tests against `~/.ax`. Create a temp directory, copy config files, and set `AX_HOME` on every command.
 - **Start with structural tests.** They're fast, deterministic, and catch the most common gaps (missing implementations, broken wiring). If structural tests show a feature isn't wired up, skip behavioral tests for that feature — they'll obviously fail.
-- **Use fresh sessions.** Each test run should use a unique session ID to avoid pollution from prior conversations.
-- **Check audit logs.** The audit log (`~/.ax/data/audit.jsonl` or SQLite) is the best ground truth for what the server actually did during a request. If a behavioral test is ambiguous, the audit log tells you exactly which IPC actions fired.
+- **Run behavioral/integration tests sequentially.** They share a SQLite database. Parallel execution causes assertion failures from DB contention.
+- **Use fresh sessions.** Each test run should use a unique session ID with 3+ colon-separated segments (e.g., `acceptance:feature:bt1`) to avoid pollution from prior conversations.
+- **Check audit logs.** The audit log (`$TEST_HOME/data/audit.db`) is the best ground truth for what the server actually did during a request. If a behavioral test is ambiguous, the audit log tells you exactly which IPC actions fired.
 - **Don't chase LLM wording.** The agent might phrase things differently each time. Focus on: did it call the right tools? Did the right data end up in the right place? Did it avoid doing the wrong thing?
 - **One feature at a time.** Don't try to test everything in one session. Pick a feature, run its tests, fix the issues, then move on.
+- **Tail logs for debugging.** Run `tail -f $TEST_HOME/data/ax.log` in another terminal to watch server activity in real time. The server must be started with `LOG_SYNC=1` for logs to flush immediately (without it, pino buffers ~4KB before writing).

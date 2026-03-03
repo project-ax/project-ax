@@ -112,6 +112,9 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
   const level = opts.level ?? (process.env.LOG_LEVEL as LogLevel) ?? 'info';
   const usePretty = opts.pretty ?? process.stdout.isTTY ?? false;
   const useFile = opts.file ?? !opts.stream; // disable file when test stream is provided
+  // LOG_SYNC=1 forces synchronous file writes so `tail -f` shows entries
+  // immediately. Without this, pino buffers ~4KB before flushing.
+  const syncFile = process.env.LOG_SYNC === '1';
 
   // If a test stream is provided, use it directly (no transports)
   if (opts.stream) {
@@ -125,7 +128,7 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     if (useFile) {
       streams.push({
         level: 'debug',
-        stream: pino.destination({ dest: getLogPath(), mkdir: true }),
+        stream: pino.destination({ dest: getLogPath(), mkdir: true, sync: syncFile }),
       });
     }
     streams.push({
@@ -145,7 +148,25 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     return wrapPino(pinoInstance);
   }
 
-  // JSON mode: file + stdout
+  // JSON mode: file + stdout via pino transports (worker threads).
+  // When LOG_SYNC=1, skip transports and use direct destinations instead
+  // so writes are synchronous and immediately visible in `tail -f`.
+  if (syncFile) {
+    const streams: Array<{ level: string; stream: DestinationStream }> = [];
+    if (useFile) {
+      streams.push({
+        level: 'debug',
+        stream: pino.destination({ dest: getLogPath(), mkdir: true, sync: true }),
+      });
+    }
+    streams.push({
+      level,
+      stream: pino.destination({ dest: 1, sync: true }), // stdout
+    });
+    const pinoInstance = pino({ level: 'debug' }, pino.multistream(streams));
+    return wrapPino(pinoInstance);
+  }
+
   const targets: pino.TransportTargetOptions[] = [];
 
   if (useFile) {

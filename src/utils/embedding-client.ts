@@ -1,8 +1,11 @@
 /**
  * EmbeddingClient — Standalone utility for generating text embeddings.
  *
- * Wraps OpenAI's embeddings.create() endpoint. Not an LLM provider —
+ * Wraps OpenAI-compatible embeddings.create() endpoint. Not an LLM provider —
  * embeddings are request/response, not streaming chat.
+ *
+ * Supports compound `provider/model` IDs (e.g. 'openrouter/text-embedding-3-small')
+ * using the same provider → base URL / API key conventions as the LLM router.
  *
  * Gracefully degrades when no API key is set (available = false).
  */
@@ -12,14 +15,22 @@ import { getLogger } from '../logger.js';
 
 const logger = getLogger().child({ component: 'embedding-client' });
 
+/** Default base URLs for known OpenAI-compatible providers. */
+const DEFAULT_BASE_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  fireworks: 'https://api.fireworks.ai/inference/v1',
+};
+
 export interface EmbeddingClientConfig {
-  /** Model name (e.g. 'text-embedding-3-small'). */
+  /** Model ID — plain ('text-embedding-3-small') or compound ('openrouter/text-embedding-3-small'). */
   model: string;
   /** Output dimensions (e.g. 1536 for text-embedding-3-small). */
   dimensions: number;
-  /** Override API key (defaults to OPENAI_API_KEY env var). */
+  /** Override API key (skips env var lookup). */
   apiKey?: string;
-  /** Override base URL (defaults to https://api.openai.com/v1). */
+  /** Override base URL (skips provider default lookup). */
   baseUrl?: string;
 }
 
@@ -33,34 +44,53 @@ export interface EmbeddingClient {
 }
 
 /**
+ * Parse a compound `provider/model` ID. If there's no slash, defaults to
+ * provider 'openai' for backward compatibility.
+ */
+function parseModelId(id: string): { provider: string; model: string } {
+  const slashIdx = id.indexOf('/');
+  if (slashIdx < 0) return { provider: 'openai', model: id };
+  return { provider: id.slice(0, slashIdx), model: id.slice(slashIdx + 1) };
+}
+
+/**
  * Create an embedding client. Returns a client with available=false
  * when no API key is found — no throw, no crash, just graceful fallback.
  */
 export function createEmbeddingClient(config: EmbeddingClientConfig): EmbeddingClient {
-  const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY;
+  const { provider, model } = parseModelId(config.model);
+
+  // Resolve API key: explicit config > {PROVIDER}_API_KEY env var
+  const envKeyName = `${provider.toUpperCase()}_API_KEY`;
+  const apiKey = config.apiKey ?? process.env[envKeyName];
 
   if (!apiKey) {
-    logger.debug('no_api_key', { model: config.model, hint: 'Set OPENAI_API_KEY for embedding support' });
+    logger.debug('no_api_key', { provider, model, hint: `Set ${envKeyName} for embedding support` });
     return {
       async embed(): Promise<Float32Array[]> {
-        throw new Error('EmbeddingClient: OPENAI_API_KEY not set');
+        throw new Error(`EmbeddingClient: ${envKeyName} not set`);
       },
       dimensions: config.dimensions,
       available: false,
     };
   }
 
-  const baseURL = config.baseUrl ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+  // Resolve base URL: explicit config > {PROVIDER}_BASE_URL env var > known default
+  const envBaseUrlName = `${provider.toUpperCase()}_BASE_URL`;
+  const baseURL = config.baseUrl
+    ?? process.env[envBaseUrlName]
+    ?? DEFAULT_BASE_URLS[provider]
+    ?? 'https://api.openai.com/v1';
   const client = new OpenAI({ apiKey, baseURL });
 
   return {
     async embed(texts: string[]): Promise<Float32Array[]> {
       if (texts.length === 0) return [];
 
-      logger.debug('embed_request', { model: config.model, count: texts.length });
+      logger.debug('embed_request', { provider, model, count: texts.length });
 
       const response = await client.embeddings.create({
-        model: config.model,
+        model,
         input: texts,
         dimensions: config.dimensions,
         encoding_format: 'float',

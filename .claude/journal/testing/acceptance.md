@@ -2,6 +2,25 @@
 
 Acceptance test skill and framework for validating features against plan design goals.
 
+## [2026-03-03 14:35] — Full acceptance test run for MemoryFS v2 (41 tests)
+
+**Task:** Run the complete acceptance test plan at tests/acceptance/memoryfs-v2/test-plan.md
+**What I did:** Ran all 41 tests: 27 structural (parallel subagents), 9 behavioral, 8 integration. Set up isolated AX_HOME at /tmp, started server, ran API-level tests programmatically and chat-level tests via `ax send`.
+**Files touched:**
+- `tests/acceptance/memoryfs-v2/results.md` (new) — full results
+- `tests/acceptance/memoryfs-v2/fixes.md` (new) — 5 issues prioritized
+- `src/providers/channel/slack.ts` (modified) — fixed Slack debug log spam (FIX-3)
+**Outcome:** 27 PASS, 2 FAIL, 2 PARTIAL FAIL, 4 SKIP (no OPENAI_API_KEY). Key findings: (1) LLM summary generator wraps output in markdown code fences corrupting memU format. (2) Content-hash dedup fails against LLM-extracted items because the LLM rephrases facts differently each time. (3) Slack App logLevel was DEBUG causing heartbeat spam in ax.log — fixed to INFO.
+**Notes:** Structural tests are a powerful verification layer — all 27 passed, confirming code structure matches the plan. Behavioral failures are all at the LLM integration boundary: non-deterministic LLM output defeats deterministic dedup, and the LLM doesn't follow output format constraints (code fences). Embedding tests (BT-8/9, IT-7/8) need OPENAI_API_KEY to run.
+
+## [2026-03-03 13:15] — Run BT-5 and BT-6 behavioral acceptance tests for MemoryFS v2
+
+**Task:** Run behavioral acceptance tests BT-5 (direct write/read/delete API round-trip) and BT-6 (taint tag preservation) against a live AX server
+**What I did:** (1) BT-5: Sent "Remember this exact fact for testing: My favorite database is PostgreSQL" via CLI, verified item appeared in SQLite store with correct content/category/type, then sent "What do you know about my database preferences?" and confirmed agent recalled PostgreSQL. Reinforcement count incremented from 1 to 2 on the recall query. (2) BT-6: Verified structurally that write() serializes taint via JSON.stringify (line 161) and all four read paths (query embedding path line 215, query keyword path line 250, read line 263, list line 280) deserialize via JSON.parse. Chat interface doesn't set taint directly so behavioral testing not feasible.
+**Files touched:** No code files modified — read-only acceptance testing
+**Outcome:** BT-5 PASS, BT-6 PASS (structural verification)
+**Notes:** The memorize/extraction pipeline categorized the PostgreSQL fact as memory_type=profile, category=preferences rather than memory_type=knowledge, category=knowledge. This suggests the LLM extractor is classifying memories into semantic categories rather than using the default knowledge bucket. Reinforcement count going from 1 to 2 on the read query confirms the dedup/reinforce path works correctly in live operation.
+
 ## [2026-03-03 11:30] — Add acceptance test skill and tests/acceptance/ directory
 
 **Task:** Create a Claude Code skill that designs, runs, and analyzes acceptance tests for AX features against their original plan documents

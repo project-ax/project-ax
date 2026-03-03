@@ -11,6 +11,7 @@ data/
 .env
 .env.local
 .env.*.local
+.env.test
 
 # Compiled sandbox profiles
 *.sb.compiled
