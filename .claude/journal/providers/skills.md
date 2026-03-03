@@ -1,6 +1,27 @@
 # Providers: Skills
 
-Skills import pipeline, screener, manifest generator, ClawHub client, architecture comparison.
+Skills import pipeline, screener, manifest generator, ClawHub client, architecture comparison, install orchestration.
+
+## [2026-03-03 20:40] — Implement skills install architecture
+
+**Task:** Implement the full skills install architecture from docs/plans/2026-03-03-skills-install-architecture.md — two-phase inspect/execute flow, command validation, env scrubbing, concurrency control, TOCTOU defense, state persistence, prompt/tool integration
+**What I did:**
+- Created `src/utils/bin-exists.ts` — cross-platform safe binary lookup using `command -v` via validated shell
+- Created `src/utils/install-validator.ts` — command prefix allowlisting, env scrubbing, concurrency semaphore
+- Updated `src/providers/skills/types.ts` — new `SkillInstallStep`, `SkillInstallState`, `SkillInstallInspectResponse` types; deprecated old `AgentSkillInstaller`
+- Updated `src/utils/skill-format-parser.ts` — backward-compat conversion from old kind/package/formula format to new `run`/`bin` format
+- Updated `src/utils/manifest-generator.ts` — install steps now use `run`/`bin`/`label`/`os` instead of `kind`/`package`
+- Added `SkillInstallSchema` and `SkillInstallStatusSchema` to `src/ipc-schemas.ts`
+- Added `skill_install` (two-phase inspect/execute) and `skill_install_status` handlers to `src/host/ipc-handlers/skills.ts`
+- Added `install` and `install_status` operations to tool catalog and MCP server
+- Added `skill_install` to taint budget sensitive actions
+- Enriched `skill_read` and `skill_list` responses with missing-bin warnings
+- Updated skills prompt module to surface warnings and install guidance
+- Created comprehensive test suite: `bin-exists.test.ts`, `install-validator.test.ts`, `skills-install.test.ts`
+- Updated existing tests: `skill-format-parser.test.ts`, `manifest-generator.test.ts`, `tool-catalog.test.ts`
+**Files touched:** src/providers/skills/types.ts, src/utils/bin-exists.ts (new), src/utils/install-validator.ts (new), src/utils/skill-format-parser.ts, src/utils/manifest-generator.ts, src/ipc-schemas.ts, src/host/ipc-handlers/skills.ts, src/host/taint-budget.ts, src/agent/tool-catalog.ts, src/agent/mcp-server.ts, src/agent/prompt/modules/skills.ts, src/agent/prompt/types.ts, tests/utils/bin-exists.test.ts (new), tests/utils/install-validator.test.ts (new), tests/host/ipc-handlers/skills-install.test.ts (new), tests/utils/skill-format-parser.test.ts, tests/utils/manifest-generator.test.ts, tests/agent/tool-catalog.test.ts
+**Outcome:** Success — 208 test files pass (2288 tests), clean TypeScript compilation
+**Notes:** Key security properties: command prefix allowlisting blocks arbitrary execution, inspectToken (SHA-256 of steps) defends against TOCTOU, env scrubbing strips credentials, per-agent concurrency semaphore prevents resource exhaustion. Backward compat: old kind/package SKILL.md format auto-converts to new run/bin format.
 
 ## [2026-02-27 14:30] — Create exploring-reference-repos skill
 

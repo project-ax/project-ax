@@ -148,9 +148,10 @@ export function generateManifest(skill: ParsedAgentSkill): GeneratedManifest {
 
   // --- Install steps ---
   const installSteps = skill.install.map(spec => ({
-    kind: spec.kind,
-    package: spec.package,
-    bins: spec.bins,
+    run: spec.run,
+    label: spec.label,
+    bin: spec.bin,
+    os: spec.os,
     approval: 'required' as const,
   }));
 

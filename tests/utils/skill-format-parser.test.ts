@@ -52,7 +52,7 @@ metadata:
       expect(skill.requires.env).toEqual(['MY_TOOL_API_KEY']);
     });
 
-    test('extracts install specs', () => {
+    test('extracts install specs (old kind/package format → new run format)', () => {
       const skill = parseAgentSkill(`---
 name: my-tool
 metadata:
@@ -71,12 +71,34 @@ metadata:
 # My Tool`);
 
       expect(skill.install).toHaveLength(2);
-      expect(skill.install[0].kind).toBe('brew');
-      expect(skill.install[0].package).toBe('my-org/tap/my-tool');
-      expect(skill.install[0].bins).toEqual(['my-tool']);
+      // Old kind/package format is converted to new run format
+      expect(skill.install[0].run).toBe('brew install my-org/tap/my-tool');
+      expect(skill.install[0].bin).toBe('my-tool');
       expect(skill.install[0].label).toBe('Install my-tool (brew)');
-      expect(skill.install[1].kind).toBe('node');
-      expect(skill.install[1].package).toBe('my-tool');
+      expect(skill.install[1].run).toBe('npm install -g my-tool');
+      expect(skill.install[1].bin).toBe('my-tool');
+    });
+
+    test('extracts new-format install specs with run field', () => {
+      const skill = parseAgentSkill(`---
+name: my-tool
+metadata:
+  openclaw:
+    requires:
+      bins: [my-tool]
+    install:
+      - run: "brew install my-org/tap/my-tool"
+        label: Install my-tool (brew)
+        bin: my-tool
+        os: [macos]
+---
+# My Tool`);
+
+      expect(skill.install).toHaveLength(1);
+      expect(skill.install[0].run).toBe('brew install my-org/tap/my-tool');
+      expect(skill.install[0].bin).toBe('my-tool');
+      expect(skill.install[0].label).toBe('Install my-tool (brew)');
+      expect(skill.install[0].os).toEqual(['macos']);
     });
 
     test('extracts os constraints', () => {
@@ -118,9 +140,8 @@ Use \`gog\` to work with Google Workspace.`);
       expect(skill.requires.bins).toEqual(['gog']);
       expect(skill.install).toHaveLength(1);
       expect(skill.install[0]).toEqual({
-        kind: 'brew',
-        package: 'steipete/tap/gogcli',
-        bins: ['gog'],
+        run: 'brew install steipete/tap/gogcli',
+        bin: 'gog',
         label: undefined,
         os: undefined,
       });
@@ -146,9 +167,8 @@ Use \`mcporter\` to work with MCP servers directly.`);
       expect(skill.name).toBe('mcporter');
       expect(skill.requires.bins).toEqual(['mcporter']);
       expect(skill.install[0]).toEqual({
-        kind: 'node',
-        package: 'mcporter',
-        bins: ['mcporter'],
+        run: 'npm install -g mcporter',
+        bin: 'mcporter',
         label: undefined,
         os: undefined,
       });

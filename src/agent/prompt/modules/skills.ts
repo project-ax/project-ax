@@ -19,28 +19,49 @@ export class SkillsModule extends BasePromptModule {
 
   render(ctx: PromptContext): string[] {
     const rows = ctx.skills
-      .map(s => `| ${s.name} | ${s.description} |`)
+      .map(s => {
+        const warn = s.warnings?.length ? ` \u26A0 ${s.warnings.join(', ')}` : '';
+        return `| ${s.name} | ${s.description}${warn} |`;
+      })
       .join('\n');
 
-    return [
+    // Collect skills with missing deps for install guidance
+    const skillsWithWarnings = ctx.skills.filter(s => s.warnings?.length);
+
+    const lines = [
       '## Available Skills',
       '',
       'Before replying, scan this list for a skill that matches the current task.',
       'If exactly one skill clearly applies: call `skill({ type: "read" })` to load its full',
       'instructions, then follow them. If multiple could apply: choose the most',
       'specific one, then read and follow it. If none clearly apply: do not load',
-      'any skill — just respond normally.',
+      'any skill \u2014 just respond normally.',
       '',
       'Never read more than one skill up front; only read after selecting.',
       '',
       '| Skill | Description |',
       '|-------|-------------|',
       rows,
+    ];
+
+    // Surface install guidance when skills have missing dependencies
+    if (skillsWithWarnings.length > 0) {
+      lines.push(
+        '',
+        '### Missing Dependencies',
+        '',
+        'Some skills have missing binary dependencies (marked with \u26A0 above).',
+        'Use `skill({ type: "install", name: "<skill>", phase: "inspect" })` to check',
+        'what needs to be installed, then present the install steps to the user for approval.',
+      );
+    }
+
+    lines.push(
       '',
       '### Creating Skills',
       '',
       'You can create new skills using `skill({ type: "propose" })`. Skills are markdown',
-      'instruction files — like checklists, workflows, or domain-specific knowledge.',
+      'instruction files \u2014 like checklists, workflows, or domain-specific knowledge.',
       '',
       '**When to create a skill:**',
       '- You notice a recurring multi-step pattern in your work',
@@ -48,9 +69,11 @@ export class SkillsModule extends BasePromptModule {
       '- You need domain-specific knowledge packaged for reuse',
       '',
       '**After creating a skill:** Continue working on your current task.',
-      'The skill appears in your list on the next turn — do not pause or wait',
+      'The skill appears in your list on the next turn \u2014 do not pause or wait',
       'for confirmation.',
-    ];
+    );
+
+    return lines;
   }
 
   renderMinimal(ctx: PromptContext): string[] {

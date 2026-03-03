@@ -10,6 +10,7 @@ export interface SkillSummary {
   name: string;
   description: string;
   path: string;   // relative path to the skill markdown file
+  warnings?: string[];  // missing bins or other load-time warnings from host
 }
 
 /**

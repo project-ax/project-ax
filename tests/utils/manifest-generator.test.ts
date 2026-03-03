@@ -47,15 +47,17 @@ metadata:
 
       expect(m.install.steps).toHaveLength(2);
       expect(m.install.steps[0]).toEqual({
-        kind: 'brew',
-        package: 'org/tap/tool',
-        bins: ['tool'],
+        run: 'brew install org/tap/tool',
+        label: undefined,
+        bin: 'tool',
+        os: undefined,
         approval: 'required',
       });
       expect(m.install.steps[1]).toEqual({
-        kind: 'node',
-        package: 'tool-cli',
-        bins: ['tool'],
+        run: 'npm install -g tool-cli',
+        label: undefined,
+        bin: 'tool',
+        os: undefined,
         approval: 'required',
       });
     });
@@ -206,8 +208,8 @@ Use \`gog\` to work with Google Workspace.
       expect(m.requires.bins).toEqual(['gog']);
       expect(m.capabilities.host_commands).toContain('gog');
       expect(m.install.steps).toHaveLength(1);
-      expect(m.install.steps[0].kind).toBe('brew');
-      expect(m.install.steps[0].package).toBe('steipete/tap/gogcli');
+      expect(m.install.steps[0].run).toBe('brew install steipete/tap/gogcli');
+      expect(m.install.steps[0].bin).toBe('gog');
     });
   });
 
@@ -264,8 +266,8 @@ Use \`mcporter\` to work with MCP servers directly.
       expect(m.name).toBe('mcporter');
       expect(m.requires.bins).toEqual(['mcporter']);
       expect(m.capabilities.host_commands).toContain('mcporter');
-      expect(m.install.steps[0].kind).toBe('node');
-      expect(m.install.steps[0].package).toBe('mcporter');
+      expect(m.install.steps[0].run).toBe('npm install -g mcporter');
+      expect(m.install.steps[0].bin).toBe('mcporter');
     });
   });
 

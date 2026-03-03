@@ -1,5 +1,17 @@
 # Architecture
 
+### `command -v` is a shell builtin — execFile needs `/bin/sh`
+**Date:** 2026-03-03
+**Context:** Implementing bin-exists.ts for safe binary PATH lookup. Used `execFile('command', ['-v', name])` which fails because `command` is a POSIX shell builtin, not an external binary.
+**Lesson:** Always use `execFile('/bin/sh', ['-c', 'command -v NAME'])` for POSIX binary existence checks. The input name must be regex-validated (`/^[a-zA-Z0-9_.-]+$/`) before passing to the shell to prevent injection. On Windows, `where` IS an external binary, so `execFile('where', [name])` works directly.
+**Tags:** shell, security, bin-exists, cross-platform
+
+### TOCTOU defense for two-phase handlers: use content-derived tokens
+**Date:** 2026-03-03
+**Context:** Implementing skill_install with inspect→execute two-phase flow. The skill content could change between inspect and execute, leading to the user approving one command but executing a different one.
+**Lesson:** Compute a SHA-256 hash (inspectToken) of the canonicalized install steps during inspect. Require the same token during execute. Before executing, re-parse the skill and recompute the hash — if it doesn't match, reject with `token_mismatch`. This binds the execute to exactly what was inspected.
+**Tags:** security, toctou, skills, install
+
 ### Prefer structural layout fixes over runtime workarounds
 **Date:** 2026-03-01
 **Context:** Skills dir was inside workspace, requiring a per-turn copy to avoid mount permission overlap. Moving skills to be a peer of workspace (`agentIdentityDir()/skills` instead of `agentWorkspaceDir()/skills`) eliminated the need entirely.
