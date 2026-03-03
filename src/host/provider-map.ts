@@ -58,7 +58,6 @@ const _PROVIDER_MAP = {
   },
   credentials: {
     plaintext: '../providers/credentials/plaintext.js',
-    encrypted: '../providers/credentials/encrypted.js',
     keychain:  '../providers/credentials/keychain.js',
   },
   skills: {

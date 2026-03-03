@@ -16,7 +16,6 @@
  *       memory/         — file memory provider
  *       audit.db        — SQLite audit provider
  *       audit/          — file audit provider
- *       credentials.enc — encrypted credentials
  *       workspaces/     — persistent agent workspaces
  *         <uuid>/                        — legacy flat UUID workspace
  *         main/cli/default/              — default CLI chat session

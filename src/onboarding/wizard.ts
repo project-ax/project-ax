@@ -28,7 +28,7 @@ export interface OnboardingAnswers {
   channels: string[];
   skipSkills?: boolean;
   installSkills?: string[];
-  credsPassphrase?: string;
+
   webProvider?: string;
   webSearchApiKey?: string;
   slackBotToken?: string;
@@ -124,9 +124,6 @@ export async function runOnboarding(opts: OnboardingOptions): Promise<void> {
       : 'ANTHROPIC_API_KEY';
     creds[apiKeyEnvVar] = answers.apiKey.trim();
   }
-  if (answers.credsPassphrase) {
-    creds.AX_CREDS_PASSPHRASE = answers.credsPassphrase.trim();
-  }
   if (answers.webSearchApiKey) {
     creds.TAVILY_API_KEY = answers.webSearchApiKey.trim();
   }
@@ -171,7 +168,6 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
 
     // Read secrets from credentials.yaml (preferred) or .env (backward compat)
     let apiKey = '';
-    let credsPassphrase: string | undefined;
     let webSearchApiKey: string | undefined;
     let oauthToken: string | undefined;
     let oauthRefreshToken: string | undefined;
@@ -210,7 +206,6 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
       if (!apiKey) {
         apiKey = readCred(creds, 'ANTHROPIC_API_KEY') ?? '';
       }
-      credsPassphrase = readCred(creds, 'AX_CREDS_PASSPHRASE');
       webSearchApiKey = readCred(creds, 'TAVILY_API_KEY');
       oauthToken = readCred(creds, 'CLAUDE_CODE_OAUTH_TOKEN');
       oauthRefreshToken = readCred(creds, 'AX_OAUTH_REFRESH_TOKEN');
@@ -231,8 +226,6 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
         const apiKeyMatch = envContent.match(/^ANTHROPIC_API_KEY=(.+)$/m);
         if (apiKeyMatch) apiKey = apiKeyMatch[1].trim();
       }
-      const passphraseMatch = envContent.match(/^AX_CREDS_PASSPHRASE=(.+)$/m);
-      if (passphraseMatch) credsPassphrase = passphraseMatch[1].trim();
       const tavilyMatch = envContent.match(/^TAVILY_API_KEY=(.+)$/m);
       if (tavilyMatch) webSearchApiKey = tavilyMatch[1].trim();
       const oauthTokenMatch = envContent.match(/^CLAUDE_CODE_OAUTH_TOKEN=(.+)$/m);
@@ -260,7 +253,6 @@ export function loadExistingConfig(dir: string): OnboardingAnswers | null {
       oauthExpiresAt,
       channels: (parsed.providers?.channels ?? []).filter((c: string) => c !== 'cli'),
       skipSkills: true,
-      credsPassphrase,
       webSearchApiKey,
       slackBotToken,
       slackAppToken,

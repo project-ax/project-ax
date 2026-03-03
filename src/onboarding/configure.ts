@@ -44,7 +44,7 @@ export interface InquirerDefaults {
   oauthToken?: string;
   oauthTokenMasked?: string;
   channels?: string[];
-  credsPassphrase?: string;
+
   webSearchApiKey?: string;
   webSearchApiKeyMasked?: string;
   slackBotToken?: string;
@@ -79,7 +79,7 @@ export function buildInquirerDefaults(existing: OnboardingAnswers | null): Inqui
     oauthToken: existing.oauthToken,
     oauthTokenMasked: maskKey(existing.oauthToken),
     channels: existing.channels,
-    credsPassphrase: existing.credsPassphrase,
+
     webSearchApiKey: existing.webSearchApiKey,
     webSearchApiKeyMasked: maskKey(existing.webSearchApiKey),
     slackBotToken: existing.slackBotToken,
@@ -223,33 +223,7 @@ export async function runConfigure(outputDir: string): Promise<void> {
     }
   }
 
-  // 2b. Credentials passphrase (only for profiles that use encrypted credentials)
-  let credsPassphrase: string | undefined = defaults.credsPassphrase;
-  if (PROFILE_DEFAULTS[profile].credentials === 'encrypted' && !credsPassphrase && !process.env.AX_CREDS_PASSPHRASE) {
-    let matched = false;
-    while (!matched) {
-      const pass1 = await password({
-        message: 'Credentials passphrase',
-        mask: '*',
-      });
-      if (!pass1.trim()) {
-        console.log('  Passphrase cannot be empty. Try again.\n');
-        continue;
-      }
-      const pass2 = await password({
-        message: 'Confirm passphrase',
-        mask: '*',
-      });
-      if (pass1 !== pass2) {
-        console.log('  Passphrases do not match. Try again.\n');
-        continue;
-      }
-      credsPassphrase = pass1;
-      matched = true;
-    }
-  }
-
-  // 2c. Web search provider (non-paranoid profiles)
+  // 2b. Web search provider (non-paranoid profiles)
   let webProvider: string | undefined;
   let webSearchApiKey: string | undefined = defaults.webSearchApiKey;
   if (profile !== 'paranoid') {
@@ -399,7 +373,7 @@ export async function runConfigure(outputDir: string): Promise<void> {
       model, llmProvider,
       oauthToken, oauthRefreshToken, oauthExpiresAt,
       channels, skipSkills, installSkills,
-      credsPassphrase, webProvider, webSearchApiKey,
+      webProvider, webSearchApiKey,
       slackBotToken, slackAppToken,
       imageModel,
     },

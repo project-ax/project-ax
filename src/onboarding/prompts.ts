@@ -70,7 +70,7 @@ export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
     scanner: 'patterns',
     web: 'fetch',
     browser: 'container',
-    credentials: 'encrypted',
+    credentials: 'keychain',
     skills: 'git',
     audit: 'sqlite',
     sandbox: defaultSandbox,
@@ -95,7 +95,7 @@ export const PROFILE_DISPLAY_NAMES: Record<ProfileName, string> = {
 export const PROFILE_DESCRIPTIONS: Record<ProfileName, string> = {
   paranoid: 'Maximum security, minimal features — no web, no browser, read-only skills',
   balanced: 'Balanced security and features — web fetch, git skills, SQLite storage (recommended)',
-  yolo: 'Maximum features — browser automation, encrypted credentials, extended timeouts (be careful!)',
+  yolo: 'Maximum features — browser automation, extended timeouts (be careful!)',
 };
 
 // ── Auth Method ──
@@ -171,7 +171,7 @@ export const PROVIDER_CHOICES = {
   scanner: ['basic', 'patterns'],
   web: ['none', 'fetch'],
   browser: ['none', 'container'],
-  credentials: ['keychain', 'encrypted'],
+  credentials: ['keychain', 'plaintext'],
   skills: ['readonly', 'git'],
   audit: ['file', 'sqlite'],
   sandbox: ['subprocess', 'seatbelt', 'bwrap', 'nsjail', 'docker'],

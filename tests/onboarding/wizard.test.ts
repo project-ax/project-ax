@@ -79,7 +79,7 @@ describe('Onboarding Wizard', () => {
     expect(config.profile).toBe('yolo');
     expect(config.providers.skills).toBe('git');
     expect(config.providers.browser).toBe('container');
-    expect(config.providers.credentials).toBe('encrypted');
+    expect(config.providers.credentials).toBe('keychain');
   });
 
   // ── API key handling ──
@@ -269,7 +269,7 @@ describe('Onboarding Wizard', () => {
 
   // ── Preserve passphrase and Tavily key on reconfigure ──
 
-  test('loadExistingConfig reads passphrase and Tavily key from credentials.yaml', async () => {
+  test('loadExistingConfig reads Tavily key from credentials.yaml', async () => {
     const { loadExistingConfig } = await import('../../src/onboarding/wizard.js');
     const dir = setup();
 
@@ -280,13 +280,11 @@ describe('Onboarding Wizard', () => {
         apiKey: 'sk-test',
         channels: ['cli'],
         skipSkills: true,
-        credsPassphrase: 'my-secret-pass',
         webSearchApiKey: 'tvly-test-key-123',
       },
     });
 
     const existing = loadExistingConfig(dir);
-    expect(existing!.credsPassphrase).toBe('my-secret-pass');
     expect(existing!.webSearchApiKey).toBe('tvly-test-key-123');
   });
 

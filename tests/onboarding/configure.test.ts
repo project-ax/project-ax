@@ -68,7 +68,7 @@ describe('Configure UI Helpers', () => {
     expect(defaults.apiKeyMasked).toMatch(/^sk-\.\.\..+$/);
   });
 
-  test('buildInquirerDefaults includes passphrase and tavily key from existing config', async () => {
+  test('buildInquirerDefaults includes tavily key from existing config', async () => {
     const dir = setup();
     await runOnboarding({
       outputDir: dir,
@@ -77,7 +77,6 @@ describe('Configure UI Helpers', () => {
         apiKey: 'sk-test-key',
         channels: ['cli'],
         skipSkills: true,
-        credsPassphrase: 'my-passphrase',
         webSearchApiKey: 'tvly-long-api-key-value',
       },
     });
@@ -85,7 +84,6 @@ describe('Configure UI Helpers', () => {
     const existing = loadExistingConfig(dir);
     const defaults = buildInquirerDefaults(existing);
 
-    expect(defaults.credsPassphrase).toBe('my-passphrase');
     expect(defaults.webSearchApiKey).toBe('tvly-long-api-key-value');
     expect(defaults.webSearchApiKeyMasked).toMatch(/^tvl\.\.\..+$/);
   });
