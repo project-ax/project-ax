@@ -115,7 +115,7 @@ export const AUTH_METHOD_DESCRIPTIONS: Record<AuthMethod, string> = {
 
 // ── LLM Provider (for router-based agents) ──
 
-export const LLM_PROVIDERS = ['anthropic', 'openai', 'openrouter', 'groq'] as const;
+export const LLM_PROVIDERS = ['anthropic', 'openai', 'openrouter', 'groq', 'deepinfra'] as const;
 export type LLMProviderChoice = (typeof LLM_PROVIDERS)[number];
 
 export const LLM_PROVIDER_DISPLAY_NAMES: Record<LLMProviderChoice, string> = {
@@ -123,6 +123,7 @@ export const LLM_PROVIDER_DISPLAY_NAMES: Record<LLMProviderChoice, string> = {
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
   groq: 'Groq',
+  deepinfra: 'DeepInfra',
 };
 
 export const LLM_PROVIDER_DESCRIPTIONS: Record<LLMProviderChoice, string> = {
@@ -130,6 +131,7 @@ export const LLM_PROVIDER_DESCRIPTIONS: Record<LLMProviderChoice, string> = {
   openai: 'GPT models via OpenAI API',
   openrouter: 'Multi-provider access via OpenRouter',
   groq: 'Fast inference via Groq',
+  deepinfra: 'Serverless inference via DeepInfra',
 };
 
 export const DEFAULT_MODELS: Record<LLMProviderChoice, string> = {
@@ -137,6 +139,7 @@ export const DEFAULT_MODELS: Record<LLMProviderChoice, string> = {
   openai: 'gpt-4.1',
   openrouter: 'anthropic/claude-sonnet-4',
   groq: 'llama-3.3-70b-versatile',
+  deepinfra: 'meta-llama/Meta-Llama-3.1-70B-Instruct',
 };
 
 // ── Image Provider ──

@@ -19,6 +19,7 @@ const _PROVIDER_MAP = {
     openai:     '../providers/llm/openai.js',
     openrouter: '../providers/llm/openai.js',
     groq:       '../providers/llm/openai.js',
+    deepinfra:  '../providers/llm/openai.js',
     router:     '../providers/llm/router.js',
     mock:       '../providers/llm/mock.js',
   },

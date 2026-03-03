@@ -12,6 +12,8 @@ describe('openai-compat LLM provider', () => {
     'GROQ_BASE_URL',
     'FIREWORKS_API_KEY',
     'FIREWORKS_BASE_URL',
+    'DEEPINFRA_API_KEY',
+    'DEEPINFRA_BASE_URL',
   ];
   const saved: Record<string, string | undefined> = {};
 
@@ -69,5 +71,17 @@ describe('openai-compat LLM provider', () => {
     const provider = await create(config, 'groq');
     const models = await provider.models();
     expect(models).toEqual([]);
+  });
+
+  test('returns provider with correct name for deepinfra', async () => {
+    process.env.DEEPINFRA_API_KEY = 'test-deepinfra-key';
+    const provider = await create(config, 'deepinfra');
+    expect(provider.name).toBe('deepinfra');
+  });
+
+  test('stub chat() throws when no API key (deepinfra)', async () => {
+    const provider = await create(config, 'deepinfra');
+    const iter = provider.chat({ model: 'test', messages: [] });
+    await expect(iter.next()).rejects.toThrow('DEEPINFRA_API_KEY');
   });
 });
