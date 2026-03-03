@@ -1,5 +1,13 @@
 # Scheduler Provider Journal
 
+## [2026-03-03 15:23] — Execute plainjob scheduler acceptance tests
+
+**Task:** Run all 12 acceptance tests from `tests/acceptance/plainjob-scheduler/test-plan.md`
+**What I did:** Executed 8 structural tests (source file reads), 2 behavioral tests (live server + chat), 2 integration tests (server restart persistence). All unit tests (35) also confirmed passing via vitest.
+**Files touched:** `tests/acceptance/plainjob-scheduler/results.md` (created)
+**Outcome:** Success — 12/12 tests passed. No failures, no fixes needed.
+**Notes:** PlainJob scheduler implementation is fully compliant with its plan document. SQLiteJobStore, provider wiring, shared utility reuse, tier boundary enforcement, persistence, and rehydration all verified.
+
 ## [2026-03-03 09:30] — Design acceptance tests for plainjob scheduler
 
 **Task:** Design acceptance tests for the plainjob scheduler feature against its plan document
