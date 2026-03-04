@@ -1,10 +1,10 @@
 # Workflow
 
-### Incomplete optional dependency stubs in package-lock.json break `npm ci`
+### npm 11.x requires complete lock file entries for ALL declared optional dependencies
 **Date:** 2026-03-04
-**Context:** CI failed on every PR with "Missing: sqlite-vec-linux-arm64@ from lock file". The lock file had an incomplete nested stub entry (`{"optional": true}` with no version/resolved/integrity) for a platform-specific optional dependency that was never published to npm.
-**Lesson:** When `npm ci` reports "Missing: <package>@ from lock file", check if the package entry in `package-lock.json` is complete. Platform-specific optional dependencies can end up as broken stubs if (a) `npm install` was run on a different platform, or (b) the package version was never published. Remove the stub entry — npm will skip unavailable optional deps gracefully when the entry is absent, but a malformed stub causes a sync validation failure.
-**Tags:** npm, package-lock, optional-dependencies, ci, sqlite-vec
+**Context:** CI (Node 24 / npm 11.x) failed on every PR with "Missing: sqlite-vec-linux-arm64@ from lock file". The upstream `sqlite-vec@0.1.6` declares `sqlite-vec-linux-arm64@0.1.6` as an optional dependency, but that version was never published to npm. Simply removing the broken stub worked on npm 10.x but not npm 11.x.
+**Lesson:** npm 11.x cross-references every package's declared optionalDependencies against the lock file entries, even for non-matching platforms. If an optional dependency was never published, you need BOTH: (1) an `overrides` entry in package.json to map the non-existent version to an available one, and (2) a complete lock file entry with version/resolved/integrity. Just removing a broken stub is insufficient — npm 11.x will still look for the package because the parent declares it. Always test lock file fixes against the same npm version CI uses.
+**Tags:** npm, npm-11, package-lock, optional-dependencies, overrides, ci, sqlite-vec
 
 ### Explicit `permissions` in GitHub Actions replaces ALL defaults — always include `contents: read`
 **Date:** 2026-02-25
