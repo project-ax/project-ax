@@ -136,4 +136,5 @@
 
 ### workflow
 
+- npm 11.x requires complete lock file entries for ALL declared optional dependencies [workflow/entries.md](workflow/entries.md)
 - Explicit permissions in GitHub Actions replaces ALL defaults — always include contents: read [workflow/entries.md](workflow/entries.md)
