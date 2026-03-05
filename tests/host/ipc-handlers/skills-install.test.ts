@@ -1,6 +1,12 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { createIPCHandler, type IPCContext } from '../../../src/host/ipc-server.js';
 import type { ProviderRegistry } from '../../../src/types.js';
+
+// Mock binExists so tests don't depend on locally installed binaries
+vi.mock('../../../src/utils/bin-exists.js', () => ({
+  binExists: vi.fn(async () => false),
+  BIN_NAME_REGEX: /^[a-zA-Z0-9_.-]+$/,
+}));
 
 const ctx: IPCContext = { sessionId: 'test-session', agentId: 'test-agent' };
 
