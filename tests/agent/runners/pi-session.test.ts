@@ -282,7 +282,10 @@ describe('pi-session (IPC mode — no proxy)', () => {
   test('write_file tool creates files in the workspace directory (IPC)', async () => {
     const { runPiSession } = await import('../../../src/agent/runners/pi-session.js');
 
-    // Mock LLM that returns a write_file tool call, then a text response
+    // Mock LLM that returns a write_file tool call, then a text response.
+    // The write_file tool is now an IPC tool that routes to the host via
+    // sandbox_write_file. The mock IPC server simulates the host handler
+    // by writing the file to the workspace.
     let callCount = 0;
     mockServer.close();
     socketPath = join(tempDir, 'ipc-write.sock');
@@ -300,11 +303,11 @@ describe('pi-session (IPC mode — no proxy)', () => {
           if (request.action === 'llm_call') {
             callCount++;
             if (callCount === 1) {
-              // First call: tell the agent to write a file
+              // First call: tell the agent to write a file via the IPC write_file tool
               response = {
                 ok: true,
                 chunks: [
-                  { type: 'tool_use', toolCall: { id: 'call_1', name: 'write', args: { path: 'hello.txt', content: 'hello from tool' } } },
+                  { type: 'tool_use', toolCall: { id: 'call_1', name: 'write_file', args: { path: 'hello.txt', content: 'hello from tool' } } },
                   { type: 'done', usage: { inputTokens: 10, outputTokens: 20 } },
                 ],
               };
@@ -318,6 +321,15 @@ describe('pi-session (IPC mode — no proxy)', () => {
                 ],
               };
             }
+          } else if (request.action === 'sandbox_write_file') {
+            // Simulate the host-side sandbox_write_file handler:
+            // write the file to the workspace
+            const filePath = join(workspace, request.path);
+            const { mkdirSync: mkdirSyncLocal, writeFileSync: writeFileSyncLocal } = require('node:fs');
+            const { dirname } = require('node:path');
+            mkdirSyncLocal(dirname(filePath), { recursive: true });
+            writeFileSyncLocal(filePath, request.content, 'utf-8');
+            response = { ok: true, written: true, path: request.path };
           } else {
             response = { ok: true };
           }
@@ -347,7 +359,7 @@ describe('pi-session (IPC mode — no proxy)', () => {
       process.stdout.write = originalWrite;
     }
 
-    // The file must exist in the workspace, not in process.cwd()
+    // The file must exist in the workspace (written via IPC sandbox_write_file handler)
     const filePath = join(workspace, 'hello.txt');
     expect(existsSync(filePath)).toBe(true);
     expect(readFileSync(filePath, 'utf-8')).toBe('hello from tool');
@@ -578,10 +590,10 @@ describe('pi-session (proxy mode — LLM via Anthropic SDK)', () => {
       callCount++;
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       if (callCount === 1) {
-        // First call: return a tool_use (write tool)
+        // First call: return a tool_use (write_file IPC tool)
         res.end(buildSSETextResponse('', {
           stop_reason: 'tool_use',
-          tool_use: [{ id: 'tc_1', name: 'write', input: { path: 'proxy-test.txt', content: 'written via proxy' } }],
+          tool_use: [{ id: 'tc_1', name: 'write_file', input: { path: 'proxy-test.txt', content: 'written via proxy' } }],
         }));
       } else {
         // Second call (after tool result): text response
@@ -592,6 +604,49 @@ describe('pi-session (proxy mode — LLM via Anthropic SDK)', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-test-tools';
     proxyResult = startAnthropicProxy(proxySocketPath, `http://localhost:${port}`);
     await new Promise<void>((r) => proxyResult.server.on('listening', r));
+
+    // Replace the generic mock IPC server with one that handles sandbox_write_file
+    mockIPC.close();
+    ipcSocketPath = join(tempDir, 'ipc-proxy-write.sock');
+    const server = createServer((socket: Socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('data', (data: Buffer) => {
+        buffer = Buffer.concat([buffer, data]);
+        while (buffer.length >= 4) {
+          const msgLen = buffer.readUInt32BE(0);
+          if (buffer.length < 4 + msgLen) break;
+          const raw = buffer.subarray(4, 4 + msgLen).toString('utf-8');
+          buffer = buffer.subarray(4 + msgLen);
+          const request = JSON.parse(raw);
+          let response: Record<string, unknown>;
+          if (request.action === 'llm_call') {
+            response = {
+              ok: true,
+              chunks: [
+                { type: 'text', content: 'Hello from mock LLM via IPC.' },
+                { type: 'done', usage: { inputTokens: 10, outputTokens: 8 } },
+              ],
+            };
+          } else if (request.action === 'sandbox_write_file') {
+            // Simulate the host-side sandbox_write_file handler
+            const filePath = join(workspace, request.path);
+            const { mkdirSync: mkdirSyncLocal, writeFileSync: writeFileSyncLocal } = require('node:fs');
+            const { dirname } = require('node:path');
+            mkdirSyncLocal(dirname(filePath), { recursive: true });
+            writeFileSyncLocal(filePath, request.content, 'utf-8');
+            response = { ok: true, written: true, path: request.path };
+          } else {
+            response = { ok: true };
+          }
+          const responseBuf = Buffer.from(JSON.stringify(response), 'utf-8');
+          const lenBuf = Buffer.alloc(4);
+          lenBuf.writeUInt32BE(responseBuf.length, 0);
+          socket.write(Buffer.concat([lenBuf, responseBuf]));
+        }
+      });
+    });
+    server.listen(ipcSocketPath);
+    mockIPC = { server, close: () => server.close() };
 
     const { runPiSession } = await import('../../../src/agent/runners/pi-session.js');
 
@@ -615,7 +670,7 @@ describe('pi-session (proxy mode — LLM via Anthropic SDK)', () => {
     // Agent should have made at least 2 LLM calls (tool_use + final)
     expect(callCount).toBeGreaterThanOrEqual(2);
 
-    // The file should exist in the workspace (tool executed locally, not via IPC)
+    // The file should exist in the workspace (tool executed via IPC sandbox_write_file)
     const filePath = join(workspace, 'proxy-test.txt');
     expect(existsSync(filePath)).toBe(true);
     expect(readFileSync(filePath, 'utf-8')).toBe('written via proxy');

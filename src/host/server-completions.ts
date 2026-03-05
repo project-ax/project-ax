@@ -50,6 +50,8 @@ export interface CompletionDeps {
   verbose?: boolean;
   fileStore?: FileStore;
   eventBus?: EventBus;
+  /** Maps sessionId → workspace directory path. Shared with sandbox tool IPC handlers. */
+  workspaceMap?: Map<string, string>;
 }
 
 export interface ExtractedFile {
@@ -271,6 +273,13 @@ export async function processCompletion(
       mkdirSync(workspace, { recursive: true });
     } else {
       workspace = mkdtempSync(join(tmpdir(), 'ax-ws-'));
+    }
+
+    // Register workspace for sandbox tool IPC handlers.
+    // The agent sends requestId as its sessionId in IPC calls,
+    // so handlers can look up the workspace by sessionId.
+    if (deps.workspaceMap) {
+      deps.workspaceMap.set(requestId, workspace);
     }
 
     // Build conversation history: prefer DB-persisted history for persistent sessions,
@@ -755,6 +764,11 @@ export async function processCompletion(
     sessionCanaries.delete(queued.session_id);
     return { responseContent: 'Internal processing error', finishReason: 'stop' };
   } finally {
+    // Deregister workspace from the shared map so sandbox tool handlers
+    // can't access it after the agent finishes.
+    if (deps.workspaceMap) {
+      deps.workspaceMap.delete(requestId);
+    }
     if (proxyCleanup) {
       try { proxyCleanup(); } catch {
         reqLogger.debug('proxy_cleanup_failed');

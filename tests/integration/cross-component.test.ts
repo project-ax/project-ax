@@ -374,10 +374,13 @@ describe('Tool Catalog → IPC Handler Completeness', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ax-cross-'));
     const mocks = createMockProviders(tmpDir);
+    const workspaceDir = join(tmpDir, 'workspace');
+    mkdirSync(workspaceDir, { recursive: true });
     handleIPC = createIPCHandler(mocks.providers, {
       agentDir: join(tmpDir, 'agents', 'main'),
       agentName: 'main',
       profile: 'balanced',
+      workspaceMap: new Map([[ctx.sessionId, workspaceDir]]),
     });
   });
 

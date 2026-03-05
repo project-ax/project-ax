@@ -23,7 +23,6 @@ import type {
 } from '@mariozechner/pi-ai';
 import {
   createAgentSession,
-  createCodingTools,
   SessionManager,
   AuthStorage,
 } from '@mariozechner/pi-coding-agent';
@@ -337,22 +336,14 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   // Build system prompt via shared prompt builder
   const { systemPrompt, toolFilter } = buildSystemPrompt(config);
 
-  // Create coding tools bound to the workspace directory.
-  // IMPORTANT: codingTools (the pre-instantiated export) captures process.cwd()
-  // at import time via closures — those tools would write to the wrong directory.
-  // createCodingTools(cwd) creates fresh tools bound to the workspace.
-  // Local tools (write, read, edit) operate on /scratch (ephemeral, cwd).
-  // The IPC 'workspace' tool handles persistent tiers (agent, user).
-  const tools = createCodingTools(config.workspace);
-
-  // Create IPC tool definitions for pi-coding-agent
+  // All tools (including bash/file ops) now come through IPC to the host process.
+  // In local mode, sandbox tool handlers execute directly on the host filesystem.
+  // In k8s mode (Phase 2), they'll dispatch to sandbox pods via NATS.
   const ipcToolDefs = createIPCToolDefinitions(client, { userId: config.userId, filter: toolFilter });
 
   logger.debug('session_config', {
     systemPromptLength: systemPrompt.length,
-    codingToolCount: tools.length,
     ipcToolCount: ipcToolDefs.length,
-    codingToolNames: tools.map(t => t.name),
     ipcToolNames: ipcToolDefs.map(t => t.name),
   });
 
@@ -367,7 +358,7 @@ export async function runPiSession(config: AgentConfig): Promise<void> {
   logger.debug('creating_agent_session');
   const { session } = await createAgentSession({
     model: activeModel,
-    tools,
+    tools: [],
     customTools: ipcToolDefs,
     cwd: config.workspace,
     authStorage,

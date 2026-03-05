@@ -19,6 +19,7 @@ import { createGovernanceHandlers } from './ipc-handlers/governance.js';
 import { createImageHandlers } from './ipc-handlers/image.js';
 import { createPluginHandlers } from './ipc-handlers/plugin.js';
 import { createOrchestrationHandlers } from './ipc-handlers/orchestration.js';
+import { createSandboxToolHandlers } from './ipc-handlers/sandbox-tools.js';
 import { AgentRegistry } from './agent-registry.js';
 import type { Orchestrator } from './orchestration/orchestrator.js';
 
@@ -78,6 +79,8 @@ export interface IPCHandlerOptions {
   eventBus?: EventBus;
   /** Orchestrator instance for agent orchestration IPC actions. */
   orchestrator?: Orchestrator;
+  /** Maps sessionId → workspace directory path. Populated by processCompletion(), consumed by sandbox tool handlers. */
+  workspaceMap?: Map<string, string>;
 }
 
 export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerOptions) {
@@ -111,6 +114,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
     }),
     ...createPluginHandlers(providers),
     ...(opts?.orchestrator ? createOrchestrationHandlers(opts.orchestrator) : {}),
+    ...(opts?.workspaceMap ? createSandboxToolHandlers(providers, { workspaceMap: opts.workspaceMap }) : {}),
   };
 
   return async function handleIPC(raw: string, ctx: IPCContext): Promise<string> {

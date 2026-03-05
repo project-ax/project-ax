@@ -4,6 +4,7 @@ Agent process: runner, tools, prompt builder, MCP server, tool catalog.
 
 ## Entries
 
+- 2026-03-04 19:05 — Move bash/file tools from local to IPC (Phase 1, Task 3) [tools.md](tools.md)
 - 2026-02-28 22:48 — Update all tests for consolidated tool names (Task 6) [tools.md](tools.md)
 - 2026-02-28 22:30 — Consolidate MCP server tools (28 -> 10) [tools.md](tools.md)
 - 2026-02-28 22:30 — Update prompt modules with consolidated tool names [tools.md](tools.md)

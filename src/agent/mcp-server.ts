@@ -301,6 +301,42 @@ export function createIPCMcpServer(client: IPCClient, opts?: MCPServerOptions): 
       },
       (args) => ipcCall('image_generate', args),
     ),
+
+    // ── Sandbox (singleton tools for bash/file ops) ──
+    tool('bash',
+      'Execute a bash command in the workspace directory.',
+      {
+        command: z.string().describe('The bash command to execute'),
+      },
+      (args) => ipcCall('sandbox_bash', args),
+    ),
+
+    tool('read_file',
+      'Read the contents of a file in the workspace.',
+      {
+        path: z.string().describe('Relative path to the file'),
+      },
+      (args) => ipcCall('sandbox_read_file', args),
+    ),
+
+    tool('write_file',
+      'Write content to a file in the workspace.',
+      {
+        path: z.string().describe('Relative path to the file'),
+        content: z.string().describe('Content to write'),
+      },
+      (args) => ipcCall('sandbox_write_file', args),
+    ),
+
+    tool('edit_file',
+      'Replace a string in a file.',
+      {
+        path: z.string().describe('Relative path to the file'),
+        old_string: z.string().describe('Text to find'),
+        new_string: z.string().describe('Replacement text'),
+      },
+      (args) => ipcCall('sandbox_edit_file', args),
+    ),
   ];
 
   // Filter tools if context was provided

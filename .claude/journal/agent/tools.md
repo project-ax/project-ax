@@ -2,6 +2,14 @@
 
 Tool catalog consolidation, MCP server tools, tool definition generation, prompt module updates.
 
+## [2026-03-04 19:05] — Move bash/file tools from local to IPC (Phase 1, Task 3)
+
+**Task:** Move bash, read_file, write_file, edit_file tools from local (in-process) execution to IPC routing through the host process, as groundwork for k8s sandbox pod dispatch.
+**What I did:** Added 4 sandbox tools to TOOL_CATALOG (tool-catalog.ts), 4 Zod schemas (ipc-schemas.ts), created host-side IPC handlers (sandbox-tools.ts) with safePath containment, registered handlers in ipc-server.ts with shared workspaceMap, wired workspace registration/deregistration in server-completions.ts and server.ts, removed local-tools.ts (now unused), updated pi-session.ts to pass tools: [] (no built-in coding tools), added sandbox tools to mcp-server.ts, and updated all affected tests.
+**Files touched:** Created: src/host/ipc-handlers/sandbox-tools.ts, tests/host/ipc-handlers/sandbox-tools.test.ts. Deleted: src/agent/local-tools.ts, tests/agent/local-tools.test.ts. Modified: src/agent/tool-catalog.ts, src/ipc-schemas.ts, src/host/ipc-server.ts, src/host/server-completions.ts, src/host/server.ts, src/agent/runners/pi-session.ts, src/agent/mcp-server.ts, tests/agent/tool-catalog.test.ts, tests/agent/ipc-tools.test.ts, tests/sandbox-isolation.test.ts, tests/agent/mcp-server.test.ts, tests/integration/cross-component.test.ts, tests/agent/runners/pi-session.test.ts
+**Outcome:** Success — build passes, 2332/2335 tests pass (3 pre-existing failures in skills-install unrelated to this change)
+**Notes:** Key design decision: shared workspaceMap (Map<string, string>) flows from server.ts to both completionDeps (register/deregister) and createIPCHandler (consume). The requestId used in processCompletion becomes sessionId in IPC context. Pi-session tests needed tool name updates (write -> write_file) and mock IPC servers for sandbox_write_file.
+
 ## [2026-02-28 22:30] — Update prompt modules with consolidated tool names
 
 **Task:** Update 6 prompt modules in `src/agent/prompt/modules/` to reference new consolidated tool names instead of old individual IPC tool names

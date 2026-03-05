@@ -5,7 +5,7 @@ description: Use when modifying the sandboxed agent process — runner, IPC clie
 
 ## Overview
 
-The agent subsystem runs inside a sandboxed process (no network, no credentials). It receives a user message + history via stdin, builds a system prompt from modular components, registers local and IPC tools with context-aware filtering, then runs an LLM agent loop that streams text output to stdout. All LLM calls and privileged operations route through IPC to the trusted host.
+The agent subsystem runs inside a sandboxed process (no network, no credentials). It receives a user message + history via stdin, builds a system prompt from modular components, registers IPC tools with context-aware filtering, then runs an LLM agent loop that streams text output to stdout. All LLM calls, tool operations (including bash/file ops), and privileged operations route through IPC to the trusted host.
 
 ## Key Files
 
@@ -15,7 +15,7 @@ The agent subsystem runs inside a sandboxed process (no network, no credentials)
 | `src/agent/ipc-client.ts` | Length-prefixed Unix socket IPC with heartbeat keep-alive | `IPCClient` (connect, call, disconnect, reconnect) |
 | `src/agent/tool-catalog.ts` | Single source of truth for tool metadata and context-aware filtering | `TOOL_CATALOG`, `filterTools()`, `ToolFilterContext`, `normalizeOrigin()`, `normalizeIdentityFile()` |
 | `src/agent/ipc-tools.ts` | Tools that proxy to host via IPC (pi-session runner) | `createIPCTools(client, opts)` |
-| `src/agent/local-tools.ts` | Sandbox-local file/bash tools | `createLocalTools(workspace)` |
+| `src/host/ipc-handlers/sandbox-tools.ts` | IPC handlers for bash/file ops (host-side) | `createSandboxToolHandlers()` |
 | `src/agent/identity-loader.ts` | Reads SOUL.md, IDENTITY.md, etc. from agentDir | `loadIdentityFiles(opts)` |
 | `src/agent/agent-setup.ts` | Shared setup: prompt building, event subscription, tool filtering | `buildSystemPrompt()`, `subscribeAgentEvents()` |
 | `src/agent/prompt/builder.ts` | Assembles system prompt from ordered modules | `PromptBuilder`, `PromptResult` |
@@ -34,7 +34,7 @@ The agent subsystem runs inside a sandboxed process (no network, no credentials)
 4. Runner connects `IPCClient` to host Unix socket
 5. Loads identity files from `agentDir` via `loadIdentityFiles()`
 6. `buildSystemPrompt()` builds both the system prompt AND a `ToolFilterContext` for context-aware tool filtering
-7. Creates local tools (`createLocalTools`) + IPC tools (catalog-based, filtered)
+7. Creates IPC tools (catalog-based, filtered) — sandbox tools (bash, read_file, write_file, edit_file) route through IPC to host-side handlers
 8. Optionally compacts history if exceeding 75% of context window via IPC LLM summarization
 9. Creates agent (pi-coding-agent AgentSession or Claude Code query) with tools, prompt, history, and stream function
 10. Streams response to stdout
@@ -47,8 +47,8 @@ The agent subsystem runs inside a sandboxed process (no network, no credentials)
   - No skills loaded -> no skill tools
   - No workspace tiers -> no workspace tools
   - No governance mode -> no governance tools
-- **Local tools** (`local-tools.ts`): Execute inside sandbox -- `bash`, `read_file`, `write_file`, `edit_file`. All file ops use `safePath()` to enforce workspace containment.
-- **IPC tools** (`ipc-tools.ts` for pi-session, `mcp-server.ts` for claude-code): Proxy to host -- `memory_*`, `web_*`, `audit_query`, `identity_write`, `user_write`, `scheduler_*`, `skill_*`, `skill_import`, `skill_search`, `agent_delegate`, `image_generate`, `workspace_*`, `identity_propose`, `proposal_list`, `agent_registry_list`. Each calls `client.call({action, ...params})`.
+- **IPC tools** (`ipc-tools.ts` for pi-session, `mcp-server.ts` for claude-code): All tools proxy to host via IPC -- `memory_*`, `web_*`, `audit_query`, `identity_write`, `user_write`, `scheduler_*`, `skill_*`, `skill_import`, `skill_search`, `agent_delegate`, `image_generate`, `workspace_*`, `identity_propose`, `proposal_list`, `agent_registry_list`, `sandbox_bash`, `sandbox_read_file`, `sandbox_write_file`, `sandbox_edit_file`. Each calls `client.call({action, ...params})`.
+- **Sandbox tools** (host-side `src/host/ipc-handlers/sandbox-tools.ts`): `bash`, `read_file`, `write_file`, `edit_file` route through IPC to the host process which executes them in the workspace directory. Uses `safePath()` for path containment. Host resolves workspace via a shared `workspaceMap` (Map<sessionId, path>).
 - **AgentTool pattern** (pi-session): `{name, label, description, parameters: Type.Object({...}), execute(id, params)}`. Parameters use TypeBox (`@sinclair/typebox`), NOT Zod.
 - **MCP tool pattern** (claude-code): Zod-based tool definitions wrapped in `tool()` from Agent SDK.
 - **LLM routing**: Via proxy (Anthropic SDK over Unix socket) if `--proxy-socket` is provided, else IPC. Never direct API calls from the agent.
@@ -94,7 +94,7 @@ Uses `createAgentSession()` from `@mariozechner/pi-coding-agent`. Two LLM transp
 - **Proxy mode** (if `--proxy-socket`): Direct Anthropic SDK calls, credentials injected by proxy
 - **IPC mode**: LLM calls route through host via IPC (no credentials in container)
 
-Both modes support coding tools via `createCodingTools()`. Non-LLM tools (memory, web, audit, skills, delegation) always use IPC. Passes `compactHistory()` if history exceeds 75% of context window.
+All tools (including bash/file ops) route through IPC to the host. Passes `compactHistory()` if history exceeds 75% of context window.
 
 ### claude-code (`claude-code.ts`)
 
@@ -126,10 +126,12 @@ Supports inline image blocks via `buildSDKPrompt()` which returns either a plain
 6. Add test in `tests/agent/prompt/modules/`
 7. If the module should affect tool availability, update `ToolFilterContext` logic in `buildSystemPrompt()` and `filterTools()`
 
-**Adding a local tool:**
-1. Add tool object to the array in `src/agent/local-tools.ts`
-2. Use `safePath(workspace, path)` for any file access
-3. Add test in `tests/agent/local-tools.test.ts`
+**Adding a sandbox tool (bash/file ops):**
+1. Add tool spec to `TOOL_CATALOG` in `src/agent/tool-catalog.ts` with `category: 'sandbox'` and `singletonAction: 'sandbox_<name>'`
+2. Add Zod schema in `src/ipc-schemas.ts` with `ipcAction('sandbox_<name>', {...})`
+3. Add handler in `src/host/ipc-handlers/sandbox-tools.ts` using `safePath()` for file access
+4. Add MCP tool definition in `src/agent/mcp-server.ts` (Zod-based)
+5. Add test in `tests/host/ipc-handlers/sandbox-tools.test.ts`
 
 ## Gotchas
 
@@ -139,7 +141,7 @@ Supports inline image blocks via `buildSDKPrompt()` which returns either a plain
 - **Heartbeat keep-alive**: IPC calls reset their timeout on each heartbeat frame. Don't ignore `_heartbeat` frames in response parsing.
 - **LLM calls never go direct**: All LLM calls route through either the proxy (Anthropic SDK over Unix socket) or IPC. The agent has no API keys.
 - **TypeBox for tool params, Zod for IPC schemas**: Don't mix them. Tools use `Type.Object(...)`, IPC uses `z.strictObject(...)`.
-- **`safePath()` is mandatory**: Every local tool file operation must go through `safePath()` to prevent workspace escape.
+- **`safePath()` is mandatory**: Every sandbox tool file operation must go through `safePath()` to prevent workspace escape. Sandbox tools now route through IPC to host-side handlers in `src/host/ipc-handlers/sandbox-tools.ts`.
 - **Strict IPC schemas reject unknown fields**: Adding a field to an IPC call without updating the Zod schema silently fails (`{ok: false}`).
 - **Identity loader never throws**: Missing files return `''`. Check content length, not for exceptions.
 - **Context-aware tool filtering**: Excluded prompt modules must have corresponding category filters in `filterTools()`.

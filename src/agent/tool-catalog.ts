@@ -15,7 +15,7 @@ import { Type, type TSchema } from '@sinclair/typebox';
 export type ToolCategory =
   | 'memory' | 'web' | 'audit' | 'identity'
   | 'scheduler' | 'skill' | 'delegation' | 'image'
-  | 'workspace' | 'governance';
+  | 'workspace' | 'governance' | 'sandbox';
 
 export interface ToolSpec {
   name: string;
@@ -379,6 +379,52 @@ export const TOOL_CATALOG: readonly ToolSpec[] = [
     category: 'image',
     timeoutMs: 120_000,
     singletonAction: 'image_generate',
+  },
+
+  // ── Sandbox (singleton tools for bash/file ops) ──
+  {
+    name: 'bash',
+    label: 'Run Command',
+    description: 'Execute a bash command in the workspace directory.',
+    parameters: Type.Object({
+      command: Type.String({ description: 'The bash command to execute' }),
+    }),
+    category: 'sandbox',
+    timeoutMs: 60_000,
+    singletonAction: 'sandbox_bash',
+  },
+  {
+    name: 'read_file',
+    label: 'Read File',
+    description: 'Read the contents of a file in the workspace.',
+    parameters: Type.Object({
+      path: Type.String({ description: 'Relative path to the file' }),
+    }),
+    category: 'sandbox',
+    singletonAction: 'sandbox_read_file',
+  },
+  {
+    name: 'write_file',
+    label: 'Write File',
+    description: 'Write content to a file in the workspace.',
+    parameters: Type.Object({
+      path: Type.String({ description: 'Relative path to the file' }),
+      content: Type.String({ description: 'Content to write' }),
+    }),
+    category: 'sandbox',
+    singletonAction: 'sandbox_write_file',
+  },
+  {
+    name: 'edit_file',
+    label: 'Edit File',
+    description: 'Replace a string in a file.',
+    parameters: Type.Object({
+      path: Type.String({ description: 'Relative path to the file' }),
+      old_string: Type.String({ description: 'Text to find' }),
+      new_string: Type.String({ description: 'Replacement text' }),
+    }),
+    category: 'sandbox',
+    singletonAction: 'sandbox_edit_file',
   },
 ] as const;
 

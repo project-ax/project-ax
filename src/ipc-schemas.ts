@@ -389,6 +389,27 @@ export const AgentOrchTimelineSchema = ipcAction('agent_orch_timeline', {
   eventType: safeString(200).optional(),
 });
 
+// ── Sandbox Tools ────────────────────────────────────
+
+export const SandboxBashSchema = ipcAction('sandbox_bash', {
+  command: safeString(100_000),
+});
+
+export const SandboxReadFileSchema = ipcAction('sandbox_read_file', {
+  path: safeString(1024),
+});
+
+export const SandboxWriteFileSchema = ipcAction('sandbox_write_file', {
+  path: safeString(1024),
+  content: safeString(500_000),
+});
+
+export const SandboxEditFileSchema = ipcAction('sandbox_edit_file', {
+  path: safeString(1024),
+  old_string: safeString(500_000),
+  new_string: safeString(500_000),
+});
+
 // ── Plugin Management ────────────────────────────────
 
 export const PluginListSchema = ipcAction('plugin_list', {});

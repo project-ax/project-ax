@@ -1,5 +1,11 @@
 # Architecture
 
+### Shared Map pattern for cross-concern state in server.ts
+**Date:** 2026-03-04
+**Context:** Moving sandbox tools to IPC required the host-side handlers to resolve the workspace directory for each session, but workspace paths are set up in processCompletion and consumed in IPC handlers.
+**Lesson:** When two subsystems (completionDeps and IPC handlers) need shared per-session state, create a `Map<string, T>` in server.ts and pass it to both. The completion flow registers/deregisters entries, and handlers look them up by sessionId. The key insight is that `requestId` from processCompletion becomes `sessionId` in IPC context (it's passed via the stdin payload). Always clean up Map entries in a `finally` block.
+**Tags:** architecture, ipc, workspace, session, state-sharing
+
 ### marked v17 renderer uses token objects, not positional args
 **Date:** 2026-03-03
 **Context:** Upgrading marked from v11 to v17 broke the custom CLI markdown renderer

@@ -291,6 +291,10 @@ export async function createServer(
   // Session tracking for canary tokens
   const sessionCanaries = new Map<string, string>();
 
+  // Shared workspace mapping: sessionId → workspace directory.
+  // Populated by processCompletion() before agent spawn, consumed by sandbox tool IPC handlers.
+  const workspaceMap = new Map<string, string>();
+
   // Deduplication
   const deduplicator = new ChannelDeduplicator({
     windowMs: opts.dedupeWindowMs,
@@ -315,6 +319,7 @@ export async function createServer(
     verbose: opts.verbose,
     fileStore,
     eventBus,
+    workspaceMap,
   };
 
   // Delegation callback: spawn a child agent via processCompletion with
@@ -378,6 +383,7 @@ export async function createServer(
     eventBus,
     orchestrator,
     agentRegistry,
+    workspaceMap,
   });
 
   // Webhook path prefix (configurable, defaults to '/webhooks/')
