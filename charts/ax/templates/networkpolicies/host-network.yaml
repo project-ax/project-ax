@@ -27,12 +27,8 @@ spec:
       ports:
         - port: 4222
           protocol: TCP
-    # PostgreSQL
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: {{ include "ax.fullname" . }}-cloud-sql-proxy
-      ports:
+    # PostgreSQL (any provider — Cloud SQL, RDS, self-hosted, in-cluster)
+    - ports:
         - port: 5432
           protocol: TCP
     # External HTTPS (channels: Slack, Discord, etc.)
