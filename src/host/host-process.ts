@@ -1,7 +1,7 @@
 // src/host/host-process.ts — Standalone host pod process for k8s deployment.
 //
-// Handles HTTP requests, SSE streaming, webhooks, admin dashboard, and
-// channel connections. Does NOT run agent conversation loops or make LLM calls.
+// Handles HTTP requests, SSE streaming, webhooks, and channel connections.
+// Does NOT run agent conversation loops or make LLM calls.
 //
 // Instead of calling processCompletion directly, publishes session requests
 // to NATS and subscribes to results/events for the response.
@@ -10,13 +10,16 @@
 
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { existsSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { getLogger } from '../logger.js';
 import { loadConfig } from '../config.js';
 import { loadProviders } from './registry.js';
 import { sendError, sendSSEChunk, readBody } from './server-http.js';
 import type { OpenAIChatRequest, OpenAIStreamChunk } from './server-http.js';
-import { isValidSessionId } from '../paths.js';
+import { isValidSessionId, webhookTransformPath } from '../paths.js';
+import { createWebhookHandler } from './server-webhooks.js';
+import { createWebhookTransform } from './webhook-transform.js';
 import {
   encode, decode,
   sessionRequestSubject, resultSubject, eventSubject,
@@ -57,6 +60,55 @@ async function main(): Promise<void> {
   const modelId = providers.llm.name;
   let draining = false;
 
+  // ── Webhook handler (optional — only if config has webhooks.enabled) ──
+
+  const webhookPrefix = config.webhooks?.path
+    ? (config.webhooks.path.endsWith('/') ? config.webhooks.path : config.webhooks.path + '/')
+    : '/webhooks/';
+
+  const webhookHandler = config.webhooks?.enabled
+    ? createWebhookHandler({
+        config: {
+          token: config.webhooks.token,
+          maxBodyBytes: config.webhooks.max_body_bytes,
+          model: config.webhooks.model,
+          allowedAgentIds: config.webhooks.allowed_agent_ids,
+        },
+        transform: createWebhookTransform(
+          providers.llm,
+          config.webhooks.model ?? config.models?.fast?.[0] ?? config.models?.default?.[0] ?? 'claude-haiku-4-5-20251001',
+        ),
+        dispatch: (result, runId) => {
+          const targetAgent = result.agentId ?? agentType;
+          const sessionRequest: SessionRequest = {
+            type: 'session_request',
+            requestId: runId,
+            sessionId: result.sessionKey ?? `webhook:${runId}`,
+            content: result.message,
+            messages: [{ role: 'user', content: result.message }],
+            stream: false,
+            userId: 'webhook',
+            agentType: targetAgent,
+            model: result.model,
+            persistentSessionId: result.sessionKey,
+          };
+          nc.publish(sessionRequestSubject(targetAgent), encode(sessionRequest));
+        },
+        logger,
+        transformExists: (name) => existsSync(webhookTransformPath(name)),
+        readTransform: (name) => readFileSync(webhookTransformPath(name), 'utf-8'),
+        audit: (entry) => {
+          providers.audit.log({
+            action: entry.action,
+            sessionId: entry.runId ?? 'webhook',
+            args: { webhook: entry.webhook, ip: entry.ip },
+            result: 'success',
+            durationMs: 0,
+          }).catch(() => {});
+        },
+      })
+    : null;
+
   // ── Request Handler ──
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -73,7 +125,7 @@ async function main(): Promise<void> {
 
     const url = req.url ?? '/';
 
-    if (draining && url === '/v1/chat/completions') {
+    if (draining && (url === '/v1/chat/completions' || url.startsWith(webhookPrefix))) {
       sendError(res, 503, 'Server is shutting down');
       return;
     }
@@ -107,6 +159,22 @@ async function main(): Promise<void> {
     // SSE event stream: subscribe to NATS events
     if (url.startsWith('/v1/events') && req.method === 'GET') {
       handleEvents(req, res);
+      return;
+    }
+
+    // Webhooks
+    if (webhookHandler && url.startsWith(webhookPrefix)) {
+      const webhookName = url.slice(webhookPrefix.length).split('?')[0];
+      if (!webhookName) {
+        sendError(res, 404, 'Not found');
+        return;
+      }
+      try {
+        await webhookHandler(req, res, webhookName);
+      } catch (err) {
+        logger.error('webhook_handler_failed', { error: (err as Error).message });
+        if (!res.headersSent) sendError(res, 500, 'Webhook processing failed');
+      }
       return;
     }
 

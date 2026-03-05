@@ -1,5 +1,42 @@
 # Webhooks — Journal
 
+## [2026-03-05 15:30] — Port webhook handler to host-process.ts for k8s
+
+**Task:** Wire webhook routes into host-process.ts so k8s deployments can receive webhooks
+**What I did:**
+1. Added imports: `createWebhookHandler`, `createWebhookTransform`, `webhookTransformPath`, `existsSync`, `readFileSync`
+2. Added webhook handler creation after NATS connection, before HTTP request handler
+3. Wired dispatch callback to publish `SessionRequest` to NATS (fire-and-forget)
+4. Wired `transformExists`/`readTransform` using `webhookTransformPath()` + `existsSync`/`readFileSync`
+5. Wired `audit` to `providers.audit.log()`
+6. Skipped `recordTaint` (taint budget is a local-server concept; in k8s the agent runtime handles taint)
+7. Updated drain check to include webhook prefix
+8. Added webhook route before the 404 fallback
+9. Fixed comment on line 3 (it claimed "admin dashboard" which isn't implemented here)
+**Files touched:** `src/host/host-process.ts`
+**Outcome:** Success — TypeScript compiles, all 2362 tests pass
+**Notes:** Key difference from server.ts: dispatch uses NATS publish instead of `processCompletion()`. No `childConfig` needed since agent runtime pods load their own config.
+
+## [2026-03-05 15:15] — K8s acceptance tests: webhooks not implemented in host-process.ts
+
+**Task:** Re-run LLM webhook transform acceptance tests in the k8s environment
+**What I did:**
+1. Updated acceptance-test skill to use random namespaces for k8s tests (user feedback)
+2. Built docker image, deployed AX to kind cluster (ax-test) in random namespace ax-wh-4f6f3e2f
+3. Ran all 21 tests: 12 structural (env-independent, all pass), 9 behavioral/integration
+4. All 9 behavioral/integration tests returned 404 — host-process.ts has no webhook routes
+5. Wrote results-k8s.md and fixes.md documenting the single critical root cause
+6. Added lesson about dual entry points (server.ts vs host-process.ts)
+7. Tore down k8s namespace after tests
+**Files touched:**
+- `tests/acceptance/llm-webhook-transforms/results-k8s.md` (created)
+- `tests/acceptance/llm-webhook-transforms/fixes.md` (created)
+- `.claude/skills/acceptance-test/skill.md` (updated k8s setup to use random namespaces)
+- `.claude/lessons/host/entries.md` (added dual-entry-point lesson)
+- `.claude/lessons/index.md` (updated)
+**Outcome:** 12/21 pass. All structural pass, all behavioral/integration fail. Single root cause: webhook routes missing from host-process.ts.
+**Notes:** The fix is to port webhook route handling from server.ts to host-process.ts, adapting the dispatch callback to use NATS instead of direct processCompletion.
+
 ## [2026-03-03 02:45] — Address codex PR review comments on webhook PR
 
 **Task:** Fix three issues flagged by the codex reviewer on PR #55.
