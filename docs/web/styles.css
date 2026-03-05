@@ -1,35 +1,35 @@
 /* ── Design Tokens ── */
 :root {
-  --bg-primary: #0a0c10;
-  --bg-secondary: #12151c;
-  --bg-elevated: #1a1e28;
-  --bg-surface3: #222835;
+  --bg-primary: #09090b;
+  --bg-secondary: #111113;
+  --bg-elevated: #1c1c1f;
+  --bg-surface3: #27272a;
 
-  --text-primary: #e2e8f0;
-  --text-secondary: #8892a8;
-  --text-tertiary: #5a6478;
+  --text-primary: #fafaf9;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
 
-  --accent: #06b6d4;
-  --accent-glow: #22d3ee;
-  --accent-subtle: rgba(6, 182, 212, 0.15);
-  --accent-dim: #164e63;
+  --accent: #f59e0b;
+  --accent-glow: #fbbf24;
+  --accent-subtle: rgba(245, 158, 11, 0.15);
+  --accent-dim: #78350f;
 
-  --border: #2a3040;
-  --border-hover: #3a4560;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(255, 255, 255, 0.12);
 
-  --ds-red: #ef4444;
-  --ds-red-dim: #7f1d1d;
+  --ds-red: #fb7185;
+  --ds-red-dim: #4c0519;
   --ds-orange: #f59e0b;
   --ds-orange-dim: #78350f;
-  --ds-green: #22c55e;
-  --ds-green-dim: #14532d;
-  --ds-green-glow: rgba(34, 197, 94, 0.1);
-  --ds-blue: #3b82f6;
-  --ds-blue-dim: #1e3a5f;
-  --ds-cyan: #06b6d4;
-  --ds-cyan-dim: #164e63;
+  --ds-green: #34d399;
+  --ds-green-dim: #064e3b;
+  --ds-green-glow: rgba(52, 211, 153, 0.1);
+  --ds-blue: #38bdf8;
+  --ds-blue-dim: #0c4a6e;
+  --ds-cyan: #38bdf8;
+  --ds-cyan-dim: #0c4a6e;
   --ds-purple: #a78bfa;
-  --ds-yellow: #eab308;
+  --ds-yellow: #f59e0b;
 }
 
 /* ── Reset & Base ── */
@@ -40,9 +40,10 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Outfit', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   line-height: 1.6;
 }
 
@@ -52,7 +53,7 @@ button { border: none; background: none; cursor: pointer; font: inherit; }
 img, svg { display: block; max-width: 100%; }
 
 /* ── Typography helpers ── */
-.font-mono { font-family: 'JetBrains Mono', monospace; }
+.font-mono { font-family: 'IBM Plex Mono', monospace; }
 .font-bold { font-weight: 700; }
 .font-semibold { font-weight: 600; }
 .font-medium { font-weight: 500; }
@@ -65,10 +66,11 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--text-tertiary); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.08) transparent; }
 
 /* ── Animations ── */
 @keyframes pulse {
@@ -196,14 +198,23 @@ img, svg { display: block; max-width: 100%; }
   gap: 0.625rem;
 }
 
-.navbar-logo svg, .navbar-logo img { width: 1.75rem; height: 1.75rem; }
+.navbar-logo-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  background: rgba(245, 158, 11, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.navbar-logo-icon svg { width: 1rem; height: 1rem; color: var(--accent); }
 
 .navbar-logo span {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 600;
   font-size: 15px;
   letter-spacing: -0.02em;
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .navbar-links {
@@ -213,7 +224,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .navbar-links a {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
@@ -236,7 +247,7 @@ img, svg { display: block; max-width: 100%; }
 .navbar-github svg { width: 1rem; height: 1rem; }
 
 .navbar-get-started {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
   font-weight: 600;
   padding: 0.5rem 1rem;
@@ -271,7 +282,7 @@ img, svg { display: block; max-width: 100%; }
 .navbar-mobile.open { display: flex; }
 
 .navbar-mobile a {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   padding: 0.5rem 0.75rem;
   font-size: 12px;
   font-weight: 500;
@@ -281,7 +292,7 @@ img, svg { display: block; max-width: 100%; }
 .navbar-mobile a:hover { color: var(--text-primary); }
 
 .navbar-mobile-cta {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
   font-weight: 600;
   padding: 0.5rem 1rem;
@@ -320,7 +331,7 @@ img, svg { display: block; max-width: 100%; }
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.75rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -340,7 +351,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .hero h1 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 42px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -371,7 +382,7 @@ img, svg { display: block; max-width: 100%; }
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-weight: 600;
   font-size: 13px;
   padding: 0.75rem 1.5rem;
@@ -411,7 +422,7 @@ img, svg { display: block; max-width: 100%; }
   border-radius: 0.5rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 14px;
   color: var(--text-secondary);
 }
@@ -443,7 +454,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .features-header h2 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -491,7 +502,7 @@ img, svg { display: block; max-width: 100%; }
 .feature-icon svg { width: 1.25rem; height: 1.25rem; }
 
 .feature-card h3 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 0.75rem;
@@ -526,7 +537,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .code-showcase-header h2 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -542,7 +553,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .code-showcase-header code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   color: var(--accent);
   font-size: 12px;
   background: var(--bg-elevated);
@@ -569,13 +580,13 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .code-block-header span {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
   color: var(--text-secondary);
 }
 
 .code-copy-btn {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
   padding: 0.25rem 0.625rem;
   border-radius: 0.25rem;
@@ -591,7 +602,7 @@ img, svg { display: block; max-width: 100%; }
 
 .code-block pre {
   padding: 1.5rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
   line-height: 1.8;
   overflow-x: auto;
@@ -636,7 +647,7 @@ img, svg { display: block; max-width: 100%; }
 .deep-dive-icon svg { width: 1.25rem; height: 1.25rem; }
 
 .deep-dive-text h3 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -674,17 +685,17 @@ img, svg { display: block; max-width: 100%; }
 
 .orbit-1 {
   width: 10rem; height: 10rem;
-  border-color: rgba(6, 182, 212, 0.1);
+  border-color: rgba(245, 158, 11, 0.1);
   animation: spin 20s linear infinite;
 }
 .orbit-2 {
   width: 7rem; height: 7rem;
-  border-color: rgba(6, 182, 212, 0.4);
+  border-color: rgba(245, 158, 11, 0.4);
   animation: spin-reverse 15s linear infinite;
 }
 .orbit-3 {
   width: 4rem; height: 4rem;
-  border-color: rgba(6, 182, 212, 0.6);
+  border-color: rgba(245, 158, 11, 0.6);
   animation: spin 10s linear infinite;
 }
 
@@ -692,7 +703,7 @@ img, svg { display: block; max-width: 100%; }
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 50%;
-  background: rgba(6, 182, 212, 0.4);
+  background: rgba(245, 158, 11, 0.4);
   filter: blur(4px);
 }
 
@@ -706,7 +717,7 @@ img, svg { display: block; max-width: 100%; }
   justify-content: center;
   gap: 0.5rem;
   padding: 0 1rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
 }
 
@@ -741,7 +752,7 @@ img, svg { display: block; max-width: 100%; }
   border-radius: 0.5rem;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
   color: var(--text-secondary);
   text-align: center;
@@ -784,7 +795,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .stat-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 2.25rem;
   font-weight: 700;
   color: var(--accent);
@@ -811,7 +822,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .cta-box h2 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -870,14 +881,24 @@ img, svg { display: block; max-width: 100%; }
   margin-bottom: 0.5rem;
 }
 
-.footer-brand-name svg, .footer-brand-name img { width: 1.5rem; height: 1.5rem; }
+.footer-brand-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  background: rgba(245, 158, 11, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.footer-brand-icon svg { width: 0.875rem; height: 0.875rem; color: var(--accent); }
 
 .footer-brand-name span {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 600;
   font-size: 15px;
   letter-spacing: -0.02em;
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .footer-brand p {
@@ -887,7 +908,7 @@ img, svg { display: block; max-width: 100%; }
 }
 
 .footer-col h4 {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
