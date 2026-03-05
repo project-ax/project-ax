@@ -1,0 +1,227 @@
+# NATS JetStream cluster — the single communication layer between all AX components.
+#
+# Session dispatch, event streaming, IPC callbacks, and LLM proxying
+# all flow through NATS JetStream.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  namespace: ax
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+spec:
+  serviceName: nats
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nats
+        app: nats  # Used by NetworkPolicy selectors
+    spec:
+      containers:
+        - name: nats
+          image: nats:2.10-alpine
+          args:
+            - "--config"
+            - "/etc/nats/nats.conf"
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: cluster
+              containerPort: 6222
+            - name: monitor
+              containerPort: 8222
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: nats-config
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+
+# Headless service for StatefulSet DNS (nats-0.nats.ax.svc.cluster.local)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: ax
+  labels:
+    app.kubernetes.io/name: nats
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: nats
+  ports:
+    - name: client
+      port: 4222
+    - name: cluster
+      port: 6222
+    - name: monitor
+      port: 8222
+
+---
+
+# NATS configuration with JetStream enabled and cluster routing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-config
+  namespace: ax
+data:
+  nats.conf: |
+    # Client connections
+    port: 4222
+    max_payload: 8MB
+
+    # JetStream — persistent streams for reliable delivery
+    jetstream {
+      store_dir: /data/jetstream
+      max_mem: 256MB
+      max_file: 8GB
+    }
+
+    # Cluster routing
+    cluster {
+      name: ax-nats
+      port: 6222
+      routes: [
+        nats-route://nats-0.nats.ax.svc.cluster.local:6222
+        nats-route://nats-1.nats.ax.svc.cluster.local:6222
+        nats-route://nats-2.nats.ax.svc.cluster.local:6222
+      ]
+    }
+
+    # Monitoring
+    http_port: 8222
+
+    # Logging
+    debug: false
+    trace: false
+    logtime: true
+
+---
+
+# JetStream streams — created by the init job after NATS starts.
+# These define the message routing topology for AX.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nats-stream-init
+  namespace: ax
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: natsio/nats-box:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              NATS_URL="nats://nats.ax.svc.cluster.local:4222"
+
+              # Wait for NATS to be ready
+              until nats --server=$NATS_URL server ping 2>/dev/null; do
+                echo "Waiting for NATS..."
+                sleep 2
+              done
+
+              # Session dispatch stream
+              nats --server=$NATS_URL stream add SESSIONS \
+                --subjects="session.request.*" \
+                --retention=work \
+                --max-age=5m \
+                --max-msgs=10000 \
+                --discard=old \
+                --storage=memory \
+                --replicas=3 \
+                --ack || true
+
+              # Sandbox task dispatch stream
+              nats --server=$NATS_URL stream add TASKS \
+                --subjects="tasks.sandbox.*" \
+                --retention=work \
+                --max-age=10m \
+                --max-msgs=10000 \
+                --discard=old \
+                --storage=memory \
+                --replicas=3 \
+                --ack || true
+
+              # Results stream (keyed by requestId)
+              nats --server=$NATS_URL stream add RESULTS \
+                --subjects="results.*" \
+                --retention=limits \
+                --max-age=30m \
+                --max-msgs-per-subject=1 \
+                --discard=old \
+                --storage=memory \
+                --replicas=3 \
+                --ack || true
+
+              # Event streaming (EventBus over NATS)
+              nats --server=$NATS_URL stream add EVENTS \
+                --subjects="events.>" \
+                --retention=limits \
+                --max-age=5m \
+                --max-msgs=100000 \
+                --discard=old \
+                --storage=memory \
+                --replicas=3 \
+                --ack || true
+
+              # IPC callbacks (sandbox-to-host)
+              nats --server=$NATS_URL stream add IPC \
+                --subjects="ipc.>" \
+                --retention=work \
+                --max-age=10m \
+                --max-msgs=10000 \
+                --discard=old \
+                --storage=memory \
+                --replicas=3 \
+                --ack || true
+
+              echo "All streams created successfully"

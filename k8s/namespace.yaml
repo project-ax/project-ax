@@ -1,0 +1,7 @@
+# AX namespace — all components live here.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ax
+  labels:
+    app.kubernetes.io/part-of: ax

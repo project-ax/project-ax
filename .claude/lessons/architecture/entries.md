@@ -1,5 +1,11 @@
 # Architecture
 
+### Object literal methods cannot reference sibling methods via `this`
+**Date:** 2026-03-04
+**Context:** nats-sandbox-dispatch.ts had a `close()` method calling `this.release()` in a returned object literal. TypeScript compiled it but `this` was undefined at runtime because object literals don't bind `this` like classes.
+**Lesson:** When a function returns an object literal with methods that need to call each other, extract the shared logic into standalone functions declared before the return statement. Use `release: releasePod` in the object and call `releasePod(reqId)` from `close()`. Never rely on `this` in plain object literals.
+**Tags:** typescript, this-binding, object-literal, nats
+
 ### Shared Map pattern for cross-concern state in server.ts
 **Date:** 2026-03-04
 **Context:** Moving sandbox tools to IPC required the host-side handlers to resolve the workspace directory for each session, but workspace paths are set up in processCompletion and consumed in IPC handlers.

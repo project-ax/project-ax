@@ -1,0 +1,99 @@
+# AX Pool Controller — Maintains warm sandbox pod pools.
+#
+# Runs a reconciliation loop every 5 seconds:
+#   for each tier (light, heavy):
+#     count pods with ax.io/status=warm
+#     create/delete to maintain target count
+#
+# Single replica with leader election.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ax-pool-controller
+  namespace: ax
+  labels:
+    app.kubernetes.io/name: ax-pool-controller
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ax-pool-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ax-pool-controller
+    spec:
+      serviceAccountName: ax-pool-controller
+      containers:
+        - name: controller
+          image: ax/host:latest
+          command: ["node", "dist/pool-controller/main.js"]
+          env:
+            - name: K8S_NAMESPACE
+              value: "ax"
+            - name: LIGHT_MIN_READY
+              value: "2"
+            - name: LIGHT_MAX_READY
+              value: "10"
+            - name: HEAVY_MIN_READY
+              value: "0"
+            - name: HEAVY_MAX_READY
+              value: "3"
+            - name: RECONCILE_INTERVAL_MS
+              value: "5000"
+          ports:
+            - name: metrics
+              containerPort: 9092
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9092
+            initialDelaySeconds: 3
+            periodSeconds: 10
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ax-pool-controller
+  namespace: ax
+
+---
+
+# Pool controller needs full pod lifecycle management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ax-pool-manager
+  namespace: ax
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ax-pool-controller-binding
+  namespace: ax
+subjects:
+  - kind: ServiceAccount
+    name: ax-pool-controller
+    namespace: ax
+roleRef:
+  kind: Role
+  name: ax-pool-manager
+  apiGroup: rbac.authorization.k8s.io

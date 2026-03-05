@@ -1,0 +1,124 @@
+# Network policies for AX — enforce the security model.
+#
+# Sandbox pods can ONLY reach NATS (and DNS for service discovery).
+# No internet access, no database access, no direct pod-to-pod communication.
+
+# Sandbox pods: NATS + DNS egress only, no ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-restrict
+  namespace: ax
+spec:
+  podSelector:
+    matchLabels:
+      ax.io/plane: execution
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    # Allow NATS client connections
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - port: 4222
+          protocol: TCP
+    # Allow DNS resolution (kube-dns)
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+  ingress: []  # No inbound connections to sandbox pods
+
+---
+
+# Agent runtime pods: NATS + PostgreSQL + Anthropic API + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-runtime-network
+  namespace: ax
+spec:
+  podSelector:
+    matchLabels:
+      ax.io/plane: conversation
+  policyTypes:
+    - Egress
+  egress:
+    # NATS
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - port: 4222
+          protocol: TCP
+    # Cloud SQL Proxy (sidecar on localhost or Cloud SQL Auth Proxy service)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloud-sql-proxy
+      ports:
+        - port: 5432
+          protocol: TCP
+    # Anthropic API (external HTTPS)
+    - ports:
+        - port: 443
+          protocol: TCP
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+
+# Host pods: NATS + PostgreSQL + external (channels, webhooks) + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: host-network
+  namespace: ax
+spec:
+  podSelector:
+    matchLabels:
+      ax.io/plane: ingress
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow inbound HTTP from any source (LoadBalancer)
+    - ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    # NATS
+    - to:
+        - podSelector:
+            matchLabels:
+              app: nats
+      ports:
+        - port: 4222
+          protocol: TCP
+    # Cloud SQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloud-sql-proxy
+      ports:
+        - port: 5432
+          protocol: TCP
+    # External HTTPS (channels: Slack, Discord, etc.)
+    - ports:
+        - port: 443
+          protocol: TCP
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

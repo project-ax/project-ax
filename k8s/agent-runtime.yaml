@@ -1,0 +1,114 @@
+# AX Agent Runtime Pods — Conversation processing plane.
+#
+# These pods claim session requests from NATS, run agent conversation loops
+# (pi-session subprocesses), handle LLM calls, and dispatch tool calls to
+# sandbox pods via NATS. They hold API credentials and database access.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ax-agent-runtime
+  namespace: ax
+  labels:
+    app.kubernetes.io/name: ax-agent-runtime
+    app.kubernetes.io/component: conversation
+    ax.io/plane: conversation
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ax-agent-runtime
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ax-agent-runtime
+        app.kubernetes.io/component: conversation
+        ax.io/plane: conversation
+    spec:
+      serviceAccountName: ax-agent-runtime
+      containers:
+        - name: agent-runtime
+          image: ax/host:latest
+          command: ["node", "dist/host/agent-runtime-process.js"]
+          env:
+            - name: NATS_URL
+              value: "nats://nats.ax.svc.cluster.local:4222"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ax-db-credentials
+                  key: url
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ax-api-credentials
+                  key: anthropic-api-key
+            - name: AX_PROVIDERS_STORAGE
+              value: "postgresql"
+            - name: AX_PROVIDERS_EVENTBUS
+              value: "nats"
+            - name: AX_PROVIDERS_SANDBOX
+              value: "k8s-pod"
+            - name: K8S_NAMESPACE
+              value: "ax"
+            - name: K8S_POD_IMAGE
+              value: "ax/agent:latest"
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9091
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          ports:
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+      terminationGracePeriodSeconds: 600  # Allow in-flight completions to finish
+
+---
+
+# ServiceAccount for agent-runtime — needs k8s API access to create sandbox pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ax-agent-runtime
+  namespace: ax
+
+---
+
+# RBAC: agent-runtime can create/delete/watch pods in the ax namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ax-sandbox-manager
+  namespace: ax
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ax-agent-runtime-sandbox
+  namespace: ax
+subjects:
+  - kind: ServiceAccount
+    name: ax-agent-runtime
+    namespace: ax
+roleRef:
+  kind: Role
+  name: ax-sandbox-manager
+  apiGroup: rbac.authorization.k8s.io

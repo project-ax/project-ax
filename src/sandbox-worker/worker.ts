@@ -26,6 +26,7 @@ import type {
   SandboxWriteFileResponse,
   SandboxEditFileResponse,
 } from './types.js';
+import { provisionWorkspace, releaseWorkspace } from './workspace.js';
 
 // Default workspace root inside sandbox pods
 const WORKSPACE_ROOT = process.env.SANDBOX_WORKSPACE_ROOT ?? '/workspace';
@@ -204,11 +205,10 @@ export async function startWorker(options?: {
 
       console.log(`[sandbox-worker] claimed task: requestId=${claim.requestId}, sessionId=${claim.sessionId}`);
 
-      // Set up workspace
-      const workspace = resolve(WORKSPACE_ROOT, claim.sessionId);
-      if (!existsSync(workspace)) {
-        mkdirSync(workspace, { recursive: true });
-      }
+      // Provision workspace: try GCS cache → git clone → empty dir
+      const wsResult = await provisionWorkspace(WORKSPACE_ROOT, claim.sessionId, claim.workspace);
+      const workspace = wsResult.path;
+      console.log(`[sandbox-worker] workspace ready: source=${wsResult.source}, durationMs=${wsResult.durationMs}`);
 
       // Reply with our pod subject so the host can dispatch tool calls directly
       const ack: SandboxClaimResponse = {
@@ -254,6 +254,13 @@ export async function startWorker(options?: {
       if (!released) {
         toolSub.unsubscribe();
       }
+
+      // Clean up workspace on release (commit/push changes if git repo)
+      await releaseWorkspace(workspace, {
+        pushChanges: !!claim.workspace?.gitUrl,
+        updateCache: !!claim.workspace?.gitUrl,
+        cacheKey: claim.workspace?.cacheKey,
+      });
 
       console.log(`[sandbox-worker] released, returning to warm pool`);
     }

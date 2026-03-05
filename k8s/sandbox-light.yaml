@@ -1,0 +1,68 @@
+# AX Sandbox Pod Template — Light tier.
+#
+# Used by the pool controller to create warm sandbox pods.
+# These pods run the sandbox worker (NATS consumer), claim tool tasks,
+# execute bash/file operations, and return results via NATS.
+#
+# Security: gVisor runtime, no credentials, NATS-only network, read-only root.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ax-sandbox-light-PLACEHOLDER  # Pool controller replaces with unique name
+  namespace: ax
+  labels:
+    app.kubernetes.io/name: ax-sandbox
+    app.kubernetes.io/component: execution
+    ax.io/plane: execution
+    ax.io/tier: light
+    ax.io/status: warm  # Pool controller updates: warm → claimed → releasing
+spec:
+  runtimeClassName: gvisor
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  hostNetwork: false
+  activeDeadlineSeconds: 3600  # 1 hour max lifetime per pod
+
+  containers:
+    - name: sandbox
+      image: ax/agent:latest
+      command: ["node", "dist/sandbox-worker/main.js"]
+      env:
+        - name: NATS_URL
+          value: "nats://nats.ax.svc.cluster.local:4222"
+        - name: SANDBOX_TIER
+          value: "light"
+        - name: SANDBOX_WORKSPACE_ROOT
+          value: "/workspace"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+      securityContext:
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        - name: tmp
+          mountPath: /tmp
+
+  volumes:
+    - name: workspace
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: tmp
+      emptyDir:
+        sizeLimit: 256Mi

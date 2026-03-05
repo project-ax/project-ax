@@ -1,0 +1,69 @@
+# AX Sandbox Pod Template — Heavy tier.
+#
+# High-resource sandbox pods for compute-intensive tasks:
+# pandas, numpy, large datasets, heavy builds.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ax-sandbox-heavy-PLACEHOLDER  # Pool controller replaces with unique name
+  namespace: ax
+  labels:
+    app.kubernetes.io/name: ax-sandbox
+    app.kubernetes.io/component: execution
+    ax.io/plane: execution
+    ax.io/tier: heavy
+    ax.io/status: warm
+spec:
+  runtimeClassName: gvisor
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  hostNetwork: false
+  activeDeadlineSeconds: 7200  # 2 hour max lifetime
+
+  # Use Performance compute class for heavy workloads
+  nodeSelector:
+    cloud.google.com/compute-class: Performance
+
+  containers:
+    - name: sandbox
+      image: ax/agent:latest
+      command: ["node", "dist/sandbox-worker/main.js"]
+      env:
+        - name: NATS_URL
+          value: "nats://nats.ax.svc.cluster.local:4222"
+        - name: SANDBOX_TIER
+          value: "heavy"
+        - name: SANDBOX_WORKSPACE_ROOT
+          value: "/workspace"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+      resources:
+        requests:
+          cpu: "4"
+          memory: "16Gi"
+        limits:
+          cpu: "4"
+          memory: "16Gi"
+      securityContext:
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        - name: tmp
+          mountPath: /tmp
+
+  volumes:
+    - name: workspace
+      emptyDir:
+        sizeLimit: 50Gi
+    - name: tmp
+      emptyDir:
+        sizeLimit: 1Gi

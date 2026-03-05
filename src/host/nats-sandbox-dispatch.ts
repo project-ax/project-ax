@@ -147,6 +147,28 @@ export async function createNATSSandboxDispatcher(options?: {
     return pod;
   }
 
+  async function releasePod(requestId: string): Promise<void> {
+    const pod = affinity.get(requestId);
+    if (!pod) return;
+
+    try {
+      await nc.request(
+        pod.podSubject,
+        encode({ type: 'release' } as SandboxToolRequest),
+        { timeout: 10_000 },
+      );
+      logger.debug('pod_released', { requestId, podId: pod.podId });
+    } catch (err) {
+      logger.warn('pod_release_failed', {
+        requestId,
+        podId: pod.podId,
+        error: (err as Error).message,
+      });
+    } finally {
+      affinity.delete(requestId);
+    }
+  }
+
   return {
     async dispatch(
       requestId: string,
@@ -172,27 +194,7 @@ export async function createNATSSandboxDispatcher(options?: {
       return decode<SandboxToolResponse>(response.data);
     },
 
-    async release(requestId: string): Promise<void> {
-      const pod = affinity.get(requestId);
-      if (!pod) return;
-
-      try {
-        await nc.request(
-          pod.podSubject,
-          encode({ type: 'release' } as SandboxToolRequest),
-          { timeout: 10_000 },
-        );
-        logger.debug('pod_released', { requestId, podId: pod.podId });
-      } catch (err) {
-        logger.warn('pod_release_failed', {
-          requestId,
-          podId: pod.podId,
-          error: (err as Error).message,
-        });
-      } finally {
-        affinity.delete(requestId);
-      }
-    },
+    release: releasePod,
 
     hasPod(requestId: string): boolean {
       return affinity.has(requestId);
@@ -200,7 +202,7 @@ export async function createNATSSandboxDispatcher(options?: {
 
     async close(): Promise<void> {
       // Release all claimed pods
-      const releases = [...affinity.keys()].map((reqId) => this.release(reqId));
+      const releases = [...affinity.keys()].map((reqId) => releasePod(reqId));
       await Promise.allSettled(releases);
       await nc.drain();
     },
