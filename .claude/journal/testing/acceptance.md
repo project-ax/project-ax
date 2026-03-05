@@ -2,6 +2,22 @@
 
 Acceptance test skill and framework for validating features against plan design goals.
 
+## [2026-03-05 16:45] — Re-run skipped integration tests for k8s agent compute (IT-1/2/3/4/6)
+
+**Task:** Re-run 5 integration tests that were skipped due to missing LLM API key
+**What I did:** Set up OpenRouter API key in k8s secret, discovered and fixed 4 new issues (FIX-7 through FIX-10), ran all 5 skipped tests
+**Files touched:**
+- `charts/ax/templates/networkpolicies/agent-runtime-network.yaml` (added port 6443 egress)
+- `charts/ax/templates/agent-runtime/deployment.yaml` (added K8S_RUNTIME_CLASS env var)
+- `charts/ax/values.yaml` (added sandbox.runtimeClass)
+- `tests/acceptance/k8s-agent-compute/kind-values.yaml` (runtimeClass: "")
+- `src/host/agent-runtime-process.ts` (override sandbox to subprocess for agent loop)
+- `src/providers/sandbox/k8s-pod.ts` (fix label sanitization)
+- `tests/acceptance/k8s-agent-compute/results.md` (updated with results)
+- `tests/acceptance/k8s-agent-compute/fixes.md` (added FIX-7 through FIX-10)
+**Outcome:** 42/42 tests executed: 40 PASS, 2 PARTIAL, 0 FAIL, 0 SKIPPED
+**Notes:** IT-3 and IT-4 are partial because tool dispatch goes through local subprocess, not NATS sandbox worker pods. The dispatch infrastructure exists but isn't wired into the IPC handler pipeline yet.
+
 ## [2026-03-03 21:51] — Acceptance tests for Skills Install Architecture (24 tests)
 
 **Task:** Run acceptance tests at tests/acceptance/skills-install/test-plan.md
@@ -41,3 +57,19 @@ Acceptance test skill and framework for validating features against plan design 
 - `.claude/journal/testing/index.md` (modified) — added entry reference
 **Outcome:** Success. Skill registers automatically and appears in the skills list. Covers all 52 plan files with a feature reference table, provides test templates for 3 categories, includes auto-start server logic, and produces structured output (test-plan.md, results.md, fixes.md).
 **Notes:** Key design decisions: (1) Tests are markdown not code because LLM responses are non-deterministic — the agent evaluates with judgment. (2) Two-layer verification: structural ground truth (files, DB, audit) plus behavioral intent checks. (3) Auto-start server with health poll. (4) Test plans saved as artifacts so they can be reviewed before execution and re-run later.
+
+## [2026-03-05 11:55] — Kind cluster acceptance tests KT-1 through KT-4
+
+**Task:** Run Kind cluster acceptance tests KT-1 (pods running), KT-2 (NATS streams), KT-3 (PostgreSQL connectivity), KT-4 (health endpoint)
+**What I did:** Executed all four tests against the ax-test namespace on the Kind cluster. KT-1: All 6 running pods confirmed (plus 1 Completed init job). KT-2: Verified 5 NATS JetStream streams (EVENTS, IPC, RESULTS, SESSIONS, TASKS). KT-3: Fixed label selector (pods use `app.kubernetes.io/name` not `app.kubernetes.io/component`) and confirmed both host and agent-runtime pods can query PostgreSQL (`SELECT 1` returns `{"ok":1}`). KT-4: Container lacks wget/curl so used Node.js http module instead; got HTTP 200 `{"status":"ok"}`.
+**Files touched:** No code files modified — read-only acceptance testing
+**Outcome:** All 4 tests PASS. Two adjustments needed: (1) label selectors use `app.kubernetes.io/name=ax-host` and `app.kubernetes.io/name=ax-agent-runtime` instead of `app.kubernetes.io/component=host|agent-runtime`, (2) health check requires Node.js since the container image has no wget/curl.
+**Notes:** The test commands in the plan need updating to use correct label selectors and a Node.js-based health check instead of wget.
+
+## [2026-03-05 12:00] — Kind cluster acceptance tests KT-5 through KT-8
+
+**Task:** Run Kind cluster acceptance tests KT-5 (warm sandbox pods), KT-6 (NATS connectivity), KT-7 (ConfigMap mount), KT-8 (sandbox NATS subscription)
+**What I did:** Ran all four tests. Original test scripts used `app.kubernetes.io/component` label selectors which don't match this cluster's labels (`app.kubernetes.io/name` is used instead). Re-ran KT-6 and KT-7 with corrected selectors. KT-5 and KT-8 failed because the pool controller cannot create sandbox pods — the sandbox pods require RuntimeClass "gvisor" which is not installed on the Kind cluster. The pool controller logs show continuous `scaling_up` attempts followed by HTTP 403 `pod rejected: RuntimeClass "gvisor" not found` errors every ~3 seconds.
+**Files touched:** No code files modified — read-only acceptance testing
+**Outcome:** KT-5: FAIL (no warm sandbox pods — gVisor RuntimeClass missing). KT-6: PASS (all 3 components connect to NATS). KT-7: PASS (ConfigMap mounted at /etc/ax/ax.yaml in all 3 pods). KT-8: FAIL (no sandbox pods exist to check — blocked by gVisor missing).
+**Notes:** The gVisor RuntimeClass is a hard requirement for sandbox pod creation. Kind clusters don't ship with gVisor by default. To fix KT-5/KT-8, either: (1) install gVisor on the Kind node, or (2) make the RuntimeClass configurable/optional in the pool controller for dev/test environments. The pool controller is correctly detecting the deficit (current=0, target=1) and attempting to scale up — the logic works, it's just blocked by a missing cluster prerequisite.

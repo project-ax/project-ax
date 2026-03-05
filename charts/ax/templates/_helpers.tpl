@@ -106,3 +106,14 @@ AX plane label for network policy selectors.
 {{- define "ax.planeLabel" -}}
 ax.io/plane: {{ . }}
 {{- end }}
+
+{{/*
+NATS JetStream stream replicas — matches cluster size, or 1 if clustering disabled.
+*/}}
+{{- define "ax.natsReplicas" -}}
+{{- if .Values.nats.config.cluster.enabled -}}
+{{- .Values.nats.config.cluster.replicas | default 1 -}}
+{{- else -}}
+1
+{{- end -}}
+{{- end }}

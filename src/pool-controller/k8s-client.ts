@@ -105,7 +105,7 @@ export async function createPoolK8sClient(namespace?: string): Promise<PoolK8sCl
           },
         },
         spec: {
-          runtimeClassName: template.runtimeClassName ?? 'gvisor',
+          ...(template.runtimeClassName ? { runtimeClassName: template.runtimeClassName } : {}),
           restartPolicy: 'Never' as const,
           automountServiceAccountToken: false,
           hostNetwork: false,

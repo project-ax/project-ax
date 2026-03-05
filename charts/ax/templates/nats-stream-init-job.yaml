@@ -26,9 +26,10 @@ spec:
             - |
               set -e
               NATS_URL={{ include "ax.natsUrl" . | quote }}
+              REPLICAS={{ include "ax.natsReplicas" . }}
 
-              # Wait for NATS to be ready
-              until nats --server=$NATS_URL server ping 2>/dev/null; do
+              # Wait for NATS to be ready (use stream ls as connectivity check)
+              until nats --server=$NATS_URL stream ls 2>/dev/null; do
                 echo "Waiting for NATS..."
                 sleep 2
               done
@@ -41,8 +42,8 @@ spec:
                 --max-msgs=10000 \
                 --discard=old \
                 --storage=memory \
-                --replicas=3 \
-                --ack || true
+                --replicas=$REPLICAS \
+                --defaults || true
 
               # Sandbox task dispatch stream
               nats --server=$NATS_URL stream add TASKS \
@@ -52,8 +53,8 @@ spec:
                 --max-msgs=10000 \
                 --discard=old \
                 --storage=memory \
-                --replicas=3 \
-                --ack || true
+                --replicas=$REPLICAS \
+                --defaults || true
 
               # Results stream (keyed by requestId)
               nats --server=$NATS_URL stream add RESULTS \
@@ -63,8 +64,8 @@ spec:
                 --max-msgs-per-subject=1 \
                 --discard=old \
                 --storage=memory \
-                --replicas=3 \
-                --ack || true
+                --replicas=$REPLICAS \
+                --defaults || true
 
               # Event streaming (EventBus over NATS)
               nats --server=$NATS_URL stream add EVENTS \
@@ -74,8 +75,8 @@ spec:
                 --max-msgs=100000 \
                 --discard=old \
                 --storage=memory \
-                --replicas=3 \
-                --ack || true
+                --replicas=$REPLICAS \
+                --defaults || true
 
               # IPC callbacks (sandbox-to-host)
               nats --server=$NATS_URL stream add IPC \
@@ -85,8 +86,8 @@ spec:
                 --max-msgs=10000 \
                 --discard=old \
                 --storage=memory \
-                --replicas=3 \
-                --ack || true
+                --replicas=$REPLICAS \
+                --defaults || true
 
               echo "All streams created successfully"
 {{- end }}

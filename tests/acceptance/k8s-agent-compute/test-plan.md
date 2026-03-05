@@ -53,8 +53,11 @@ kind load docker-image ax/host:test ax/agent:test --name ax-test
 kubectl create namespace ax-test
 kubectl -n ax-test create secret generic ax-db-credentials \
   --from-literal=url="postgresql://ax:ax@ax-postgresql:5432/ax"
+# Provide at least one LLM API key (Anthropic OR OpenRouter OR OpenAI)
 kubectl -n ax-test create secret generic ax-api-credentials \
-  --from-literal=anthropic-api-key="$ANTHROPIC_API_KEY"
+  ${ANTHROPIC_API_KEY:+--from-literal=anthropic-api-key="$ANTHROPIC_API_KEY"} \
+  ${OPENROUTER_API_KEY:+--from-literal=openrouter-api-key="$OPENROUTER_API_KEY"} \
+  ${OPENAI_API_KEY:+--from-literal=openai-api-key="$OPENAI_API_KEY"}
 
 # Install chart with kind-specific overrides
 helm dependency update charts/ax
@@ -654,7 +657,7 @@ helm template ax charts/ax -f kind-values.yaml -s templates/host/deployment.yaml
 
 ---
 
-### HT-5: Agent-runtime deployment has ANTHROPIC_API_KEY and K8S_NAMESPACE
+### HT-5: Agent-runtime deployment has LLM API credentials and K8S_NAMESPACE
 
 **Criterion:** "Agent runtime pod has credentials, creates sandbox pods via k8s API"
 **Plan reference:** Section 4, Agent Runtime Pods
@@ -663,13 +666,13 @@ helm template ax charts/ax -f kind-values.yaml -s templates/host/deployment.yaml
 ```bash
 helm template ax charts/ax -f kind-values.yaml -s templates/agent-runtime/deployment.yaml
 ```
-1. Check env vars include ANTHROPIC_API_KEY (from secret), K8S_NAMESPACE, K8S_POD_IMAGE
+1. Check env vars include LLM API key(s) (from secret via apiCredentials.envVars), K8S_NAMESPACE, K8S_POD_IMAGE
 2. Check serviceAccountName references the sandbox-manager SA
 3. Check terminationGracePeriodSeconds: 600 (long agent sessions)
 4. Check plane label: `ax.io/plane: conversation`
 
 **Expected outcome:**
-- [ ] `ANTHROPIC_API_KEY` from secretKeyRef `ax-api-credentials`
+- [ ] LLM API key env var(s) from secretKeyRef `ax-api-credentials` (e.g. ANTHROPIC_API_KEY, OPENROUTER_API_KEY)
 - [ ] `K8S_NAMESPACE` set to chart namespace
 - [ ] `K8S_POD_IMAGE` set to sandbox image (`ax/agent:test`)
 - [ ] `serviceAccountName: {release}-agent-runtime`
@@ -1020,7 +1023,7 @@ These tests exercise end-to-end flows through the deployed cluster. They require
 
 **Setup:**
 - All pods Running
-- ANTHROPIC_API_KEY valid (real LLM call required)
+- LLM API key valid (ANTHROPIC_API_KEY or OPENROUTER_API_KEY — real LLM call required)
 - Port-forward to host service
 
 **Verification steps:**

@@ -38,15 +38,21 @@ spec:
                 secretKeyRef:
                   name: {{ include "ax.databaseSecretRef" . }}
                   key: {{ .Values.postgresql.external.secretKey | default "url" }}
-            - name: ANTHROPIC_API_KEY
+            {{- range $envVar, $secretKey := .Values.apiCredentials.envVars }}
+            {{- if $secretKey }}
+            - name: {{ $envVar }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.apiCredentials.existingSecret }}
-                  key: {{ .Values.apiCredentials.anthropicApiKeyKey }}
+                  name: {{ $.Values.apiCredentials.existingSecret }}
+                  key: {{ $secretKey }}
+            {{- end }}
+            {{- end }}
             - name: K8S_NAMESPACE
               value: {{ include "ax.namespace" . | quote }}
             - name: K8S_POD_IMAGE
               value: {{ include "ax.image" (dict "image" .Values.sandbox.image "global" .Values.global "context" $) | quote }}
+            - name: K8S_RUNTIME_CLASS
+              value: {{ .Values.sandbox.runtimeClass | default "" | quote }}
             {{- with .Values.agentRuntime.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

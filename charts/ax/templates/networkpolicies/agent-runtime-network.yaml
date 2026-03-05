@@ -25,9 +25,13 @@ spec:
     - ports:
         - port: 5432
           protocol: TCP
-    # Anthropic API (external HTTPS)
+    # Kubernetes API (for sandbox pod CRUD — port 6443 is the actual
+    # apiserver port; ClusterIP service DNAT from 443→6443 is not
+    # matched by port-443 rules with Calico CNI)
     - ports:
         - port: 443
+          protocol: TCP
+        - port: 6443
           protocol: TCP
     # DNS
     - ports:

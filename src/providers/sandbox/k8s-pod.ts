@@ -58,11 +58,16 @@ function buildPodSpec(
       labels: {
         'app.kubernetes.io/name': 'ax-sandbox',
         'app.kubernetes.io/component': 'sandbox',
-        'ax.dev/session-id': config.ipcSocket.replace(/[^a-zA-Z0-9-_.]/g, '_').slice(0, 63),
+        'ax.dev/session-id': config.ipcSocket
+          .replace(/[^a-zA-Z0-9-_.]/g, '_')  // sanitize invalid chars
+          .replace(/^[^a-zA-Z0-9]+/, '')       // strip leading non-alnum
+          .replace(/[^a-zA-Z0-9]+$/, '')       // strip trailing non-alnum
+          .slice(0, 63) || 'unknown',
       },
     },
     spec: {
-      runtimeClassName: options.runtimeClass,
+      // Only set runtimeClassName when a non-empty class is configured
+      ...(options.runtimeClass ? { runtimeClassName: options.runtimeClass } : {}),
       restartPolicy: 'Never',
 
       // Security: no service account token, no host networking
@@ -141,7 +146,9 @@ export async function create(_config: Config): Promise<SandboxProvider> {
 
   const image = process.env.K8S_POD_IMAGE ?? DEFAULT_IMAGE;
   const namespace = process.env.K8S_NAMESPACE ?? DEFAULT_NAMESPACE;
-  const runtimeClass = process.env.K8S_RUNTIME_CLASS ?? DEFAULT_RUNTIME_CLASS;
+  const runtimeClass = process.env.K8S_RUNTIME_CLASS !== undefined
+    ? process.env.K8S_RUNTIME_CLASS   // allow empty string to disable
+    : DEFAULT_RUNTIME_CLASS;
   const natsUrl = process.env.NATS_URL ?? 'nats://nats:4222';
 
   // Track active pods for cleanup

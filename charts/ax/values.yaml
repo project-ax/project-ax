@@ -17,30 +17,31 @@ global:
 config:
   profile: balanced
   agent: pi-coding-agent
+  models:
+    default: ["anthropic/claude-sonnet-4-20250514"]
   providers:
     memory: sqlite
-    scanner: regex
+    scanner: patterns
     channels: []
     web: none
     browser: none
     credentials: env
+    skills: readonly
     storage: postgresql
     eventbus: nats
     sandbox: k8s-pod
     audit: sqlite
-    history: sqlite
-    scheduler: sqlite
-    image: none
+    scheduler: plainjob
   sandbox:
     timeout_sec: 120
     memory_mb: 512
   scheduler:
     active_hours:
-      start: 8
-      end: 22
+      start: "08:00"
+      end: "22:00"
       timezone: UTC
-    tick_interval_ms: 60000
-    max_concurrent: 5
+    max_token_budget: 500000
+    heartbeat_interval_min: 5
   history:
     max_turns: 50
   admin:
@@ -154,6 +155,9 @@ sandbox:
     registry: ""
     repository: ax/agent
     tag: "latest"
+  # Pod runtime class for sandbox pods (e.g., "gvisor" for GKE Autopilot).
+  # Set to "" to disable (for kind/minikube/non-gVisor clusters).
+  runtimeClass: "gvisor"
   tiers:
     light:
       minReady: 2
@@ -215,6 +219,11 @@ networkPolicies:
   enabled: true
 
 # ─── API Credentials ─────────────────────────────────────────────
+# Each key maps an env var name to a secret key in the existingSecret.
+# Set a key to "" to omit it from the agent-runtime pod.
 apiCredentials:
   existingSecret: "ax-api-credentials"
-  anthropicApiKeyKey: "anthropic-api-key"
+  envVars:
+    ANTHROPIC_API_KEY: "anthropic-api-key"
+    # OPENROUTER_API_KEY: "openrouter-api-key"
+    # OPENAI_API_KEY: "openai-api-key"
