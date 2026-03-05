@@ -16,6 +16,9 @@ import type { IPCContext } from '../ipc-server.js';
 import { safePath } from '../../utils/safe-path.js';
 import type { NATSSandboxDispatcher } from '../nats-sandbox-dispatch.js';
 import type { SandboxToolRequest } from '../../sandbox-worker/types.js';
+import { getLogger } from '../../logger.js';
+
+const logger = getLogger().child({ component: 'sandbox-tools' });
 
 export interface SandboxToolHandlerOptions {
   /**
@@ -76,7 +79,9 @@ async function dispatchViaNATS(
   providers: ProviderRegistry,
 ): Promise<any> {
   try {
+    logger.info('nats_dispatch_start', { requestId, toolType: tool.type, action });
     const result = await dispatcher.dispatch(requestId, sessionId, tool);
+    logger.info('nats_dispatch_success', { requestId, toolType: tool.type });
     await providers.audit.log({
       action,
       sessionId,
@@ -85,6 +90,7 @@ async function dispatchViaNATS(
     });
     return result;
   } catch (err: unknown) {
+    logger.error('nats_dispatch_error', { requestId, toolType: tool.type, error: (err as Error).message });
     await providers.audit.log({
       action,
       sessionId,

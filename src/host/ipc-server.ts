@@ -22,6 +22,7 @@ import { createOrchestrationHandlers } from './ipc-handlers/orchestration.js';
 import { createSandboxToolHandlers } from './ipc-handlers/sandbox-tools.js';
 import { AgentRegistry } from './agent-registry.js';
 import type { Orchestrator } from './orchestration/orchestrator.js';
+import type { NATSSandboxDispatcher } from './nats-sandbox-dispatch.js';
 
 const logger = getLogger().child({ component: 'ipc' });
 
@@ -81,6 +82,10 @@ export interface IPCHandlerOptions {
   orchestrator?: Orchestrator;
   /** Maps sessionId → workspace directory path. Populated by processCompletion(), consumed by sandbox tool handlers. */
   workspaceMap?: Map<string, string>;
+  /** NATS sandbox dispatcher for k8s-pod tool dispatch. When set, sandbox tools dispatch via NATS instead of locally. */
+  natsDispatcher?: NATSSandboxDispatcher;
+  /** Maps sessionId → requestId for per-turn pod affinity tracking. */
+  requestIdMap?: Map<string, string>;
 }
 
 export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerOptions) {
@@ -114,7 +119,11 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
     }),
     ...createPluginHandlers(providers),
     ...(opts?.orchestrator ? createOrchestrationHandlers(opts.orchestrator) : {}),
-    ...(opts?.workspaceMap ? createSandboxToolHandlers(providers, { workspaceMap: opts.workspaceMap }) : {}),
+    ...(opts?.workspaceMap ? createSandboxToolHandlers(providers, {
+      workspaceMap: opts.workspaceMap,
+      natsDispatcher: opts.natsDispatcher,
+      requestIdMap: opts.requestIdMap,
+    }) : {}),
   };
 
   return async function handleIPC(raw: string, ctx: IPCContext): Promise<string> {

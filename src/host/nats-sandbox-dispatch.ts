@@ -91,7 +91,7 @@ export async function createNATSSandboxDispatcher(options?: {
   natsUrl?: string;
 }): Promise<NATSSandboxDispatcher> {
   const natsModule = await import('nats');
-  const { connect } = natsModule;
+  const { connect, createInbox } = natsModule;
 
   const natsUrl = options?.natsUrl ?? process.env.NATS_URL ?? 'nats://localhost:4222';
 
@@ -124,16 +124,51 @@ export async function createNATSSandboxDispatcher(options?: {
 
     logger.debug('claiming_pod', { requestId, sessionId, tier });
 
-    const response = await nc.request(
-      `tasks.sandbox.${tier}`,
-      encode(claimReq),
-      { timeout: CLAIM_TIMEOUT_MS },
-    );
+    // Manual request/reply to filter out JetStream stream acks.
+    // When tasks.sandbox.{tier} is covered by a JetStream stream,
+    // nc.request() returns the stream ack ({"stream":"TASKS","seq":N})
+    // instead of the worker's claim_ack. We subscribe to a unique inbox
+    // and wait for a response with type: 'claim_ack'.
+    const inbox = createInbox();
+    const sub = nc.subscribe(inbox, { max: 2 }); // JetStream ack + worker reply
 
-    const ack = decode<SandboxClaimResponse>(response.data);
-    if (ack.type !== 'claim_ack') {
-      throw new Error(`Unexpected claim response type: ${ack.type}`);
-    }
+    const claimPromise = new Promise<SandboxClaimResponse>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        sub.unsubscribe();
+        reject(new Error(`Pod claim timed out after ${CLAIM_TIMEOUT_MS}ms`));
+      }, CLAIM_TIMEOUT_MS);
+
+      (async () => {
+        for await (const msg of sub) {
+          let parsed: unknown;
+          try {
+            parsed = decode(msg.data);
+          } catch {
+            continue; // skip unparseable messages
+          }
+          // Skip JetStream stream acks (have 'stream' field, no 'type' field)
+          if (parsed && typeof parsed === 'object' && 'type' in parsed) {
+            const typed = parsed as SandboxClaimResponse;
+            if (typed.type === 'claim_ack') {
+              clearTimeout(timer);
+              sub.unsubscribe();
+              resolve(typed);
+              return;
+            }
+          }
+          logger.debug('claim_skipped_jetstream_ack', { requestId, parsed });
+        }
+        // If subscription ends without claim_ack
+        clearTimeout(timer);
+        reject(new Error('Claim subscription ended without receiving claim_ack'));
+      })().catch(reject);
+    });
+
+    // Publish the claim with our inbox as reply-to
+    nc.publish(`tasks.sandbox.${tier}`, encode(claimReq), { reply: inbox });
+    logger.info('claim_request_sent', { requestId, tier, inbox });
+
+    const ack = await claimPromise;
 
     const pod: PodAffinity = {
       podSubject: ack.podSubject,

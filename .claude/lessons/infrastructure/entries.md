@@ -1,3 +1,21 @@
+### Calico DNAT means ClusterIP port != actual port for NetworkPolicy
+**Date:** 2026-03-05
+**Context:** Agent-runtime pod couldn't reach k8s API (10.96.0.1:443) despite port 443 egress being allowed in NetworkPolicy
+**Lesson:** With Calico CNI, egress NetworkPolicy port checks may apply after DNAT. The k8s API ClusterIP service forwards 443→6443. Add BOTH port 443 and port 6443 to egress rules for k8s API access. External HTTPS endpoints (port 443 end-to-end) work fine.
+**Tags:** calico, networkpolicy, dnat, k8s-api, kind
+
+### Agent-runtime must use subprocess sandbox for the agent loop in k8s
+**Date:** 2026-03-05
+**Context:** processCompletion uses providers.sandbox to spawn the agent subprocess. When sandbox=k8s-pod, it creates a new k8s pod that can't connect back via Unix socket IPC.
+**Lesson:** In agent-runtime-process.ts, always override providers.sandbox to subprocess for the agent conversation loop. The k8s-pod provider is only for tool dispatch to sandbox worker pods. The agent loop runs in-process (as a subprocess within the agent-runtime pod), not in a separate k8s pod.
+**Tags:** k8s, sandbox, agent-runtime, ipc, subprocess
+
+### k8s labels must start/end with alphanumeric characters
+**Date:** 2026-03-05
+**Context:** Pod creation failed with "Invalid value" for label derived from Unix socket path
+**Lesson:** When using user-controlled strings as k8s label values, sanitize with regex: replace invalid chars with `_`, then strip leading/trailing non-alphanumeric with `.replace(/^[^a-zA-Z0-9]+/, '').replace(/[^a-zA-Z0-9]+$/, '')`. Labels must match `(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`.
+**Tags:** k8s, labels, validation, sanitization
+
 ### Helm subchart dependencies should be gitignored
 **Date:** 2026-03-05
 **Context:** Creating Helm chart with NATS and PostgreSQL subcharts
@@ -15,3 +33,45 @@
 **Context:** Making sandbox tier configs Helm-configurable via SANDBOX_TEMPLATE_DIR
 **Lesson:** The sandbox templates (light.json, heavy.json) mounted via ConfigMap should ONLY control resources (CPU, memory), image, command, and NATS config. Security context (gVisor runtime, readOnlyRootFilesystem, drop ALL capabilities, runAsNonRoot) must remain hardcoded in `k8s-client.ts:createPod()` — never make security hardening configurable.
 **Tags:** security, helm, sandbox, k8s
+
+### Kind cluster pods use app.kubernetes.io/name not component labels
+**Date:** 2026-03-05
+**Context:** Running KT-3 acceptance test, the label selector `app.kubernetes.io/component=host` returned zero pods
+**Lesson:** AX Helm chart labels use `app.kubernetes.io/name=ax-host` and `app.kubernetes.io/name=ax-agent-runtime` for pod selection. The `app.kubernetes.io/component` label is only set on subchart pods (e.g., NATS, PostgreSQL). Always check `kubectl get pods --show-labels` before writing label selectors.
+**Tags:** kubernetes, labels, helm, kind, acceptance-tests
+
+### AX container images have no wget or curl — use Node.js for HTTP checks
+**Date:** 2026-03-05
+**Context:** Running KT-4 health check, both `wget` and `curl` were not found in the host container
+**Lesson:** The AX container images are minimal and do not include wget or curl. For HTTP checks inside pods, use `node -e` with the built-in `http` module: `node -e "const http=require('http');http.get('http://localhost:8080/health',(r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>console.log('HTTP '+r.statusCode+' '+d))}).on('error',e=>console.error('ERROR: '+e.message))"`.
+**Tags:** container, health-check, node, kubernetes, acceptance-tests
+
+### Helm values.yaml must match the Zod config schema exactly
+**Date:** 2026-03-05
+**Context:** Host pod CrashLoopBackOff due to loadConfig() failing with Zod validation errors
+**Lesson:** The AX config uses `z.strictObject()` — any extra keys cause validation failure. Before deploying, render the ConfigMap (`helm template -s templates/configmap-ax-config.yaml`) and validate all fields against the `ConfigSchema` in `src/config.ts`. Common mismatches: `scheduler.active_hours.start/end` must be "HH:MM" strings (not integers), `providers.scanner` must be `patterns` (not `regex`), `providers.scheduler` must be `plainjob` (not `sqlite`), and `models.default` array is required for the LLM router.
+**Tags:** config, helm, zod, validation, k8s
+
+### NATS subchart defaults memoryStore.enabled=false
+**Date:** 2026-03-05
+**Context:** NATS init job failed with "insufficient memory resources" when creating JetStream streams
+**Lesson:** The NATS Helm chart (nats-io/nats v1.2.x) defaults `config.jetstream.memoryStore.enabled: false`. Memory-backed streams require explicitly setting `enabled: true` AND a sufficient `maxSize` (256Mi works for 5 streams). Also, `nats server ping` requires a system account — use `nats stream ls` as the readiness check instead.
+**Tags:** nats, jetstream, helm, memory-store, kind
+
+### Make gVisor runtimeClassName conditional for dev/test
+**Date:** 2026-03-05
+**Context:** Pool controller couldn't create sandbox pods on kind: "RuntimeClass gvisor not found"
+**Lesson:** gVisor is not available on kind clusters. Make `runtimeClassName` conditional: use spread operator `...(runtimeClass ? { runtimeClassName: runtimeClass } : {})` so it's omitted when empty. The `K8S_RUNTIME_CLASS` env var already exists — set it to empty string to disable. Keep security contexts (readOnlyRootFS, runAsNonRoot, drop ALL) hardcoded regardless.
+**Tags:** gvisor, kind, sandbox, k8s, security
+
+### Bitnami subchart values are top-level under the chart alias
+**Date:** 2026-03-05
+**Context:** PostgreSQL auth failed because password was set at `postgresql.internal.auth.password`
+**Lesson:** Helm subchart values are passed at the top level under the chart's alias key, not under custom keys. For the Bitnami PostgreSQL subchart, use `postgresql.auth.password` (NOT `postgresql.internal.auth.password`). The `internal` key is an AX-specific wrapper for the condition flag. Check the subchart's `values.yaml` for the actual schema.
+**Tags:** helm, subchart, bitnami, postgresql, values
+
+### NATS nc.request() returns JetStream stream ack instead of worker reply
+**Date:** 2026-03-05
+**Context:** NATSSandboxDispatcher.claimPod() used `nc.request('tasks.sandbox.light', ...)` to claim a sandbox pod. The TASKS JetStream stream covers `tasks.sandbox.*`. The `nc.request()` returned a 27-byte JetStream publish ack (`{"stream":"TASKS","seq":N}`) instead of the worker's `claim_ack` response.
+**Lesson:** When using NATS `nc.request()` on a subject that's covered by a JetStream stream, the server sends a stream publish acknowledgment to the reply-to inbox BEFORE any subscriber responds. Since `nc.request()` returns the first response, it gets the JetStream ack, not the actual reply. **Fix:** Use manual `nc.publish()` with a custom reply-to inbox + `nc.subscribe()` on that inbox, filtering for the expected response type (e.g., `type: 'claim_ack'`) and skipping JetStream acks. Alternatively, avoid overlapping core NATS request/reply subjects with JetStream stream subjects.
+**Tags:** nats, jetstream, request-reply, stream-ack, sandbox-dispatch

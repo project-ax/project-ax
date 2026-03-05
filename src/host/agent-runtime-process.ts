@@ -36,6 +36,7 @@ import {
   type SessionRequest, type SessionResult,
 } from './nats-session-protocol.js';
 import type { EventBus } from './event-bus.js';
+import { createNATSSandboxDispatcher, type NATSSandboxDispatcher } from './nats-sandbox-dispatch.js';
 
 const logger = getLogger().child({ component: 'agent-runtime' });
 
@@ -113,9 +114,27 @@ async function main(): Promise<void> {
   const workspaceMap = new Map<string, string>();
   const fileStore = await FileStore.create();
 
+  // The agent loop must run as a local subprocess inside this pod, even when
+  // providers.sandbox is k8s-pod. The k8s-pod provider creates a NEW k8s pod
+  // which can't connect back via Unix socket IPC. k8s-pod is only for tool
+  // dispatch (sandbox worker pods), not for the agent conversation loop.
+  let agentSandbox = providers.sandbox;
+  let sandboxDispatcher: NATSSandboxDispatcher | undefined;
+  const requestIdMap = new Map<string, string>();
+
+  if (config.providers.sandbox === 'k8s-pod') {
+    const subprocessModule = await import('../providers/sandbox/subprocess.js');
+    agentSandbox = await subprocessModule.create(config);
+
+    // Create NATS sandbox dispatcher for tool dispatch to remote sandbox pods.
+    // The dispatcher opens its own NATS connection for request/reply isolation.
+    sandboxDispatcher = await createNATSSandboxDispatcher();
+    logger.info('nats_sandbox_dispatcher_ready');
+  }
+
   const completionDeps: CompletionDeps = {
     config,
-    providers,
+    providers: { ...providers, sandbox: agentSandbox },
     db,
     conversationStore,
     router,
@@ -167,6 +186,8 @@ async function main(): Promise<void> {
     orchestrator,
     agentRegistry,
     workspaceMap,
+    natsDispatcher: sandboxDispatcher,
+    requestIdMap,
   });
 
   const defaultCtx = { sessionId: 'server', agentId: 'system', userId: defaultUserId };
@@ -254,33 +275,51 @@ async function main(): Promise<void> {
   ): Promise<void> {
     const { requestId, sessionId, content, messages } = request;
 
-    const result = await processCompletion(
-      completionDeps,
-      content,
-      requestId,
-      messages,
-      request.persistentSessionId,
-      request.preProcessed,
-      request.userId,
-      request.replyOptional,
-      request.sessionScope,
-    );
+    // Register requestId for per-turn pod affinity so sandbox tool handlers
+    // can route all tool calls in a turn to the same sandbox pod.
+    requestIdMap.set(sessionId, requestId);
 
-    // Publish result to NATS
-    const sessionResult: SessionResult = {
-      type: 'session_result',
-      requestId,
-      responseContent: result.responseContent,
-      finishReason: result.finishReason,
-      contentBlocks: result.contentBlocks,
-    };
+    try {
+      const result = await processCompletion(
+        completionDeps,
+        content,
+        requestId,
+        messages,
+        request.persistentSessionId,
+        request.preProcessed,
+        request.userId,
+        request.replyOptional,
+        request.sessionScope,
+      );
 
-    nc.publish(resultSubject(requestId), encode(sessionResult));
-    logger.info('session_completed', {
-      requestId,
-      responseLength: result.responseContent.length,
-      finishReason: result.finishReason,
-    });
+      // Publish result to NATS
+      const sessionResult: SessionResult = {
+        type: 'session_result',
+        requestId,
+        responseContent: result.responseContent,
+        finishReason: result.finishReason,
+        contentBlocks: result.contentBlocks,
+      };
+
+      nc.publish(resultSubject(requestId), encode(sessionResult));
+      logger.info('session_completed', {
+        requestId,
+        responseLength: result.responseContent.length,
+        finishReason: result.finishReason,
+      });
+    } finally {
+      // End-of-turn: release the claimed sandbox pod back to the warm pool
+      // and clean up the requestId mapping.
+      requestIdMap.delete(sessionId);
+      if (sandboxDispatcher?.hasPod(requestId)) {
+        await sandboxDispatcher.release(requestId).catch((err) => {
+          logger.warn('sandbox_pod_release_failed', {
+            requestId,
+            error: (err as Error).message,
+          });
+        });
+      }
+    }
   }
 
   // ── Health endpoint ──
@@ -310,6 +349,9 @@ async function main(): Promise<void> {
     orchestrator.shutdown();
 
     try { ipcServer.close(); } catch { /* ignore */ }
+    if (sandboxDispatcher) {
+      await sandboxDispatcher.close().catch(() => { /* ignore */ });
+    }
     providers.eventbus.close();
     providers.storage.close();
     try { fileStore.close(); } catch { /* ignore */ }

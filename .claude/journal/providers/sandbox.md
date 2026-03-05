@@ -2,6 +2,16 @@
 
 Sandbox providers, canonical paths, workspace tiers.
 
+## [2026-03-05 13:00] — Wire NATS sandbox dispatch into agent-runtime IPC pipeline
+
+**Task:** Connect NATSSandboxDispatcher to the IPC tool handler pipeline so sandbox tools dispatch via NATS to remote sandbox pods in k8s mode
+**What I did:** (1) Added `natsDispatcher` and `requestIdMap` to `IPCHandlerOptions`, passed through to `createSandboxToolHandlers()`. (2) In `agent-runtime-process.ts`: instantiate dispatcher when `config.providers.sandbox === 'k8s-pod'`, create requestIdMap, populate it per-session, release pods at end of turn, clean up on shutdown. (3) Fixed critical JetStream ack interference bug: `nc.request()` on subjects covered by JetStream streams returns the stream publish ack instead of the worker's reply. Changed claim to use manual `nc.publish()` + `nc.subscribe()` with inbox filtering. (4) Added structured logging to sandbox-tools.ts. (5) Updated unit test mocks for new claim pattern.
+**Files touched:**
+  - Modified: src/host/agent-runtime-process.ts, src/host/ipc-server.ts, src/host/nats-sandbox-dispatch.ts, src/host/ipc-handlers/sandbox-tools.ts, tests/host/nats-sandbox-dispatch.test.ts
+  - Updated: tests/acceptance/k8s-agent-compute/results.md, tests/acceptance/k8s-agent-compute/fixes.md
+**Outcome:** Success. IT-3 and IT-4 now PASS. All 42/42 acceptance tests pass. 2411 unit tests pass.
+**Notes:** JetStream ack interference was the key discovery — when a JetStream stream covers a subject, `nc.request()` gets the 27-byte stream ack before the actual worker reply. Manual publish/subscribe with inbox filtering is the solution.
+
 ## [2026-03-04 21:15] — NATS sandbox dispatch + k8s-pod SandboxProvider
 
 **Task:** Phase 2 Tasks 6-7: NATS-based IPC for sandbox tool dispatch and k8s-pod SandboxProvider.
