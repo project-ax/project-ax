@@ -207,7 +207,7 @@ describe('Scheduler Tool → IPC → Provider → Delivery Chain', () => {
       scope: 'dm',
       identifiers: { peer: 'user123' },
     };
-    const resolution = resolveDelivery(job.job.delivery, {
+    const resolution = await resolveDelivery(job.job.delivery, {
       sessionStore: {
         getLastChannelSession: (agentId: string) => agentId === 'main' ? lastSession : undefined,
       } as any,
@@ -256,7 +256,7 @@ describe('Scheduler Tool → IPC → Provider → Delivery Chain', () => {
       scope: 'dm',
       identifiers: { peer: 'user456' },
     };
-    const resolution = resolveDelivery(job.delivery, {
+    const resolution = await resolveDelivery(job.delivery, {
       sessionStore: {
         getLastChannelSession: () => lastSession,
       } as any,
@@ -294,7 +294,7 @@ describe('Scheduler Tool → IPC → Provider → Delivery Chain', () => {
       scope: 'dm',
       identifiers: { peer: 'user789' },
     };
-    const resolution = resolveDelivery(defaultDelivery, {
+    const resolution = await resolveDelivery(defaultDelivery, {
       sessionStore: {
         getLastChannelSession: () => lastSession,
       } as any,

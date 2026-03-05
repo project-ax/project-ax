@@ -1,7 +1,7 @@
 // src/providers/storage/sqlite.ts — SQLite StorageProvider implementation
 //
 // Wraps the existing MessageQueue, ConversationStore, and SessionStore
-// classes, plus a documents table for key-value storage.
+// classes behind async interfaces, plus a documents table for key-value storage.
 
 import { mkdirSync } from 'node:fs';
 import { openDatabase } from '../../utils/sqlite.js';
@@ -14,7 +14,54 @@ import { MessageQueue } from '../../db.js';
 import { ConversationStore } from '../../conversation-store.js';
 import { SessionStore } from '../../session-store.js';
 import type { Config } from '../../types.js';
-import type { StorageProvider, DocumentStore } from './types.js';
+import type {
+  StorageProvider,
+  MessageQueueStore,
+  ConversationStoreProvider,
+  SessionStoreProvider,
+  DocumentStore,
+} from './types.js';
+
+/**
+ * Wrap the synchronous MessageQueue class behind the async MessageQueueStore interface.
+ */
+function wrapMessageQueue(mq: MessageQueue): MessageQueueStore {
+  return {
+    async enqueue(msg) { return mq.enqueue(msg); },
+    async dequeue() { return mq.dequeue(); },
+    async dequeueById(id) { return mq.dequeueById(id); },
+    async complete(id) { mq.complete(id); },
+    async fail(id) { mq.fail(id); },
+    async pending() { return mq.pending(); },
+  };
+}
+
+/**
+ * Wrap the synchronous ConversationStore class behind the async interface.
+ */
+function wrapConversationStore(cs: ConversationStore): ConversationStoreProvider {
+  return {
+    async append(sessionId, role, content, sender?) { cs.append(sessionId, role, content, sender); },
+    async load(sessionId, maxTurns?) { return cs.load(sessionId, maxTurns); },
+    async prune(sessionId, keep) { cs.prune(sessionId, keep); },
+    async count(sessionId) { return cs.count(sessionId); },
+    async clear(sessionId) { cs.clear(sessionId); },
+    async loadOlderTurns(sessionId, keepRecent) { return cs.loadOlderTurns(sessionId, keepRecent); },
+    async replaceTurnsWithSummary(sessionId, maxIdToReplace, summaryContent) {
+      cs.replaceTurnsWithSummary(sessionId, maxIdToReplace, summaryContent);
+    },
+  };
+}
+
+/**
+ * Wrap the synchronous SessionStore class behind the async interface.
+ */
+function wrapSessionStore(ss: SessionStore): SessionStoreProvider {
+  return {
+    async trackSession(agentId, session) { ss.trackSession(agentId, session); },
+    async getLastChannelSession(agentId) { return ss.getLastChannelSession(agentId); },
+  };
+}
 
 /**
  * Create a DocumentStore backed by a SQLite database.
@@ -48,8 +95,6 @@ async function createDocumentStore(dbPath: string): Promise<{ store: DocumentSto
     },
 
     async delete(collection: string, key: string): Promise<boolean> {
-      // SQLite's better-sqlite3 .run() returns { changes }, but our adapter
-      // doesn't expose it. Use a SELECT-then-DELETE approach.
       const exists = db.prepare(
         'SELECT 1 FROM documents WHERE collection = ? AND key = ?'
       ).get(collection, key);
@@ -93,9 +138,9 @@ export async function create(_config: Config): Promise<StorageProvider> {
   );
 
   return {
-    get messages() { return messageQueue; },
-    get conversations() { return conversationStore; },
-    get sessions() { return sessionStore; },
+    get messages() { return wrapMessageQueue(messageQueue); },
+    get conversations() { return wrapConversationStore(conversationStore); },
+    get sessions() { return wrapSessionStore(sessionStore); },
     get documents() { return documentStore; },
 
     close(): void {

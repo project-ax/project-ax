@@ -2,7 +2,7 @@
 
 import type { SessionAddress, ChannelProvider } from '../providers/channel/types.js';
 import type { CronDelivery } from '../providers/scheduler/types.js';
-import type { SessionStore } from '../session-store.js';
+import type { SessionStoreProvider } from '../providers/storage/types.js';
 
 export interface DeliveryResolution {
   mode: 'channel' | 'none';
@@ -19,15 +19,15 @@ function findChannel(
   return channels.find((ch) => ch.name === session.provider);
 }
 
-export function resolveDelivery(
+export async function resolveDelivery(
   delivery: CronDelivery | undefined,
   deps: {
-    sessionStore: SessionStore;
+    sessionStore: SessionStoreProvider;
     agentId: string;
     defaultDelivery?: CronDelivery;
     channels: ChannelProvider[];
   },
-): DeliveryResolution {
+): Promise<DeliveryResolution> {
   // 1. No delivery config — backward compat
   if (!delivery) return NONE;
 
@@ -46,7 +46,7 @@ export function resolveDelivery(
 
   if (target === 'last') {
     // 4. target is 'last' — look up most recent session
-    const session = deps.sessionStore.getLastChannelSession(deps.agentId);
+    const session = await deps.sessionStore.getLastChannelSession(deps.agentId);
     if (!session) return NONE;
     const provider = findChannel(deps.channels, session);
     if (!provider) return NONE;
@@ -55,7 +55,7 @@ export function resolveDelivery(
 
   // 5. No target — try defaultDelivery (with undefined default to prevent recursion)
   if (deps.defaultDelivery) {
-    return resolveDelivery(deps.defaultDelivery, {
+    return await resolveDelivery(deps.defaultDelivery, {
       ...deps,
       defaultDelivery: undefined,
     });

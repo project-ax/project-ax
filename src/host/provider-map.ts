@@ -75,6 +75,7 @@ const _PROVIDER_MAP = {
     nsjail:     '../providers/sandbox/nsjail.js',
     bwrap:      '../providers/sandbox/bwrap.js',
     docker:     '../providers/sandbox/docker.js',
+    'k8s-pod':  '../providers/sandbox/k8s-pod.js',
   },
   scheduler: {
     none:     '../providers/scheduler/none.js',
@@ -87,10 +88,12 @@ const _PROVIDER_MAP = {
     none:   '../providers/screener/none.js',
   },
   storage: {
-    sqlite: '../providers/storage/sqlite.js',
+    sqlite:     '../providers/storage/sqlite.js',
+    postgresql: '../providers/storage/postgresql.js',
   },
   eventbus: {
     inprocess: '../providers/eventbus/inprocess.js',
+    nats:      '../providers/eventbus/nats.js',
   },
 } as const;
 

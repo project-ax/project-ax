@@ -4,16 +4,15 @@ import { describe, it, expect } from 'vitest';
 import { resolveDelivery } from '../../src/host/delivery.js';
 import type { SessionAddress, ChannelProvider } from '../../src/providers/channel/types.js';
 import type { CronDelivery } from '../../src/providers/scheduler/types.js';
-import type { SessionStore } from '../../src/session-store.js';
+import type { SessionStoreProvider } from '../../src/providers/storage/types.js';
 
 // ─── Helpers ─────────────────────────────────────────
 
-function mockSessionStore(sessions: Record<string, SessionAddress> = {}): SessionStore {
+function mockSessionStore(sessions: Record<string, SessionAddress> = {}): SessionStoreProvider {
   return {
-    getLastChannelSession: (agentId: string) => sessions[agentId],
-    trackSession: () => {},
-    close: () => {},
-  } as SessionStore;
+    getLastChannelSession: async (agentId: string) => sessions[agentId],
+    trackSession: async () => {},
+  };
 }
 
 function mockChannel(name: string): ChannelProvider {
@@ -42,8 +41,8 @@ describe('resolveDelivery', () => {
   const slackChannel = mockChannel('slack');
   const discordChannel = mockChannel('discord');
 
-  it('returns mode "none" when delivery is undefined', () => {
-    const result = resolveDelivery(undefined, {
+  it('returns mode "none" when delivery is undefined', async () => {
+    const result = await resolveDelivery(undefined, {
       sessionStore: mockSessionStore(),
       agentId,
       channels: [slackChannel],
@@ -51,8 +50,8 @@ describe('resolveDelivery', () => {
     expect(result).toEqual({ mode: 'none' });
   });
 
-  it('returns mode "none" when delivery.mode is "none"', () => {
-    const result = resolveDelivery({ mode: 'none' }, {
+  it('returns mode "none" when delivery.mode is "none"', async () => {
+    const result = await resolveDelivery({ mode: 'none' }, {
       sessionStore: mockSessionStore(),
       agentId,
       channels: [slackChannel],
@@ -60,11 +59,11 @@ describe('resolveDelivery', () => {
     expect(result).toEqual({ mode: 'none' });
   });
 
-  it('resolves explicit SessionAddress target with matching channel provider', () => {
+  it('resolves explicit SessionAddress target with matching channel provider', async () => {
     const session = makeSession('slack');
     const delivery: CronDelivery = { mode: 'channel', target: session };
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: mockSessionStore(),
       agentId,
       channels: [slackChannel, discordChannel],
@@ -77,11 +76,11 @@ describe('resolveDelivery', () => {
     });
   });
 
-  it('returns mode "none" when explicit SessionAddress target has no matching channel', () => {
+  it('returns mode "none" when explicit SessionAddress target has no matching channel', async () => {
     const session = makeSession('teams'); // no 'teams' channel registered
     const delivery: CronDelivery = { mode: 'channel', target: session };
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: mockSessionStore(),
       agentId,
       channels: [slackChannel, discordChannel],
@@ -90,12 +89,12 @@ describe('resolveDelivery', () => {
     expect(result).toEqual({ mode: 'none' });
   });
 
-  it('resolves "last" target from sessionStore when session and channel exist', () => {
+  it('resolves "last" target from sessionStore when session and channel exist', async () => {
     const session = makeSession('discord');
     const store = mockSessionStore({ [agentId]: session });
     const delivery: CronDelivery = { mode: 'channel', target: 'last' };
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: store,
       agentId,
       channels: [slackChannel, discordChannel],
@@ -108,11 +107,11 @@ describe('resolveDelivery', () => {
     });
   });
 
-  it('returns mode "none" when "last" target finds no session in store', () => {
+  it('returns mode "none" when "last" target finds no session in store', async () => {
     const store = mockSessionStore({}); // no sessions recorded
     const delivery: CronDelivery = { mode: 'channel', target: 'last' };
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: store,
       agentId,
       channels: [slackChannel],
@@ -121,12 +120,12 @@ describe('resolveDelivery', () => {
     expect(result).toEqual({ mode: 'none' });
   });
 
-  it('returns mode "none" when "last" target finds session but no matching channel', () => {
+  it('returns mode "none" when "last" target finds session but no matching channel', async () => {
     const session = makeSession('teams'); // stored session uses 'teams' provider
     const store = mockSessionStore({ [agentId]: session });
     const delivery: CronDelivery = { mode: 'channel', target: 'last' };
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: store,
       agentId,
       channels: [slackChannel, discordChannel], // no 'teams' channel
@@ -135,12 +134,12 @@ describe('resolveDelivery', () => {
     expect(result).toEqual({ mode: 'none' });
   });
 
-  it('falls back to defaultDelivery when no target is specified', () => {
+  it('falls back to defaultDelivery when no target is specified', async () => {
     const session = makeSession('slack');
     const delivery: CronDelivery = { mode: 'channel' }; // no target
     const defaultDelivery: CronDelivery = { mode: 'channel', target: session };
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: mockSessionStore(),
       agentId,
       defaultDelivery,
@@ -154,10 +153,10 @@ describe('resolveDelivery', () => {
     });
   });
 
-  it('returns mode "none" when no target and no defaultDelivery', () => {
+  it('returns mode "none" when no target and no defaultDelivery', async () => {
     const delivery: CronDelivery = { mode: 'channel' }; // no target
 
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: mockSessionStore(),
       agentId,
       channels: [slackChannel],
@@ -167,13 +166,13 @@ describe('resolveDelivery', () => {
     expect(result).toEqual({ mode: 'none' });
   });
 
-  it('does not infinitely recurse when defaultDelivery itself has no target', () => {
+  it('does not infinitely recurse when defaultDelivery itself has no target', async () => {
     const delivery: CronDelivery = { mode: 'channel' }; // no target
     const defaultDelivery: CronDelivery = { mode: 'channel' }; // also no target
 
     // The recursive call passes defaultDelivery: undefined, so the second
     // level hits the "no target + no defaultDelivery" branch and returns none.
-    const result = resolveDelivery(delivery, {
+    const result = await resolveDelivery(delivery, {
       sessionStore: mockSessionStore(),
       agentId,
       defaultDelivery,

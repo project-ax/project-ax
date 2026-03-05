@@ -928,7 +928,7 @@ export async function createServer(
             delivery = config.scheduler.defaultDelivery;
           }
 
-          const resolution = resolveDelivery(delivery, {
+          const resolution = await resolveDelivery(delivery, {
             sessionStore,
             agentId: jobAgentId,
             defaultDelivery: config.scheduler.defaultDelivery,

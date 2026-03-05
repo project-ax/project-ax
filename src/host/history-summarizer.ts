@@ -6,7 +6,7 @@
  * Runs on the host side (trusted process) with direct LLM access.
  */
 
-import type { ConversationStore, StoredTurn } from '../conversation-store.js';
+import type { ConversationStoreProvider, StoredTurn } from '../providers/storage/types.js';
 import { deserializeContent } from '../conversation-store.js';
 import type { LLMProvider, ChatChunk } from '../providers/llm/types.js';
 import type { Logger } from '../logger.js';
@@ -105,18 +105,18 @@ async function callSummarizeLLM(
  */
 export async function maybeSummarizeHistory(
   sessionId: string,
-  conversationStore: ConversationStore,
+  conversationStore: ConversationStoreProvider,
   llm: LLMProvider,
   config: SummarizationConfig,
   logger: Logger,
 ): Promise<boolean> {
   if (!config.enabled) return false;
 
-  const totalTurns = conversationStore.count(sessionId);
+  const totalTurns = await conversationStore.count(sessionId);
   if (totalTurns <= config.threshold) return false;
 
   // Load turns that are candidates for summarization (everything except recent)
-  const olderTurns = conversationStore.loadOlderTurns(sessionId, config.keepRecent);
+  const olderTurns = await conversationStore.loadOlderTurns(sessionId, config.keepRecent);
   if (olderTurns.length < 4) return false; // not worth summarizing < 4 turns
 
   logger.info('history_summarize_start', {
@@ -140,13 +140,13 @@ export async function maybeSummarizeHistory(
     const summaryContent =
       `[Conversation summary of ${olderTurns.length} earlier messages]\n\n${summary}`;
 
-    conversationStore.replaceTurnsWithSummary(sessionId, maxId, summaryContent);
+    await conversationStore.replaceTurnsWithSummary(sessionId, maxId, summaryContent);
 
     logger.info('history_summarize_done', {
       sessionId,
       summarizedTurns: olderTurns.length,
       summaryLength: summary.length,
-      remainingTurns: conversationStore.count(sessionId),
+      remainingTurns: await conversationStore.count(sessionId),
     });
 
     return true;

@@ -2,6 +2,16 @@
 
 Sandbox providers, canonical paths, workspace tiers.
 
+## [2026-03-04 21:15] — NATS sandbox dispatch + k8s-pod SandboxProvider
+
+**Task:** Phase 2 Tasks 6-7: NATS-based IPC for sandbox tool dispatch and k8s-pod SandboxProvider.
+**What I did:** (1) Created NATS dispatch protocol types (src/sandbox-worker/types.ts). (2) Created sandbox worker process (src/sandbox-worker/worker.ts) — NATS consumer that runs in pods, subscribes to task queue, executes tools locally, returns results via request/reply. (3) Created NATS dispatch client (src/host/nats-sandbox-dispatch.ts) with per-turn pod affinity (requestId → pod subject). (4) Modified sandbox-tools.ts to support NATS dispatch mode alongside local execution. (5) Created k8s-pod SandboxProvider using @kubernetes/client-node — creates pods with gVisor runtime, security hardening, NATS env.
+**Files touched:**
+  - Created: src/sandbox-worker/types.ts, src/sandbox-worker/worker.ts, src/host/nats-sandbox-dispatch.ts, src/providers/sandbox/k8s-pod.ts, tests/sandbox-worker/worker.test.ts, tests/host/nats-sandbox-dispatch.test.ts, tests/providers/sandbox/k8s-pod.test.ts
+  - Modified: src/host/ipc-handlers/sandbox-tools.ts, src/host/provider-map.ts, tests/host/ipc-handlers/sandbox-tools.test.ts, tests/host/provider-map.test.ts, tests/integration/phase2.test.ts
+**Outcome:** Success. 2368 tests pass (36 new), 3 pre-existing failures only.
+**Notes:** Provider map regex needed update from [a-z-] to [a-z0-9-] to accommodate k8s-pod name. NATS dispatch uses request/reply pattern for synchronous tool calls + queue groups for load balancing.
+
 ## [2026-03-02 11:42] — Nest CANONICAL paths under /workspace, make mount root the CWD
 
 **Task:** Fix bug where agent can't access ./agent and ./user from CWD because CWD was /scratch (a sibling, not a parent). Also fix userId mismatch in IPC context.

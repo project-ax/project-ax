@@ -1,5 +1,5 @@
 // src/utils/database.ts — Kysely instance factory for SQLite / PostgreSQL
-import { Kysely, SqliteDialect } from 'kysely';
+import { Kysely, SqliteDialect, PostgresDialect } from 'kysely';
 import { createRequire } from 'node:module';
 
 export interface SqliteDbConfig {
@@ -18,7 +18,7 @@ export type DbConfig = SqliteDbConfig | PostgresDbConfig;
  * Create a Kysely instance for the given database configuration.
  *
  * - SQLite: uses better-sqlite3 (same dep already in package.json).
- * - PostgreSQL: uses pg Pool (must be installed separately).
+ * - PostgreSQL: uses pg Pool (pg must be installed).
  */
 export function createKyselyDb(config: DbConfig): Kysely<any> {
   if (config.type === 'sqlite') {
@@ -34,7 +34,6 @@ export function createKyselyDb(config: DbConfig): Kysely<any> {
     // Lazy-load pg to avoid requiring it when using SQLite
     const req = createRequire(import.meta.url);
     const { Pool } = req('pg');
-    const { PostgresDialect } = req('kysely');
     return new Kysely({
       dialect: new PostgresDialect({ pool: new Pool({ connectionString: config.url }) }),
     });

@@ -1,5 +1,15 @@
 # EventBus Provider Journal
 
+## [2026-03-04 21:05] -- NATS EventBusProvider implementation
+
+**Task:** Implement NATS EventBusProvider (Phase 2 Task 5).
+**What I did:** Created src/providers/eventbus/nats.ts using NATS pub/sub. Subject mapping: emit() publishes to events.{requestId} AND events.global. Subscribes to events.global for global listeners and events.* wildcard for per-request routing. Lazy-imports nats module.
+**Files touched:**
+  - Created: src/providers/eventbus/nats.ts
+  - Modified: src/host/provider-map.ts
+**Outcome:** Success. Added to provider-map. Full test suite unchanged.
+**Notes:** Used `Awaited<ReturnType<typeof connect>>` for NATS connection type since `type` keyword can't be used in dynamic import destructuring.
+
 ## [2026-03-04 18:45] -- Implement EventBusProvider interface + InProcess implementation
 
 **Task:** Create the EventBusProvider abstraction with an InProcess implementation that wraps the existing createEventBus() function. Phase 1 Task 2 of K8s agent compute architecture.

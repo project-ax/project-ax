@@ -3,8 +3,8 @@
  * sandbox_write_file, sandbox_edit_file).
  *
  * In local mode these execute directly on the host filesystem using the
- * session's workspace directory. In k8s mode (Phase 2) they'll dispatch
- * to sandbox pods via NATS.
+ * session's workspace directory. In k8s mode, they dispatch to sandbox
+ * pods via NATS request/reply using the NATSSandboxDispatcher.
  *
  * Every file operation uses safePath() for path containment (SC-SEC-004).
  */
@@ -14,6 +14,8 @@ import { dirname } from 'node:path';
 import type { ProviderRegistry } from '../../types.js';
 import type { IPCContext } from '../ipc-server.js';
 import { safePath } from '../../utils/safe-path.js';
+import type { NATSSandboxDispatcher } from '../nats-sandbox-dispatch.js';
+import type { SandboxToolRequest } from '../../sandbox-worker/types.js';
 
 export interface SandboxToolHandlerOptions {
   /**
@@ -22,6 +24,18 @@ export interface SandboxToolHandlerOptions {
    * cleaned up after the agent finishes.
    */
   workspaceMap: Map<string, string>;
+
+  /**
+   * When set, tool calls dispatch via NATS to remote sandbox pods
+   * instead of executing locally. Used when sandbox provider is k8s-pod.
+   */
+  natsDispatcher?: NATSSandboxDispatcher;
+
+  /**
+   * Maps sessionId to requestId for per-turn pod affinity.
+   * The dispatcher uses requestId to track which pod to reuse.
+   */
+  requestIdMap?: Map<string, string>;
 }
 
 function resolveWorkspace(opts: SandboxToolHandlerOptions, ctx: IPCContext): string {
@@ -42,9 +56,66 @@ function safeWorkspacePath(workspace: string, relativePath: string): string {
   return safePath(workspace, ...segments);
 }
 
+/**
+ * Get the requestId for a given session, used for per-turn pod affinity.
+ */
+function resolveRequestId(opts: SandboxToolHandlerOptions, ctx: IPCContext): string {
+  return opts.requestIdMap?.get(ctx.sessionId) ?? ctx.sessionId;
+}
+
+/**
+ * Dispatch a tool call via NATS to a remote sandbox pod.
+ * Returns the tool response, or throws on timeout/error.
+ */
+async function dispatchViaNATS(
+  dispatcher: NATSSandboxDispatcher,
+  requestId: string,
+  sessionId: string,
+  tool: SandboxToolRequest,
+  action: string,
+  providers: ProviderRegistry,
+): Promise<any> {
+  try {
+    const result = await dispatcher.dispatch(requestId, sessionId, tool);
+    await providers.audit.log({
+      action,
+      sessionId,
+      args: { dispatchMode: 'nats', toolType: tool.type },
+      result: 'success',
+    });
+    return result;
+  } catch (err: unknown) {
+    await providers.audit.log({
+      action,
+      sessionId,
+      args: { dispatchMode: 'nats', toolType: tool.type },
+      result: 'error',
+    });
+    return { error: `NATS dispatch error: ${(err as Error).message}` };
+  }
+}
+
 export function createSandboxToolHandlers(providers: ProviderRegistry, opts: SandboxToolHandlerOptions) {
+  const { natsDispatcher } = opts;
+
   return {
     sandbox_bash: async (req: any, ctx: IPCContext) => {
+      // NATS dispatch mode
+      if (natsDispatcher) {
+        const requestId = resolveRequestId(opts, ctx);
+        const tool: SandboxToolRequest = {
+          type: 'bash',
+          command: req.command,
+          timeoutMs: 30_000,
+        };
+        const result = await dispatchViaNATS(natsDispatcher, requestId, ctx.sessionId, tool, 'sandbox_bash', providers);
+        // Normalize response shape to match local mode
+        if ('output' in result) return { output: result.output };
+        if ('error' in result) return { output: result.error };
+        return result;
+      }
+
+      // Local execution mode
       const workspace = resolveWorkspace(opts, ctx);
       try {
         // nosemgrep: javascript.lang.security.detect-child-process — intentional: sandbox tool
@@ -76,6 +147,16 @@ export function createSandboxToolHandlers(providers: ProviderRegistry, opts: San
     },
 
     sandbox_read_file: async (req: any, ctx: IPCContext) => {
+      if (natsDispatcher) {
+        const requestId = resolveRequestId(opts, ctx);
+        const tool: SandboxToolRequest = { type: 'read_file', path: req.path };
+        const result = await dispatchViaNATS(natsDispatcher, requestId, ctx.sessionId, tool, 'sandbox_read_file', providers);
+        // Normalize: read_file_result has content/error
+        if ('content' in result) return { content: result.content };
+        if ('error' in result) return { error: result.error };
+        return result;
+      }
+
       const workspace = resolveWorkspace(opts, ctx);
       try {
         const abs = safeWorkspacePath(workspace, req.path);
@@ -99,6 +180,15 @@ export function createSandboxToolHandlers(providers: ProviderRegistry, opts: San
     },
 
     sandbox_write_file: async (req: any, ctx: IPCContext) => {
+      if (natsDispatcher) {
+        const requestId = resolveRequestId(opts, ctx);
+        const tool: SandboxToolRequest = { type: 'write_file', path: req.path, content: req.content };
+        const result = await dispatchViaNATS(natsDispatcher, requestId, ctx.sessionId, tool, 'sandbox_write_file', providers);
+        if ('written' in result) return { written: result.written, path: result.path };
+        if ('error' in result) return { error: result.error };
+        return result;
+      }
+
       const workspace = resolveWorkspace(opts, ctx);
       try {
         const abs = safeWorkspacePath(workspace, req.path);
@@ -123,6 +213,20 @@ export function createSandboxToolHandlers(providers: ProviderRegistry, opts: San
     },
 
     sandbox_edit_file: async (req: any, ctx: IPCContext) => {
+      if (natsDispatcher) {
+        const requestId = resolveRequestId(opts, ctx);
+        const tool: SandboxToolRequest = {
+          type: 'edit_file',
+          path: req.path,
+          old_string: req.old_string,
+          new_string: req.new_string,
+        };
+        const result = await dispatchViaNATS(natsDispatcher, requestId, ctx.sessionId, tool, 'sandbox_edit_file', providers);
+        if ('edited' in result) return { edited: result.edited, path: result.path };
+        if ('error' in result) return { error: result.error };
+        return result;
+      }
+
       const workspace = resolveWorkspace(opts, ctx);
       try {
         const abs = safeWorkspacePath(workspace, req.path);

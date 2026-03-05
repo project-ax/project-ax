@@ -37,33 +37,33 @@ describe('storage-sqlite', () => {
 
   // ── MessageQueue wrapper ──
 
-  test('messages: enqueue and dequeue', () => {
-    const id = storage.messages.enqueue({
+  test('messages: enqueue and dequeue', async () => {
+    const id = await storage.messages.enqueue({
       sessionId: 's1', channel: 'cli', sender: 'user', content: 'hello',
     });
     expect(id).toMatch(/^[a-f0-9-]{36}$/);
 
-    const msg = storage.messages.dequeue();
+    const msg = await storage.messages.dequeue();
     expect(msg).not.toBeNull();
     expect(msg!.content).toBe('hello');
     expect(msg!.status).toBe('processing');
   });
 
-  test('messages: pending count', () => {
-    expect(storage.messages.pending()).toBe(0);
-    storage.messages.enqueue({
+  test('messages: pending count', async () => {
+    expect(await storage.messages.pending()).toBe(0);
+    await storage.messages.enqueue({
       sessionId: 's1', channel: 'cli', sender: 'user', content: 'a',
     });
-    expect(storage.messages.pending()).toBe(1);
+    expect(await storage.messages.pending()).toBe(1);
   });
 
   // ── ConversationStore wrapper ──
 
-  test('conversations: append and load', () => {
-    storage.conversations.append('s1', 'user', 'hello');
-    storage.conversations.append('s1', 'assistant', 'hi there');
+  test('conversations: append and load', async () => {
+    await storage.conversations.append('s1', 'user', 'hello');
+    await storage.conversations.append('s1', 'assistant', 'hi there');
 
-    const turns = storage.conversations.load('s1');
+    const turns = await storage.conversations.load('s1');
     expect(turns).toHaveLength(2);
     expect(turns[0].role).toBe('user');
     expect(turns[0].content).toBe('hello');
@@ -71,31 +71,31 @@ describe('storage-sqlite', () => {
     expect(turns[1].content).toBe('hi there');
   });
 
-  test('conversations: count and clear', () => {
-    storage.conversations.append('s1', 'user', 'hello');
-    storage.conversations.append('s1', 'assistant', 'hi');
-    expect(storage.conversations.count('s1')).toBe(2);
+  test('conversations: count and clear', async () => {
+    await storage.conversations.append('s1', 'user', 'hello');
+    await storage.conversations.append('s1', 'assistant', 'hi');
+    expect(await storage.conversations.count('s1')).toBe(2);
 
-    storage.conversations.clear('s1');
-    expect(storage.conversations.count('s1')).toBe(0);
+    await storage.conversations.clear('s1');
+    expect(await storage.conversations.count('s1')).toBe(0);
   });
 
   // ── SessionStore wrapper ──
 
-  test('sessions: track and retrieve', () => {
+  test('sessions: track and retrieve', async () => {
     const session = {
       provider: 'slack',
       scope: 'channel' as const,
       identifiers: { channel: 'C123', workspace: 'W456' },
     };
-    storage.sessions.trackSession('agent-1', session);
+    await storage.sessions.trackSession('agent-1', session);
 
-    const result = storage.sessions.getLastChannelSession('agent-1');
+    const result = await storage.sessions.getLastChannelSession('agent-1');
     expect(result).toEqual(session);
   });
 
-  test('sessions: returns undefined when no session tracked', () => {
-    const result = storage.sessions.getLastChannelSession('agent-none');
+  test('sessions: returns undefined when no session tracked', async () => {
+    const result = await storage.sessions.getLastChannelSession('agent-none');
     expect(result).toBeUndefined();
   });
 

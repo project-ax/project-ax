@@ -11,8 +11,7 @@ import type { ContentBlock, ImageMimeType } from '../types.js';
 import { IMAGE_MIME_TYPES } from '../types.js';
 import { userWorkspaceDir } from '../paths.js';
 import { safePath } from '../utils/safe-path.js';
-import type { ConversationStore } from '../conversation-store.js';
-import type { SessionStore } from '../session-store.js';
+import type { ConversationStoreProvider, SessionStoreProvider } from '../providers/storage/types.js';
 import type { Router } from './router.js';
 import type { Logger } from '../logger.js';
 import type { CompletionDeps, CompletionResult, ExtractedFile } from './server-completions.js';
@@ -126,8 +125,8 @@ export class ChannelDeduplicator {
 
 export interface ChannelHandlerDeps {
   completionDeps: CompletionDeps;
-  conversationStore: ConversationStore;
-  sessionStore: SessionStore;
+  conversationStore: ConversationStoreProvider;
+  sessionStore: SessionStoreProvider;
   sessionCanaries: Map<string, string>;
   router: Router;
   agentName: string;
@@ -172,7 +171,7 @@ export function registerChannelHandler(
     // Thread gating: only process thread messages if the bot has participated
     const sessionId = canonicalize(msg.session);
     if (msg.session.scope === 'thread' && !msg.isMention) {
-      const turnCount = conversationStore.count(sessionId);
+      const turnCount = await conversationStore.count(sessionId);
       if (turnCount === 0) {
         logger.debug('thread_message_gated', { provider: channel.name, sessionId, reason: 'bot_not_in_thread' });
         return;
@@ -181,7 +180,7 @@ export function registerChannelHandler(
 
     // Thread backfill: on first entry into a thread, fetch prior messages
     if (msg.session.scope === 'thread' && msg.isMention && channel.fetchThreadHistory) {
-      const turnCount = conversationStore.count(sessionId);
+      const turnCount = await conversationStore.count(sessionId);
       if (turnCount === 0) {
         const threadChannel = msg.session.identifiers.channel;
         const threadTs = msg.session.identifiers.thread;
@@ -190,7 +189,7 @@ export function registerChannelHandler(
             const threadMessages = await channel.fetchThreadHistory(threadChannel, threadTs, 20);
             for (const tm of threadMessages) {
               if (tm.ts === msg.id) continue; // skip current message
-              conversationStore.append(sessionId, 'user', tm.content, tm.sender);
+              await conversationStore.append(sessionId, 'user', tm.content, tm.sender);
             }
             logger.debug('thread_backfill', { sessionId, messagesAdded: threadMessages.length });
           } catch (err) {
@@ -317,7 +316,7 @@ export function registerChannelHandler(
       }
 
       // Track last channel session for "last" delivery target resolution
-      sessionStore.trackSession(agentName, msg.session);
+      await sessionStore.trackSession(agentName, msg.session);
     } catch (err) {
       logger.error('channel_response_failed', {
         provider: channel.name,

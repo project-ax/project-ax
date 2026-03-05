@@ -1,5 +1,17 @@
 # Provider Lessons: Sandbox
 
+### Provider map path regex must allow digits in provider names
+**Date:** 2026-03-04
+**Context:** Adding `k8s-pod` to sandbox providers caused provider-map.test.ts and phase2.test.ts to fail — their path validation regex was `[a-z-]+` which doesn't match digits.
+**Lesson:** When adding providers with digits in their names (e.g., `k8s-pod`), update path validation regexes from `[a-z-]+` to `[a-z0-9-]+` in provider-map.test.ts and phase2.test.ts.
+**Tags:** provider-map, regex, testing, k8s
+
+### Mock k8s client-node with class syntax, not vi.fn().mockImplementation()
+**Date:** 2026-03-04
+**Context:** Mocking `@kubernetes/client-node` with `vi.fn().mockImplementation(...)` for `KubeConfig` failed with "is not a constructor" when used with dynamic `import()`.
+**Lesson:** Use actual class definitions (`class MockKubeConfig { ... }`) in `vi.mock()` factories instead of `vi.fn().mockImplementation()` when mocking constructors that will be used with `new`.
+**Tags:** vitest, mocking, kubernetes, dynamic-import
+
 ### child.killed is true after ANY kill() call, not just after the process is dead
 **Date:** 2026-02-22
 **Context:** `enforceTimeout` was checking `child.killed` to skip SIGKILL after SIGTERM, but `child.killed` is set to `true` the moment `kill()` is called, regardless of whether the process actually exited.

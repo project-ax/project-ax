@@ -14,8 +14,7 @@ import type { Config, ProviderRegistry, ContentBlock, ImageMimeType } from '../t
 import { safePath } from '../utils/safe-path.js';
 import type { InboundMessage } from '../providers/channel/types.js';
 import { deserializeContent } from '../conversation-store.js';
-import type { ConversationStore } from '../conversation-store.js';
-import type { MessageQueue } from '../db.js';
+import type { ConversationStoreProvider, MessageQueueStore } from '../providers/storage/types.js';
 import type { Router } from './router.js';
 import { TaintBudget, thresholdForProfile } from './taint-budget.js';
 import { type Logger, truncate } from '../logger.js';
@@ -38,8 +37,8 @@ const AGENT_RETRY_DELAY_MS = 1000;
 export interface CompletionDeps {
   config: Config;
   providers: ProviderRegistry;
-  db: MessageQueue;
-  conversationStore: ConversationStore;
+  db: MessageQueueStore;
+  conversationStore: ConversationStoreProvider;
   router: Router;
   taintBudget: TaintBudget;
   sessionCanaries: Map<string, string>;
@@ -247,7 +246,7 @@ export async function processCompletion(
   }
 
   // Dequeue the specific message we just enqueued (by ID, not FIFO)
-  const queued = result.messageId ? db.dequeueById(result.messageId) : db.dequeue();
+  const queued = result.messageId ? await db.dequeueById(result.messageId) : await db.dequeue();
   if (!queued) {
     reqLogger.debug('dequeue_failed', { messageId: result.messageId });
     return { responseContent: 'Internal error: message not queued', finishReason: 'stop' };
@@ -290,7 +289,7 @@ export async function processCompletion(
     if (persistentSessionId && maxTurns > 0) {
       // maxTurns=0 disables history entirely (no loading, no saving).
       // Load persisted history from DB
-      const storedTurns = conversationStore.load(persistentSessionId, maxTurns);
+      const storedTurns = await conversationStore.load(persistentSessionId, maxTurns);
 
       // For thread sessions, prepend context from the parent channel session
       if (persistentSessionId.includes(':thread:') && config.history.thread_context_turns > 0) {
@@ -304,7 +303,7 @@ export async function processCompletion(
           parentParts.splice(scopeIdx + 2); // keep provider:channel:channelId
           const parentSessionId = parentParts.join(':');
 
-          const parentTurns = conversationStore.load(parentSessionId, config.history.thread_context_turns);
+          const parentTurns = await conversationStore.load(parentSessionId, config.history.thread_context_turns);
 
           // Dedup: if last parent turn matches first thread turn (same content+sender), skip it
           if (parentTurns.length > 0 && storedTurns.length > 0) {
@@ -397,7 +396,7 @@ export async function processCompletion(
       const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
       const hasOAuthToken = !!process.env.CLAUDE_CODE_OAUTH_TOKEN;
       if (!hasApiKey && !hasOAuthToken) {
-        db.fail(queued.id);
+        await db.fail(queued.id);
         return {
           responseContent: 'No API credentials configured. Run `ax configure` to set up authentication.',
           finishReason: 'stop',
@@ -578,7 +577,7 @@ export async function processCompletion(
 
       if (!isTransient || attempt >= MAX_AGENT_RETRIES) {
         reqLogger.error('agent_failed', { exitCode, attempt, retryable: isTransient, stderr: stderr.slice(0, 2000) });
-        db.fail(queued.id);
+        await db.fail(queued.id);
         const diagnosed = diagnoseError(stderr || 'agent exited with no output');
         return { responseContent: `Agent processing failed: ${diagnosed.diagnosis}`, finishReason: 'stop' };
       }
@@ -697,19 +696,19 @@ export async function processCompletion(
       }
     }
 
-    db.complete(queued.id);
+    await db.complete(queued.id);
     sessionCanaries.delete(queued.session_id);
 
     // Persist conversation turns for persistent sessions
     if (persistentSessionId && maxTurns > 0) {
       try {
-        conversationStore.append(persistentSessionId, 'user', content, userId);
+        await conversationStore.append(persistentSessionId, 'user', content, userId);
         // Store structured blocks if present, plain text otherwise
         const assistantContent = responseBlocks ?? outbound.content;
-        conversationStore.append(persistentSessionId, 'assistant', assistantContent);
+        await conversationStore.append(persistentSessionId, 'assistant', assistantContent);
         // Lazy prune: only when count exceeds limit
-        if (conversationStore.count(persistentSessionId) > maxTurns) {
-          conversationStore.prune(persistentSessionId, maxTurns);
+        if (await conversationStore.count(persistentSessionId) > maxTurns) {
+          await conversationStore.prune(persistentSessionId, maxTurns);
         }
 
         // Summarize old turns if enabled — compresses older turns into a summary
@@ -758,7 +757,7 @@ export async function processCompletion(
       timestamp: Date.now(),
       data: { error: (err as Error).message, sessionId },
     });
-    db.fail(queued.id);
+    await db.fail(queued.id);
     // Clean up canary token on error — without this, every failed completion
     // permanently leaks an entry in sessionCanaries, eventually causing OOM.
     sessionCanaries.delete(queued.session_id);

@@ -205,4 +205,110 @@ describe('Sandbox tool IPC handlers', () => {
       );
     });
   });
+
+  // ── NATS dispatch mode ──
+
+  describe('NATS dispatch mode', () => {
+    function mockDispatcher(responses: Record<string, any> = {}): any {
+      return {
+        dispatch: vi.fn().mockImplementation(async (_reqId: string, _sessionId: string, tool: any) => {
+          if (responses[tool.type]) return responses[tool.type];
+          return { type: `${tool.type}_result`, error: 'mock not configured' };
+        }),
+        release: vi.fn().mockResolvedValue(undefined),
+        hasPod: vi.fn().mockReturnValue(false),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    test('sandbox_bash dispatches via NATS and returns output', async () => {
+      const dispatcher = mockDispatcher({
+        bash: { type: 'bash_result', output: 'hello from pod', exitCode: 0 },
+      });
+      const handlers = createSandboxToolHandlers(providers, { workspaceMap, natsDispatcher: dispatcher });
+      const result = await handlers.sandbox_bash({ command: 'echo hello' }, ctx);
+      expect(result.output).toBe('hello from pod');
+      expect(dispatcher.dispatch).toHaveBeenCalledWith(
+        'test-session', 'test-session',
+        expect.objectContaining({ type: 'bash', command: 'echo hello' }),
+      );
+    });
+
+    test('sandbox_read_file dispatches via NATS', async () => {
+      const dispatcher = mockDispatcher({
+        read_file: { type: 'read_file_result', content: 'remote content' },
+      });
+      const handlers = createSandboxToolHandlers(providers, { workspaceMap, natsDispatcher: dispatcher });
+      const result = await handlers.sandbox_read_file({ path: 'test.txt' }, ctx);
+      expect(result.content).toBe('remote content');
+    });
+
+    test('sandbox_write_file dispatches via NATS', async () => {
+      const dispatcher = mockDispatcher({
+        write_file: { type: 'write_file_result', written: true, path: 'out.txt' },
+      });
+      const handlers = createSandboxToolHandlers(providers, { workspaceMap, natsDispatcher: dispatcher });
+      const result = await handlers.sandbox_write_file({ path: 'out.txt', content: 'data' }, ctx);
+      expect(result.written).toBe(true);
+    });
+
+    test('sandbox_edit_file dispatches via NATS', async () => {
+      const dispatcher = mockDispatcher({
+        edit_file: { type: 'edit_file_result', edited: true, path: 'f.txt' },
+      });
+      const handlers = createSandboxToolHandlers(providers, { workspaceMap, natsDispatcher: dispatcher });
+      const result = await handlers.sandbox_edit_file(
+        { path: 'f.txt', old_string: 'a', new_string: 'b' },
+        ctx,
+      );
+      expect(result.edited).toBe(true);
+    });
+
+    test('uses requestIdMap for per-turn pod affinity', async () => {
+      const dispatcher = mockDispatcher({
+        bash: { type: 'bash_result', output: 'ok', exitCode: 0 },
+      });
+      const requestIdMap = new Map([['test-session', 'req-123']]);
+      const handlers = createSandboxToolHandlers(providers, {
+        workspaceMap, natsDispatcher: dispatcher, requestIdMap,
+      });
+      await handlers.sandbox_bash({ command: 'ls' }, ctx);
+      expect(dispatcher.dispatch).toHaveBeenCalledWith(
+        'req-123', 'test-session',
+        expect.objectContaining({ type: 'bash' }),
+      );
+    });
+
+    test('returns error when NATS dispatch fails', async () => {
+      const dispatcher = {
+        dispatch: vi.fn().mockRejectedValue(new Error('NATS timeout')),
+        release: vi.fn(),
+        hasPod: vi.fn(),
+        close: vi.fn(),
+      };
+      const handlers = createSandboxToolHandlers(providers, { workspaceMap, natsDispatcher: dispatcher });
+      // sandbox_bash normalizes errors into { output } to match local mode
+      const result = await handlers.sandbox_bash({ command: 'echo hello' }, ctx);
+      expect(result.output).toContain('NATS');
+
+      // sandbox_read_file returns { error } directly
+      const readResult = await handlers.sandbox_read_file({ path: 'test.txt' }, ctx);
+      expect(readResult.error).toContain('NATS');
+    });
+
+    test('audits NATS dispatch calls', async () => {
+      const dispatcher = mockDispatcher({
+        bash: { type: 'bash_result', output: 'ok', exitCode: 0 },
+      });
+      const handlers = createSandboxToolHandlers(providers, { workspaceMap, natsDispatcher: dispatcher });
+      await handlers.sandbox_bash({ command: 'echo test' }, ctx);
+      expect(providers.audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'sandbox_bash',
+          result: 'success',
+          args: expect.objectContaining({ dispatchMode: 'nats' }),
+        }),
+      );
+    });
+  });
 });

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProviderRegistry, TaintTag } from '../types.js';
 import { canonicalize, type InboundMessage } from '../providers/channel/types.js';
 import type { ScanResult } from '../providers/scanner/types.js';
-import type { MessageQueue } from '../db.js';
+import type { MessageQueueStore } from '../providers/storage/types.js';
 import type { TaintBudget } from './taint-budget.js';
 
 export interface RouterResult {
@@ -34,7 +34,7 @@ export interface RouterOptions {
 
 export function createRouter(
   providers: ProviderRegistry,
-  db: MessageQueue,
+  db: MessageQueueStore,
   opts?: RouterOptions,
 ): Router {
 
@@ -93,7 +93,7 @@ export function createRouter(
       const contentWithCanary = `${taggedContent}\n<!-- canary:${canaryToken} -->`;
 
       // Enqueue for processing
-      const messageId = db.enqueue({
+      const messageId = await db.enqueue({
         sessionId,
         channel: msg.session.provider,
         sender: msg.sender,
