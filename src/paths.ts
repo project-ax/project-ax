@@ -57,9 +57,9 @@ export function axHome(): string {
   return process.env.AX_HOME || join(homedir(), '.ax');
 }
 
-/** Path to ax.yaml config file. */
+/** Path to ax.yaml config file. Override with AX_CONFIG_PATH env var. */
 export function configPath(): string {
-  return join(axHome(), 'ax.yaml');
+  return process.env.AX_CONFIG_PATH || join(axHome(), 'ax.yaml');
 }
 
 /** Path to .env file. */

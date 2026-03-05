@@ -1,7 +1,7 @@
 import { describe, test, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { isValidSessionId, workspaceDir, agentDir, agentStateDir, agentUserDir, axHome, composeSessionId, parseSessionId, userSkillsDir, agentSkillsDir, webhooksDir, webhookTransformPath } from '../src/paths.js';
+import { isValidSessionId, workspaceDir, agentDir, agentStateDir, agentUserDir, axHome, composeSessionId, parseSessionId, userSkillsDir, agentSkillsDir, webhooksDir, webhookTransformPath, configPath } from '../src/paths.js';
 
 describe('paths', () => {
   const originalEnv = process.env.AX_HOME;
@@ -186,5 +186,27 @@ describe('paths', () => {
     const p = webhookTransformPath('../../../etc/passwd');
     expect(p).not.toContain('..');
     expect(p).toMatch(/\.ax\/webhooks\//);
+  });
+});
+
+describe('configPath with AX_CONFIG_PATH', () => {
+  const originalEnv = process.env.AX_CONFIG_PATH;
+
+  afterEach(() => {
+    if (originalEnv !== undefined) {
+      process.env.AX_CONFIG_PATH = originalEnv;
+    } else {
+      delete process.env.AX_CONFIG_PATH;
+    }
+  });
+
+  test('respects AX_CONFIG_PATH env override', () => {
+    process.env.AX_CONFIG_PATH = '/etc/ax/ax.yaml';
+    expect(configPath()).toBe('/etc/ax/ax.yaml');
+  });
+
+  test('falls back to axHome/ax.yaml when AX_CONFIG_PATH not set', () => {
+    delete process.env.AX_CONFIG_PATH;
+    expect(configPath()).toMatch(/ax\.yaml$/);
   });
 });
