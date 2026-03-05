@@ -5,7 +5,11 @@ import type {
   MemoryProvider, MemoryEntry, MemoryQuery, ConversationTurn,
 } from '../types.js';
 import type { LLMProvider } from '../../llm/types.js';
+import type { DatabaseProvider } from '../../database/types.js';
 import { dataFile } from '../../../paths.js';
+import { createKyselyDb } from '../../../utils/database.js';
+import { runMigrations } from '../../../utils/migrator.js';
+import { memoryMigrations } from './migrations.js';
 import { ItemsStore } from './items-store.js';
 import { EmbeddingStore } from './embedding-store.js';
 import { writeSummary, readSummary, initDefaultCategories } from './summary-io.js';
@@ -16,6 +20,8 @@ import { buildSummaryPrompt, stripCodeFences } from './prompts.js';
 import { llmComplete } from './llm-helpers.js';
 import { createEmbeddingClient, type EmbeddingClient } from '../../../utils/embedding-client.js';
 import { getLogger } from '../../../logger.js';
+import { mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 const logger = getLogger().child({ component: 'memoryfs' });
 
@@ -23,6 +29,7 @@ const SEMANTIC_DEDUP_THRESHOLD = 0.8;
 
 export interface CreateOptions {
   llm?: LLMProvider;
+  database?: DatabaseProvider;
 }
 
 /**
@@ -59,11 +66,11 @@ async function backfillEmbeddings(
   if (!client.available) return;
 
   try {
-    const scopes = store.listAllScopes();
+    const scopes = await store.listAllScopes();
     if (scopes.length === 0) return;
 
     for (const scope of scopes) {
-      const allIds = store.listIdsByScope(scope);
+      const allIds = await store.listIdsByScope(scope);
       const unembedded = await embeddingStore.listUnembedded(allIds);
 
       if (unembedded.length === 0) continue;
@@ -72,7 +79,7 @@ async function backfillEmbeddings(
       // Process in batches
       for (let i = 0; i < unembedded.length; i += batchSize) {
         const batchIds = unembedded.slice(i, i + batchSize);
-        const items = store.getByIds(batchIds);
+        const items = await store.getByIds(batchIds);
         if (items.length === 0) continue;
 
         const vectors = await client.embed(items.map(it => it.content));
@@ -113,12 +120,26 @@ async function updateCategorySummary(
 
 export async function create(config: Config, _name?: string, opts?: CreateOptions): Promise<MemoryProvider> {
   const llm = opts?.llm;
+  const database = opts?.database;
   const memoryDir = dataFile('memory');
-  const dbPath = join(memoryDir, '_store.db');
   const vecDbPath = join(memoryDir, '_vec.db');
 
   await initDefaultCategories(memoryDir);
-  const store = new ItemsStore(dbPath);
+
+  // Use shared database if available, otherwise create a standalone Kysely instance
+  let itemsDb;
+  if (database) {
+    itemsDb = database.db;
+  } else {
+    const dbPath = join(memoryDir, '_store.db');
+    mkdirSync(memoryDir, { recursive: true });
+    itemsDb = createKyselyDb({ type: 'sqlite', path: dbPath });
+  }
+
+  const migResult = await runMigrations(itemsDb, memoryMigrations(database?.type ?? 'sqlite'));
+  if (migResult.error) throw migResult.error;
+
+  const store = new ItemsStore(itemsDb);
 
   // Initialize embedding infrastructure (safe defaults for tests/minimal configs)
   const embeddingModel = config.history?.embedding_model ?? 'text-embedding-3-small';
@@ -127,7 +148,37 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
     model: embeddingModel,
     dimensions: embeddingDimensions,
   });
-  const embeddingStore = new EmbeddingStore(vecDbPath, embeddingDimensions);
+
+  // EmbeddingStore needs a DatabaseProvider with vector extension support
+  let embeddingDb: DatabaseProvider;
+  if (database) {
+    embeddingDb = database;
+  } else {
+    // Create a standalone SQLite connection with sqlite-vec for the embedding store
+    mkdirSync(memoryDir, { recursive: true });
+    const req = createRequire(import.meta.url);
+    const Database = req('better-sqlite3');
+    const rawDb = new Database(vecDbPath);
+    rawDb.pragma('journal_mode = WAL');
+    let vectorsAvailable = false;
+    try {
+      const sqliteVec = req('sqlite-vec');
+      sqliteVec.load(rawDb);
+      vectorsAvailable = true;
+    } catch {
+      // sqlite-vec not available — vector search will be disabled
+    }
+    const { Kysely: KyselyClass, SqliteDialect: SqliteDialectClass } = await import('kysely');
+    const standaloneDb = new KyselyClass({ dialect: new SqliteDialectClass({ database: rawDb }) });
+    embeddingDb = {
+      db: standaloneDb,
+      type: 'sqlite',
+      vectorsAvailable,
+      async close() { await standaloneDb.destroy(); },
+    };
+  }
+
+  const embeddingStore = new EmbeddingStore(embeddingDb, embeddingDimensions);
   await embeddingStore.ready();
 
   // Kick off background backfill (non-blocking)
@@ -155,9 +206,9 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
       const scope = entry.scope || 'default';
 
       // Fast path: hash-based dedup (exact match after normalization)
-      const existing = store.findByHash(contentHash, scope, entry.agentId, entry.userId);
+      const existing = await store.findByHash(contentHash, scope, entry.agentId, entry.userId);
       if (existing) {
-        store.reinforce(existing.id);
+        await store.reinforce(existing.id);
         return existing.id;
       }
 
@@ -171,7 +222,7 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
           if (similar.length > 0) {
             const similarity = 1 / (1 + similar[0].distance);
             if (similarity >= SEMANTIC_DEDUP_THRESHOLD) {
-              store.reinforce(similar[0].itemId);
+              await store.reinforce(similar[0].itemId);
               logger.info('semantic_dedup_hit', {
                 existingId: similar[0].itemId,
                 similarity,
@@ -187,7 +238,7 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
       }
 
       // Explicit writes get reinforcement boost of 10
-      const id = store.insert({
+      const id = await store.insert({
         content: entry.content,
         memoryType: 'knowledge',
         category: 'knowledge',
@@ -235,7 +286,7 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
           }
 
           const itemIds = similar.map(s => s.itemId);
-          const items = store.getByIds(itemIds);
+          const items = await store.getByIds(itemIds);
           const distanceMap = new Map(similar.map(s => [s.itemId, s.distance]));
 
           // Rank by salience × similarity
@@ -263,8 +314,8 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
 
       // Path 2: Keyword search (fallback or when no embedding provided)
       let items = q.query
-        ? store.searchContent(q.query, scope, limit, q.userId)
-        : store.listByScope(scope, limit, q.agentId, q.userId);
+        ? await store.searchContent(q.query, scope, limit, q.userId)
+        : await store.listByScope(scope, limit, q.agentId, q.userId);
 
       if (q.agentId && q.query) {
         items = items.filter(i => i.agentId === q.agentId);
@@ -286,18 +337,18 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
     },
 
     async read(id: string): Promise<MemoryEntry | null> {
-      const item = store.getById(id);
+      const item = await store.getById(id);
       if (!item) return null;
       return toEntry(item);
     },
 
     async delete(id: string): Promise<void> {
-      store.deleteById(id);
+      await store.deleteById(id);
       await embeddingStore.delete(id).catch(() => {});
     },
 
     async list(scope: string, limit?: number, userId?: string): Promise<MemoryEntry[]> {
-      const items = store.listByScope(scope, limit ?? 50, undefined, userId);
+      const items = await store.listByScope(scope, limit ?? 50, undefined, userId);
       return items.map(item => toEntry(item));
     },
 
@@ -316,11 +367,11 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
       const newItems: Array<{ id: string; content: string; scope: string }> = [];
 
       for (const candidate of candidates) {
-        const existing = store.findByHash(candidate.contentHash, scope, undefined, userId);
+        const existing = await store.findByHash(candidate.contentHash, scope, undefined, userId);
         if (existing) {
-          store.reinforce(existing.id);
+          await store.reinforce(existing.id);
         } else {
-          const id = store.insert({ ...candidate, userId });
+          const id = await store.insert({ ...candidate, userId });
           newItems.push({ id, content: candidate.content, scope });
           const items = newItemsByCategory.get(candidate.category) || [];
           items.push(candidate.content);

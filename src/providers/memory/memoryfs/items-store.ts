@@ -1,180 +1,183 @@
-// src/providers/memory/memoryfs/items-store.ts — SQLite CRUD for MemoryFS items
+// src/providers/memory/memoryfs/items-store.ts — Kysely-backed CRUD for MemoryFS items
 import { randomUUID } from 'node:crypto';
-import { openDatabase, type SQLiteDatabase } from '../../../utils/sqlite.js';
+import { sql, type Kysely } from 'kysely';
 import type { MemoryFSItem } from './types.js';
 
-const CREATE_TABLE = `
-  CREATE TABLE IF NOT EXISTS items (
-    id                  TEXT PRIMARY KEY,
-    content             TEXT NOT NULL,
-    memory_type         TEXT NOT NULL,
-    category            TEXT NOT NULL,
-    content_hash        TEXT NOT NULL,
-    source              TEXT,
-    confidence          REAL DEFAULT 0.5,
-    reinforcement_count INTEGER DEFAULT 1,
-    last_reinforced_at  TEXT,
-    created_at          TEXT NOT NULL,
-    updated_at          TEXT NOT NULL,
-    scope               TEXT NOT NULL DEFAULT 'default',
-    agent_id            TEXT,
-    user_id             TEXT,
-    taint               TEXT,
-    extra               TEXT
-  )
-`;
-
-const CREATE_INDEXES = [
-  'CREATE INDEX IF NOT EXISTS idx_items_scope ON items(scope)',
-  'CREATE INDEX IF NOT EXISTS idx_items_category ON items(category, scope)',
-  'CREATE INDEX IF NOT EXISTS idx_items_hash ON items(content_hash, scope)',
-  'CREATE INDEX IF NOT EXISTS idx_items_agent ON items(agent_id, scope)',
-  'CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id, scope)',
-];
-
 export class ItemsStore {
-  private db: SQLiteDatabase;
+  constructor(private db: Kysely<any>) {}
 
-  constructor(dbPath: string) {
-    this.db = openDatabase(dbPath);
-    this.db.exec(CREATE_TABLE);
-    for (const idx of CREATE_INDEXES) {
-      this.db.exec(idx);
-    }
-  }
-
-  insert(item: Omit<MemoryFSItem, 'id'>): string {
+  async insert(item: Omit<MemoryFSItem, 'id'>): Promise<string> {
     const id = randomUUID();
-    this.db.prepare(`
-      INSERT INTO items (id, content, memory_type, category, content_hash, source,
-        confidence, reinforcement_count, last_reinforced_at, created_at, updated_at,
-        scope, agent_id, user_id, taint, extra)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, item.content, item.memoryType, item.category, item.contentHash,
-      item.source ?? null, item.confidence, item.reinforcementCount,
-      item.lastReinforcedAt, item.createdAt, item.updatedAt,
-      item.scope, item.agentId ?? null, item.userId ?? null,
-      item.taint ?? null, item.extra ?? null,
-    );
+    await this.db.insertInto('items')
+      .values({
+        id,
+        content: item.content,
+        memory_type: item.memoryType,
+        category: item.category,
+        content_hash: item.contentHash,
+        source: item.source ?? null,
+        confidence: item.confidence,
+        reinforcement_count: item.reinforcementCount,
+        last_reinforced_at: item.lastReinforcedAt,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+        scope: item.scope,
+        agent_id: item.agentId ?? null,
+        user_id: item.userId ?? null,
+        taint: item.taint ?? null,
+        extra: item.extra ?? null,
+      })
+      .execute();
     return id;
   }
 
-  getById(id: string): MemoryFSItem | null {
-    const row = this.db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Record<string, unknown> | undefined;
-    return row ? this.rowToItem(row) : null;
+  async getById(id: string): Promise<MemoryFSItem | null> {
+    const row = await this.db.selectFrom('items')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
+    return row ? this.rowToItem(row as Record<string, unknown>) : null;
   }
 
-  findByHash(contentHash: string, scope: string, agentId?: string, userId?: string): MemoryFSItem | null {
-    let sql = 'SELECT * FROM items WHERE content_hash = ? AND scope = ?';
-    const params: unknown[] = [contentHash, scope];
-    // Agent scoping: match specific agent or NULL
-    sql += agentId ? ' AND agent_id = ?' : ' AND agent_id IS NULL';
-    if (agentId) params.push(agentId);
-    // User scoping: match specific user or NULL
-    sql += userId ? ' AND user_id = ?' : ' AND user_id IS NULL';
-    if (userId) params.push(userId);
-    const row = this.db.prepare(sql).get(...params) as Record<string, unknown> | undefined;
-    return row ? this.rowToItem(row) : null;
-  }
+  async findByHash(contentHash: string, scope: string, agentId?: string, userId?: string): Promise<MemoryFSItem | null> {
+    let query = this.db.selectFrom('items')
+      .selectAll()
+      .where('content_hash', '=', contentHash)
+      .where('scope', '=', scope);
 
-  reinforce(id: string): void {
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      UPDATE items SET reinforcement_count = reinforcement_count + 1,
-        last_reinforced_at = ?, updated_at = ?
-      WHERE id = ?
-    `).run(now, now, id);
-  }
-
-  listByCategory(category: string, scope: string, limit?: number, userId?: string): MemoryFSItem[] {
-    let sql = 'SELECT * FROM items WHERE category = ? AND scope = ?';
-    const params: unknown[] = [category, scope];
-    if (userId) {
-      sql += ' AND (user_id = ? OR user_id IS NULL)';
-      params.push(userId);
-    }
-    sql += ' ORDER BY created_at DESC';
-    if (limit) {
-      sql += ' LIMIT ?';
-      params.push(limit);
-    }
-    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
-    return rows.map(r => this.rowToItem(r));
-  }
-
-  listByScope(scope: string, limit?: number, agentId?: string, userId?: string): MemoryFSItem[] {
-    let sql = 'SELECT * FROM items WHERE scope = ?';
-    const params: unknown[] = [scope];
     if (agentId) {
-      sql += ' AND agent_id = ?';
-      params.push(agentId);
+      query = query.where('agent_id', '=', agentId);
+    } else {
+      query = query.where('agent_id', 'is', null);
     }
-    // User scoping: when userId set, return user's own + shared (user_id IS NULL)
+
     if (userId) {
-      sql += ' AND (user_id = ? OR user_id IS NULL)';
-      params.push(userId);
+      query = query.where('user_id', '=', userId);
+    } else {
+      query = query.where('user_id', 'is', null);
     }
-    sql += ' ORDER BY created_at DESC';
+
+    const row = await query.executeTakeFirst();
+    return row ? this.rowToItem(row as Record<string, unknown>) : null;
+  }
+
+  async reinforce(id: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db.updateTable('items')
+      .set({
+        reinforcement_count: sql`reinforcement_count + 1` as any,
+        last_reinforced_at: now,
+        updated_at: now,
+      })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  async listByCategory(category: string, scope: string, limit?: number, userId?: string): Promise<MemoryFSItem[]> {
+    let query = this.db.selectFrom('items')
+      .selectAll()
+      .where('category', '=', category)
+      .where('scope', '=', scope);
+
+    if (userId) {
+      query = query.where(eb =>
+        eb.or([eb('user_id', '=', userId), eb('user_id', 'is', null)]));
+    }
+
+    query = query.orderBy('created_at', 'desc');
+
     if (limit) {
-      sql += ' LIMIT ?';
-      params.push(limit);
+      query = query.limit(limit);
     }
-    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
-    return rows.map(r => this.rowToItem(r));
+
+    const rows = await query.execute();
+    return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  getAllForCategory(category: string, scope: string): MemoryFSItem[] {
-    const rows = this.db.prepare(
-      'SELECT * FROM items WHERE category = ? AND scope = ? ORDER BY created_at ASC',
-    ).all(category, scope) as Record<string, unknown>[];
-    return rows.map(r => this.rowToItem(r));
-  }
+  async listByScope(scope: string, limit?: number, agentId?: string, userId?: string): Promise<MemoryFSItem[]> {
+    let query = this.db.selectFrom('items')
+      .selectAll()
+      .where('scope', '=', scope);
 
-  searchContent(query: string, scope: string, limit = 50, userId?: string): MemoryFSItem[] {
+    if (agentId) {
+      query = query.where('agent_id', '=', agentId);
+    }
+
     if (userId) {
-      const rows = this.db.prepare(
-        'SELECT * FROM items WHERE scope = ? AND content LIKE ? AND (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT ?',
-      ).all(scope, `%${query}%`, userId, limit) as Record<string, unknown>[];
-      return rows.map(r => this.rowToItem(r));
+      query = query.where(eb =>
+        eb.or([eb('user_id', '=', userId), eb('user_id', 'is', null)]));
     }
-    const rows = this.db.prepare(
-      'SELECT * FROM items WHERE scope = ? AND content LIKE ? ORDER BY created_at DESC LIMIT ?',
-    ).all(scope, `%${query}%`, limit) as Record<string, unknown>[];
-    return rows.map(r => this.rowToItem(r));
+
+    query = query.orderBy('created_at', 'desc');
+
+    if (limit) {
+      query = query.limit(limit);
+    }
+
+    const rows = await query.execute();
+    return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  getByIds(ids: string[]): MemoryFSItem[] {
+  async getAllForCategory(category: string, scope: string): Promise<MemoryFSItem[]> {
+    const rows = await this.db.selectFrom('items')
+      .selectAll()
+      .where('category', '=', category)
+      .where('scope', '=', scope)
+      .orderBy('created_at', 'asc')
+      .execute();
+    return rows.map(r => this.rowToItem(r as Record<string, unknown>));
+  }
+
+  async searchContent(query: string, scope: string, limit = 50, userId?: string): Promise<MemoryFSItem[]> {
+    let q = this.db.selectFrom('items')
+      .selectAll()
+      .where('scope', '=', scope)
+      .where('content', 'like', `%${query}%`);
+
+    if (userId) {
+      q = q.where(eb =>
+        eb.or([eb('user_id', '=', userId), eb('user_id', 'is', null)]));
+    }
+
+    q = q.orderBy('created_at', 'desc').limit(limit);
+    const rows = await q.execute();
+    return rows.map(r => this.rowToItem(r as Record<string, unknown>));
+  }
+
+  async getByIds(ids: string[]): Promise<MemoryFSItem[]> {
     if (ids.length === 0) return [];
-    const placeholders = ids.map(() => '?').join(',');
-    const rows = this.db.prepare(
-      `SELECT * FROM items WHERE id IN (${placeholders})`,
-    ).all(...ids) as Record<string, unknown>[];
-    return rows.map(r => this.rowToItem(r));
+    const rows = await this.db.selectFrom('items')
+      .selectAll()
+      .where('id', 'in', ids)
+      .execute();
+    return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  /** Return all item IDs in a given scope. Used for backfill checks. */
-  listIdsByScope(scope: string): string[] {
-    const rows = this.db.prepare(
-      'SELECT id FROM items WHERE scope = ?',
-    ).all(scope) as Array<{ id: string }>;
-    return rows.map(r => r.id);
+  async listIdsByScope(scope: string): Promise<string[]> {
+    const rows = await this.db.selectFrom('items')
+      .select('id')
+      .where('scope', '=', scope)
+      .execute();
+    return rows.map(r => r.id as string);
   }
 
-  /** Return all distinct scopes that have items. */
-  listAllScopes(): string[] {
-    const rows = this.db.prepare(
-      'SELECT DISTINCT scope FROM items',
-    ).all() as Array<{ scope: string }>;
-    return rows.map(r => r.scope);
+  async listAllScopes(): Promise<string[]> {
+    const rows = await this.db.selectFrom('items')
+      .select('scope')
+      .distinct()
+      .execute();
+    return rows.map(r => r.scope as string);
   }
 
-  deleteById(id: string): void {
-    this.db.prepare('DELETE FROM items WHERE id = ?').run(id);
+  async deleteById(id: string): Promise<void> {
+    await this.db.deleteFrom('items')
+      .where('id', '=', id)
+      .execute();
   }
 
-  close(): void {
-    this.db.close();
+  async close(): Promise<void> {
+    // No-op when using shared DatabaseProvider.
+    // Only meaningful for standalone usage.
   }
 
   private rowToItem(row: Record<string, unknown>): MemoryFSItem {
