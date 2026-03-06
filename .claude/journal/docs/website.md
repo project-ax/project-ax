@@ -2,6 +2,14 @@
 
 README.md updates, docs/web site updates, dashboard, warning banners, GitHub Pages deployment.
 
+## [2026-03-05 21:00] — Update README.md with changes since last update
+
+**Task:** Update README.md to reflect all changes made since the last update (commit c143cbd, 68 commits ago)
+**What I did:** Updated README to reflect: k8s sandbox + Helm chart, memoryfs→cortex rename, promptfoo→guardian scanner, new database/storage/eventbus provider categories, shared DatabaseProvider pattern, NATS JetStream for distributed events, updated provider table (13→16 categories, 43→45+ implementations), dual config examples (local vs k8s), credential provider rename (env→plaintext)
+**Files touched:** README.md
+**Outcome:** Success — README now accurately reflects current state of the project
+**Notes:** Major themes: k8s production readiness, provider consolidation (shared DB), and security scanner evolution
+
 ## [2026-03-04 12:00] — Create AX admin dashboard React source files
 
 **Task:** Create all React component source files for the AX admin dashboard
