@@ -200,7 +200,7 @@ Items WITHOUT embeddings: 0
 2. Direct unit testing of the `memorize()` function with a failing LLM
 3. Temporarily misconfiguring the LLM API key (would break all tests)
 
-**Recommendation:** This is a unit test concern, not an acceptance test concern. The code path is verified structurally: `extractByLLM()` errors propagate through `memorize()` without being caught. A unit test in `tests/providers/memory/cortex/` would be the appropriate way to verify this.
+**Resolution:** Covered by unit test `memorize() throws when LLM call fails and stores nothing (BT-7)` in `tests/providers/memory/cortex/provider.test.ts`. The test mocks the LLM to throw a 503 error, verifies `memorize()` rejects, and confirms no items were stored (no partial writes).
 
 ## Infrastructure Improvements Needed
 

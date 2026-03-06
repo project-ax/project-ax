@@ -349,7 +349,7 @@ describe('cortex provider with LLM', () => {
     expect(results[0].content).toBe('User prefers dark mode');
   });
 
-  it('memorize() throws when LLM extraction fails', async () => {
+  it('memorize() throws when LLM extraction returns invalid JSON', async () => {
     // LLM returns invalid response — error should propagate
     llm = mockLLM(['this is not valid JSON']);
     memory = await create(config, undefined, { llm });
@@ -358,6 +358,27 @@ describe('cortex provider with LLM', () => {
       { role: 'user', content: 'Remember that I prefer TypeScript' },
     ];
     await expect(memory.memorize!(conversation)).rejects.toThrow('LLM extraction returned no JSON array');
+  });
+
+  it('memorize() throws when LLM call fails and stores nothing (BT-7)', async () => {
+    // LLM chat throws a network/API error — memorize must reject, not silently succeed
+    llm = {
+      name: 'mock',
+      chat: vi.fn().mockImplementation(() => {
+        throw new Error('LLM API unavailable: 503 Service Unavailable');
+      }),
+      models: vi.fn().mockResolvedValue(['fast']),
+    };
+    memory = await create(config, undefined, { llm });
+
+    const conversation: ConversationTurn[] = [
+      { role: 'user', content: 'Remember that I prefer dark mode' },
+    ];
+    await expect(memory.memorize!(conversation)).rejects.toThrow('LLM API unavailable');
+
+    // Verify nothing was stored (no partial writes on failure)
+    const results = await memory.query({ scope: 'default', query: 'dark mode' });
+    expect(results.filter(r => !r.id?.startsWith('summary:'))).toHaveLength(0);
   });
 
   it('query() appends summaries after items when slots remain', async () => {
