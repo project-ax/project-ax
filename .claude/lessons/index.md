@@ -17,6 +17,7 @@
 
 ### infrastructure
 
+- Custom PG username requires BOTH AX-level and Bitnami subchart-level auth settings [infrastructure/entries.md](infrastructure/entries.md)
 - Helm subchart dependencies should be gitignored [infrastructure/entries.md](infrastructure/entries.md)
 - ConfigMap-mounted config reuses loadConfig() via AX_CONFIG_PATH [infrastructure/entries.md](infrastructure/entries.md)
 - Security contexts must stay hardcoded in k8s-client.ts [infrastructure/entries.md](infrastructure/entries.md)

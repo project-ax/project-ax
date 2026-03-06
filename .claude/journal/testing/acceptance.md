@@ -2,6 +2,14 @@
 
 Acceptance test skill and framework for validating features against plan design goals.
 
+## [2026-03-06 17:15] -- K8s acceptance: verify cortex infrastructure fixes (FIX-10/11/12)
+
+**Task:** Deploy AX to kind cluster with custom PG username "ax" and verify 3 infrastructure fixes work automatically: pgvector auto-enabled (FIX-10), custom user/database created (FIX-11), advisory lock prevents duplicate backfill (FIX-12). Run BT-8, IT-7, IT-8.
+**What I did:** Deployed via Helm with `postgresql.internal.auth.username=ax` + `postgresql.auth.username=ax` + `postgresql.auth.password=ax-test-password`. Verified pgvector extension installed (owned by postgres superuser). Verified "ax" user exists with LOGIN + CREATEDB, owns all 20 tables. Inserted 3 items without embeddings, restarted both pods simultaneously — host got the advisory lock and backfilled, agent-runtime logged `backfill_skipped`. All 3 behavioral tests passed.
+**Files touched:** `tests/acceptance/cortex/results-k8s-fixes.md` (created)
+**Outcome:** Success. All 3 fixes verified, all 3 behavioral tests pass. Key finding: `ax k8s init` must set both `postgresql.internal.auth.username` AND `postgresql.auth.username`/`password` (Bitnami subchart level) for custom usernames to work.
+**Notes:** First attempt failed because reused PVC from previous install had stale passwords. Had to delete namespace entirely and start fresh. Also: Bitnami subchart only creates `password` secret key when `auth.password` is explicitly set — without it, host pod gets `CreateContainerConfigError`.
+
 ## [2026-03-06 23:00] -- Fix 3 k8s infrastructure gaps from cortex re-test
 
 **Task:** Fix 3 infrastructure gaps identified in the cortex k8s re-test: (1) pgvector not auto-enabled, (2) custom PG user/database not reliably created, (3) dual cortex instances run duplicate backfills

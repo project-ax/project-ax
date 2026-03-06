@@ -1,3 +1,9 @@
+### Custom PG username requires BOTH AX-level and Bitnami subchart-level auth settings
+**Date:** 2026-03-06
+**Context:** Deploying with `postgresql.internal.auth.username=ax` caused `CreateContainerConfigError: couldn't find key password in Secret` because the Bitnami subchart only creates `postgres-password` key by default.
+**Lesson:** When using a non-postgres username, you must set values at TWO levels: (1) `postgresql.internal.auth.username=ax` for AX templates (`_helpers.tpl:ax.databaseEnv`), AND (2) `postgresql.auth.username=ax` + `postgresql.auth.password=<value>` for the Bitnami subchart to create the `password` key in its secret. The `ax k8s init` CLI should emit both when generating values for a custom username. Also: reusing a PVC from a previous install ignores new secret values — always delete the namespace/PVC when changing PG auth settings.
+**Tags:** k8s, helm, postgresql, bitnami, auth, subchart, password, custom-user
+
 ### k8s init should use single secret for all API credentials
 **Date:** 2026-03-06
 **Context:** FIX-2 — k8s init created separate secrets for LLM and embeddings API keys, but the Helm chart's `apiCredentials.envVars` maps all env vars from a single `existingSecret`.
