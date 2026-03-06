@@ -42,9 +42,15 @@ class MockWatch {
   watch = mockWatch;
 }
 
+class MockAttach {
+  constructor(_kc: any) {}
+  attach = vi.fn();
+}
+
 vi.mock('@kubernetes/client-node', () => ({
   KubeConfig: MockKubeConfig,
   CoreV1Api: class {},
+  Attach: MockAttach,
   Watch: MockWatch,
 }));
 
