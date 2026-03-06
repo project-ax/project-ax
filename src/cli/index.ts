@@ -243,6 +243,10 @@ if (import.meta.url === scriptUrl) {
     const { diagnoseError, formatDiagnosedError } = await import('../errors.js');
     const diagnosed = diagnoseError(err as Error);
     console.error(formatDiagnosedError(diagnosed));
-    process.exit(1);
+    // Setting exitCode and letting the event loop drain naturally avoids
+    // the "sonic boom is not ready yet" crash that happens when
+    // process.exit() fires pino's flush handler before the log file
+    // stream has opened.
+    process.exitCode = 1;
   });
 }

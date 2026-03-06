@@ -25,6 +25,11 @@ interface ErrorPattern {
 
 const PATTERNS: ErrorPattern[] = [
   {
+    test: /^Configuration error in /,
+    diagnosis: '',
+    suggestion: '',
+  },
+  {
     test: /ETIMEDOUT/i,
     diagnosis: 'Network timeout — could not reach the API',
     suggestion: 'Check your wifi/VPN connection and try again',
@@ -114,5 +119,9 @@ export function diagnoseError(err: Error | string | undefined | null): Diagnosed
  * Single-line for server logs, multi-line for CLI.
  */
 export function formatDiagnosedError(d: DiagnosedError): string {
+  // Config errors are already fully formatted — don't wrap them
+  if (!d.diagnosis && !d.suggestion) {
+    return `${d.raw}\n${d.logHint}`;
+  }
   return `${d.diagnosis}: ${d.raw}\n${d.suggestion}\n${d.logHint}`;
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import type { Config } from './types.js';
 import { configPath as defaultConfigPath } from './paths.js';
 import { PROFILE_NAMES } from './onboarding/prompts.js';
@@ -127,13 +127,68 @@ const ConfigSchema = z.strictObject({
   }).default({ enabled: true, port: 8080 }),
 });
 
+/**
+ * Dig into a parsed config object using a Zod issue path to find
+ * the value the user actually wrote.
+ */
+function getValueAtPath(obj: unknown, path: PropertyKey[]): unknown {
+  let cur = obj;
+  for (const seg of path) {
+    if (cur == null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<string, unknown>)[String(seg)];
+  }
+  return cur;
+}
+
+/**
+ * Format a ZodError into a human-readable config error message.
+ *
+ * Instead of dumping raw JSON, we produce one clear line per issue
+ * with the config path, what's wrong, and how to fix it.
+ */
+function formatConfigError(err: ZodError, configPath: string, parsed: unknown): string {
+  const lines: string[] = [`Configuration error in ${configPath}:\n`];
+
+  for (const issue of err.issues) {
+    const path = issue.path.join('.');
+
+    if (issue.code === 'invalid_value') {
+      const received = getValueAtPath(parsed, issue.path);
+      const options = (issue as unknown as { values: string[] }).values
+        .map((o: string) => `"${o}"`).join(', ');
+      lines.push(`  ${path}: "${String(received)}" is not a valid option`);
+      lines.push(`    Valid values: ${options}`);
+    } else if (issue.code === 'unrecognized_keys') {
+      const keys = (issue as unknown as { keys: string[] }).keys.join(', ');
+      lines.push(`  ${path}: unknown field(s): ${keys}`);
+      lines.push(`    Remove or rename these fields`);
+    } else if (issue.code === 'invalid_type') {
+      const received = getValueAtPath(parsed, issue.path);
+      lines.push(`  ${path}: expected ${issue.expected}, got ${typeof received} (${JSON.stringify(received)})`);
+    } else {
+      lines.push(`  ${path}: ${issue.message}`);
+    }
+  }
+
+  lines.push('');
+  lines.push(`Edit your config: ${configPath}`);
+  return lines.join('\n');
+}
+
 export function loadConfig(path?: string): Config {
   const configPath = resolve(path ?? defaultConfigPath());
   const raw = readFileSync(configPath, 'utf-8');
   const parsed = parseYaml(raw);
-  // The Zod schema enforces the same provider-name constraints at runtime,
-  // but providerEnum() builds enums from PROVIDER_MAP's loosely-typed keys
-  // so TypeScript can't narrow the output to the literal union types Config
-  // expects.  The assertion is safe — invalid names are caught by parse().
-  return ConfigSchema.parse(parsed) as unknown as Config;
+  try {
+    // The Zod schema enforces the same provider-name constraints at runtime,
+    // but providerEnum() builds enums from PROVIDER_MAP's loosely-typed keys
+    // so TypeScript can't narrow the output to the literal union types Config
+    // expects.  The assertion is safe — invalid names are caught by parse().
+    return ConfigSchema.parse(parsed) as unknown as Config;
+  } catch (err) {
+    if (err instanceof ZodError) {
+      throw new Error(formatConfigError(err, configPath, parsed));
+    }
+    throw err;
+  }
 }

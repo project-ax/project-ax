@@ -393,6 +393,41 @@ admin:
     }
   });
 
+  test('invalid provider name produces friendly error message', async () => {
+    const { writeFileSync, rmSync } = await import('node:fs');
+    const tmpPath = resolve(import.meta.dirname, '../ax-test-bad-provider.yaml');
+    writeFileSync(tmpPath, `
+profile: balanced
+providers:
+  memory: cortex
+  scanner: promptfoo
+  channels: []
+  web: none
+  browser: none
+  credentials: plaintext
+  skills: readonly
+  audit: sqlite
+  sandbox: subprocess
+  scheduler: none
+sandbox:
+  timeout_sec: 120
+  memory_mb: 512
+scheduler:
+  active_hours: { start: "07:00", end: "23:00", timezone: "UTC" }
+  max_token_budget: 4096
+  heartbeat_interval_min: 30
+`);
+    try {
+      expect(() => loadConfig(tmpPath)).toThrow(/providers\.scanner: "promptfoo" is not a valid option/);
+      expect(() => loadConfig(tmpPath)).toThrow(/providers\.audit: "sqlite" is not a valid option/);
+      expect(() => loadConfig(tmpPath)).toThrow(/Valid values: "patterns", "guardian"/);
+      expect(() => loadConfig(tmpPath)).toThrow(/Valid values: "file", "database"/);
+      expect(() => loadConfig(tmpPath)).toThrow(/Edit your config:/);
+    } finally {
+      rmSync(tmpPath);
+    }
+  });
+
   test('accepts config with optional screener', async () => {
     const { writeFileSync, rmSync } = await import('node:fs');
     const tmpPath = resolve(import.meta.dirname, '../ax-test-screener.yaml');
