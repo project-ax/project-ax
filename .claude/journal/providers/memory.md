@@ -1,5 +1,13 @@
 # Providers: Memory
 
+## [2026-03-06 11:50] — Wire SummaryStore into cortex provider
+
+**Task:** Replace direct summary-io.ts imports in cortex provider.ts with the new SummaryStore abstraction, choosing DbSummaryStore for non-sqlite databases and FileSummaryStore otherwise (Task 3 of cortex summary storage plan)
+**What I did:** Replaced `import { writeSummary, readSummary, initDefaultCategories } from './summary-io.js'` with `import { FileSummaryStore, DbSummaryStore, SUMMARY_ID_PREFIX, type SummaryStore } from './summary-store.js'`. Changed `updateCategorySummary` to accept `SummaryStore` instead of `memoryDir: string`. In `create()`, replaced `initDefaultCategories(memoryDir)` with conditional SummaryStore instantiation (`DbSummaryStore` when `database.type !== 'sqlite'`, `FileSummaryStore` otherwise) plus `initDefaults()`. Updated both call sites (write and memorize methods) to pass `summaryStore` instead of `memoryDir`.
+**Files touched:** `src/providers/memory/cortex/provider.ts`
+**Outcome:** Success — all 21 existing tests pass unchanged
+**Notes:** `memoryDir` is still needed for standalone SQLite DB paths (`_store.db`, `_vec.db`). `mkdirSync` is still used for those paths. `SUMMARY_ID_PREFIX` imported for use in a later task (Task 4: wire summaries into query).
+
 ## [2026-03-06 11:40] — Add SummaryStore interface and FileSummaryStore implementation
 
 **Task:** Extract existing file-based summary logic from summary-io.ts into a pluggable SummaryStore interface with a FileSummaryStore implementation (Task 1 of cortex summary storage plan)

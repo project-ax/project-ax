@@ -12,7 +12,7 @@ import { runMigrations } from '../../../utils/migrator.js';
 import { memoryMigrations } from './migrations.js';
 import { ItemsStore } from './items-store.js';
 import { EmbeddingStore } from './embedding-store.js';
-import { writeSummary, readSummary, initDefaultCategories } from './summary-io.js';
+import { FileSummaryStore, DbSummaryStore, SUMMARY_ID_PREFIX, type SummaryStore } from './summary-store.js';
 import { extractByLLM } from './extractor.js';
 import { computeContentHash } from './content-hash.js';
 import { salienceScore } from './salience.js';
@@ -102,12 +102,12 @@ async function backfillEmbeddings(
  */
 async function updateCategorySummary(
   llm: LLMProvider,
-  memoryDir: string,
+  summaryStore: SummaryStore,
   category: string,
   newItems: string[],
   userId?: string,
 ): Promise<void> {
-  const existing = await readSummary(memoryDir, category, userId) || `# ${category}\n`;
+  const existing = await summaryStore.read(category, userId) || `# ${category}\n`;
   const prompt = buildSummaryPrompt({
     category,
     originalContent: existing,
@@ -116,7 +116,7 @@ async function updateCategorySummary(
   });
   const raw = await llmComplete(llm, prompt);
   const updated = stripCodeFences(raw);
-  await writeSummary(memoryDir, category, updated, userId);
+  await summaryStore.write(category, updated, userId);
 }
 
 export async function create(config: Config, _name?: string, opts?: CreateOptions): Promise<MemoryProvider> {
@@ -125,7 +125,10 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
   const memoryDir = dataFile('memory');
   const vecDbPath = join(memoryDir, '_vec.db');
 
-  await initDefaultCategories(memoryDir);
+  const summaryStore: SummaryStore = database && database.type !== 'sqlite'
+    ? new DbSummaryStore(database.db)
+    : new FileSummaryStore(memoryDir);
+  await summaryStore.initDefaults();
 
   // Use shared database if available, otherwise create a standalone Kysely instance
   let itemsDb;
@@ -269,7 +272,7 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
       // Update summary via LLM (fire-and-forget).
       // User-scoped writes go to data/memory/users/<userId>/, shared writes to data/memory/.
       if (llm) {
-        updateCategorySummary(llm, memoryDir, 'knowledge', [entry.content], entry.userId).catch(err =>
+        updateCategorySummary(llm, summaryStore, 'knowledge', [entry.content], entry.userId).catch(err =>
           logger.warn('write_summary_update_failed', { error: (err as Error).message }),
         );
       }
@@ -388,7 +391,7 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
       // Step 3: Update category summaries via LLM.
       // User-scoped items go to data/memory/users/<userId>/, shared to data/memory/.
       for (const [category, newContents] of newItemsByCategory) {
-        await updateCategorySummary(llm, memoryDir, category, newContents, userId);
+        await updateCategorySummary(llm, summaryStore, category, newContents, userId);
       }
 
       // Step 4: Generate and store embeddings for new items

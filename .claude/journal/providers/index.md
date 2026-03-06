@@ -5,6 +5,7 @@ Provider implementations: image, channel, skills, sandbox, memory, LLM.
 ## Entries
 
 - 2026-03-05 21:00 — Rename promptfoo scanner to guardian + add LLM-based injection detection [scanner.md](scanner.md)
+- 2026-03-06 11:50 — Wire SummaryStore into cortex provider [memory.md](memory.md)
 - 2026-03-05 00:00 — Rename MemoryFS types to Cortex in cortex provider [memory.md](memory.md)
 - 2026-03-04 18:45 — Implement EventBusProvider interface + InProcess implementation [eventbus.md](eventbus.md)
 - 2026-03-04 18:30 — Implement StorageProvider interface + SQLite implementation [storage.md](storage.md)
