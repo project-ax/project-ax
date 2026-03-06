@@ -136,7 +136,7 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
     itemsDb = createKyselyDb({ type: 'sqlite', path: dbPath });
   }
 
-  const migResult = await runMigrations(itemsDb, memoryMigrations(database?.type ?? 'sqlite'));
+  const migResult = await runMigrations(itemsDb, memoryMigrations(database?.type ?? 'sqlite'), 'cortex_migration');
   if (migResult.error) throw migResult.error;
 
   const store = new ItemsStore(itemsDb);

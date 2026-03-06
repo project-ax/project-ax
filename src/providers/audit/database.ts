@@ -41,7 +41,7 @@ export async function create(
     );
   }
 
-  const result = await runMigrations(database.db, auditDbMigrations(database.type));
+  const result = await runMigrations(database.db, auditDbMigrations(database.type), 'audit_migration');
   if (result.error) throw result.error;
 
   const db: Kysely<any> = database.db;

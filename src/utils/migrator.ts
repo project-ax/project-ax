@@ -17,16 +17,22 @@ export interface MigrationResult {
  * Run all pending migrations against the given Kysely instance.
  *
  * Migrations are executed in alphanumeric key order. Already-applied
- * migrations (tracked in `kysely_migration` table) are skipped.
+ * migrations (tracked in the migration tracking table) are skipped.
  * Uses database-level locking so concurrent calls are safe.
+ *
+ * When multiple subsystems share the same Kysely instance (e.g. storage +
+ * memory both use the shared DatabaseProvider), each MUST pass a unique
+ * `migrationTableName` so their migration histories don't collide.
  */
 export async function runMigrations(
   db: Kysely<any>,
   migrations: MigrationSet,
+  migrationTableName?: string,
 ): Promise<MigrationResult> {
   const migrator = new Migrator({
     db,
     provider: { getMigrations: async () => migrations },
+    ...(migrationTableName ? { migrationTableName, migrationLockTableName: `${migrationTableName}_lock` } : {}),
   });
 
   const { error, results } = await migrator.migrateToLatest();

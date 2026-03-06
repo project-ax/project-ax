@@ -313,7 +313,7 @@ export async function create(
     );
   }
 
-  const result = await runMigrations(database.db, storageMigrations(database.type));
+  const result = await runMigrations(database.db, storageMigrations(database.type), 'storage_migration');
   if (result.error) throw result.error;
 
   const db = database.db;

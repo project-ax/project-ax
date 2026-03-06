@@ -3,7 +3,7 @@ import type { Kysely } from 'kysely';
 import type { DatabaseProvider } from './providers/database/types.js';
 import { createKyselyDb } from './utils/database.js';
 import { runMigrations } from './utils/migrator.js';
-import { filesMigrations } from './migrations/files.js';
+import { filesMigrations, buildFilesMigrations } from './migrations/files.js';
 import { dataDir, dataFile } from './paths.js';
 
 export interface FileEntry {
@@ -25,12 +25,14 @@ export class FileStore {
     let db: Kysely<any>;
     if (database) {
       db = database.db;
+      const result = await runMigrations(db, buildFilesMigrations(database.type), 'files_migration');
+      if (result.error) throw result.error;
     } else {
       mkdirSync(dataDir(), { recursive: true });
       db = createKyselyDb({ type: 'sqlite', path: dataFile('files.db') });
+      const result = await runMigrations(db, filesMigrations, 'files_migration');
+      if (result.error) throw result.error;
     }
-    const result = await runMigrations(db, filesMigrations);
-    if (result.error) throw result.error;
     return new FileStore(db);
   }
 
