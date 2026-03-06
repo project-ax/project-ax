@@ -1,3 +1,9 @@
+### k8s init should use single secret for all API credentials
+**Date:** 2026-03-06
+**Context:** FIX-2 — k8s init created separate secrets for LLM and embeddings API keys, but the Helm chart's `apiCredentials.envVars` maps all env vars from a single `existingSecret`.
+**Lesson:** Keep all API credentials (LLM, embeddings, etc.) in the single `ax-api-credentials` secret via `apiCredentials.envVars`. Don't create separate per-provider secrets with `agentRuntime.env` — it diverges from the chart's native pattern and causes mismatch with kind-values.yaml. When providers share the same secret key name (e.g., both use openai), skip the duplicate literal.
+**Tags:** k8s-init, helm, secrets, apiCredentials, embeddings
+
 ### Calico DNAT means ClusterIP port != actual port for NetworkPolicy
 **Date:** 2026-03-05
 **Context:** Agent-runtime pod couldn't reach k8s API (10.96.0.1:443) despite port 443 egress being allowed in NetworkPolicy

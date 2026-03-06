@@ -85,6 +85,19 @@ describe('k8s init — argument parsing', () => {
     expect(source).toContain("openrouter: 'openrouter-api-key'");
   });
 
+  it('embeddings credentials use single ax-api-credentials secret', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(
+      new URL('../../src/cli/k8s-init.ts', import.meta.url),
+      'utf-8',
+    );
+    // Embeddings keys go into apiCredentials.envVars, not a separate secret
+    expect(source).not.toContain("'ax-embeddings-credentials'");
+    // Both deepinfra and openai embeddings providers have env var mappings
+    expect(source).toContain("deepinfra: 'DEEPINFRA_API_KEY'");
+    expect(source).toContain("openai: 'OPENAI_API_KEY'");
+  });
+
   it('uses execFileSync not execSync for security', async () => {
     const { readFileSync } = await import('node:fs');
     const source = readFileSync(

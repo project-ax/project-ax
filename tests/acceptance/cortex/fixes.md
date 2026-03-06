@@ -24,7 +24,7 @@
 **What's wrong:** The `ax k8s init` command provisions the LLM provider API key but not the embedding provider key (DEEPINFRA_API_KEY). The kind-values.yaml references it in `apiCredentials.envVars` but the actual secret doesn't contain a valid value.
 **What to fix:** Either: (a) add `--embedding-api-key` flag to `k8s init`, or (b) ensure the acceptance test skill passes DEEPINFRA_API_KEY from `.env.test` into the k8s secret during setup.
 **Estimated scope:** 1-2 files
-**Status:** DEFERRED — Requires `ax k8s init` CLI command (not yet implemented; see docs/plans/2026-03-06-k8s-presets-and-init-design.md)
+**Status:** FIXED — `k8s init` now consolidates LLM and embeddings API keys into the single `ax-api-credentials` secret via `apiCredentials.envVars`, matching the Helm chart's native pattern. The `--embeddings-provider` and `--embeddings-api-key` flags provision the key alongside the LLM key.
 
 ### FIX-3: Taint not exposed in agent memory tool schema
 **Test:** BT-6 (partial in k8s)

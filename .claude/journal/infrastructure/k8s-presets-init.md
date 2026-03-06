@@ -1,3 +1,16 @@
+## [2026-03-06 15:10] — FIX-2: Consolidate embeddings API key into single k8s secret
+
+**Task:** Fix cortex acceptance test FIX-2 — DeepInfra embedding API key missing from k8s secrets
+**What I did:** Consolidated embeddings credentials into the single `ax-api-credentials` secret. Previously k8s init created a separate `ax-embeddings-credentials` secret and used `agentRuntime.env`, which didn't match the Helm chart's `apiCredentials.envVars` pattern used by kind-values.yaml.
+- Added `EMBEDDINGS_ENV_VARS` constant mapping providers to env var names
+- Updated `generateValuesYaml()` to add embeddings to `apiCredentials.envVars`
+- Updated `runK8sInit()` to merge embeddings key into `ax-api-credentials` secret
+- Added test verifying single-secret pattern
+- Updated FIX-2 status to FIXED in fixes.md
+**Files touched:** `src/cli/k8s-init.ts`, `tests/cli/k8s-init.test.ts`, `tests/acceptance/cortex/fixes.md`
+**Outcome:** Success — all 2358 tests passing.
+**Notes:** When LLM and embeddings use the same provider (e.g., both openai), the same secret key is reused — no duplicate literal needed.
+
 ## [2026-03-06 14:44] — Helm presets + `ax k8s init` CLI wizard
 
 **Task:** Implement docs/plans/2026-03-06-k8s-presets-and-init-design.md — Helm presets for small/medium/large deployment sizes and an interactive CLI wizard for generating values files + K8s secrets.

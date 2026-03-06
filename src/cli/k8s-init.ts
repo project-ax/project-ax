@@ -44,6 +44,10 @@ const EMBEDDINGS_SECRET_KEYS: Record<string, string> = {
   deepinfra: 'deepinfra-api-key',
   openai: 'openai-api-key',
 };
+const EMBEDDINGS_ENV_VARS: Record<string, string> = {
+  deepinfra: 'DEEPINFRA_API_KEY',
+  openai: 'OPENAI_API_KEY',
+};
 
 // ─── CLI Argument Parsing ───────────────────────────────────────
 
@@ -178,7 +182,7 @@ function generateValuesYaml(opts: {
     lines.push('    - ax-registry-credentials');
   }
 
-  // API credentials — activate the right env var key
+  // API credentials — all keys in one secret via apiCredentials.envVars
   const secretKey = LLM_SECRET_KEYS[opts.llmProvider];
   const envVar = LLM_ENV_VARS[opts.llmProvider];
   lines.push('apiCredentials:');
@@ -186,17 +190,13 @@ function generateValuesYaml(opts: {
   lines.push('  envVars:');
   lines.push(`    ${envVar}: "${secretKey}"`);
 
-  // Embeddings credentials
+  // Embeddings credentials — same secret, different key
   if (opts.embeddingsProvider && opts.embeddingsProvider !== 'none') {
     const embSecretKey = EMBEDDINGS_SECRET_KEYS[opts.embeddingsProvider];
-    const embEnvVar = opts.embeddingsProvider === 'openai' ? 'OPENAI_API_KEY' : 'DEEPINFRA_API_KEY';
-    lines.push('agentRuntime:');
-    lines.push('  env:');
-    lines.push(`    - name: ${embEnvVar}`);
-    lines.push('      valueFrom:');
-    lines.push('        secretKeyRef:');
-    lines.push('          name: ax-embeddings-credentials');
-    lines.push(`          key: "${embSecretKey}"`);
+    const embEnvVar = EMBEDDINGS_ENV_VARS[opts.embeddingsProvider];
+    if (embEnvVar !== envVar) {
+      lines.push(`    ${embEnvVar}: "${embSecretKey}"`);
+    }
   }
 
   // PostgreSQL
@@ -318,21 +318,19 @@ export async function runK8sInit(args: string[]): Promise<void> {
       ]);
     }
 
-    // API credentials secret
+    // API credentials secret (LLM + embeddings in one secret)
     const llmSecretKey = LLM_SECRET_KEYS[llmProvider];
-    await createOrSkipSecret(rl, namespace, 'ax-api-credentials', [
-      'generic', 'ax-api-credentials',
-      `--from-literal=${llmSecretKey}=${apiKey}`,
-    ]);
-
-    // Embeddings credentials secret
+    const secretLiterals = [`--from-literal=${llmSecretKey}=${apiKey}`];
     if (embeddingsProvider && embeddingsProvider !== 'none' && embeddingsApiKey) {
       const embSecretKey = EMBEDDINGS_SECRET_KEYS[embeddingsProvider];
-      await createOrSkipSecret(rl, namespace, 'ax-embeddings-credentials', [
-        'generic', 'ax-embeddings-credentials',
-        `--from-literal=${embSecretKey}=${embeddingsApiKey}`,
-      ]);
+      if (embSecretKey !== llmSecretKey) {
+        secretLiterals.push(`--from-literal=${embSecretKey}=${embeddingsApiKey}`);
+      }
     }
+    await createOrSkipSecret(rl, namespace, 'ax-api-credentials', [
+      'generic', 'ax-api-credentials',
+      ...secretLiterals,
+    ]);
 
     // Database credentials secret
     if (database === 'external' && databaseUrl) {
