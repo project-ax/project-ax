@@ -47,7 +47,7 @@ The host subsystem is the trusted half of AX. It runs the HTTP server (OpenAI-co
 | `src/host/proxy.ts` | Credential-injecting Anthropic forward proxy, OAuth 401 retry |
 | `src/host/taint-budget.ts` | Per-session taint ratio tracking, action gating (SC-SEC-003) |
 | `src/host/provider-map.ts` | Static allowlist mapping config names to provider modules (SC-SEC-002), plugin registration runtime allowlist |
-| `src/host/registry.ts` | Loads and assembles ProviderRegistry from config, plugin host integration |
+| `src/host/registry.ts` | Loads and assembles ProviderRegistry from config; three loading patterns (simple, manual-import with deps, custom); plugin host integration |
 
 ## Request Lifecycle (server.ts + server-completions.ts)
 

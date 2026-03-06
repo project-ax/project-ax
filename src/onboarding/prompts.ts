@@ -37,7 +37,7 @@ const defaultSandbox = process.platform === 'darwin' ? 'seatbelt' : 'bwrap';
 export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
   paranoid: {
     agent: 'pi-coding-agent',
-    memory: 'memoryfs',
+    memory: 'cortex',
     scanner: 'patterns',
     web: 'none',
     browser: 'none',
@@ -51,7 +51,7 @@ export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
   },
   balanced: {
     agent: 'pi-coding-agent',
-    memory: 'memoryfs',
+    memory: 'cortex',
     scanner: 'patterns',
     web: 'fetch',
     browser: 'none',
@@ -66,7 +66,7 @@ export const PROFILE_DEFAULTS: Record<string, ProfileDefaults> = {
   },
   yolo: {
     agent: 'pi-coding-agent',
-    memory: 'memoryfs',
+    memory: 'cortex',
     scanner: 'patterns',
     web: 'fetch',
     browser: 'container',
@@ -170,7 +170,7 @@ export const DEFAULT_IMAGE_MODELS: Record<ImageProviderChoice, string> = {
 
 /** Available provider choices per category, derived from the provider map. */
 export const PROVIDER_CHOICES = {
-  memory: ['memoryfs'],
+  memory: ['cortex'],
   scanner: ['patterns'],
   web: ['none', 'fetch'],
   browser: ['none', 'container'],

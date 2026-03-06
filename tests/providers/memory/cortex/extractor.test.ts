@@ -1,6 +1,6 @@
-// tests/providers/memory/memoryfs/extractor.test.ts
+// tests/providers/memory/cortex/extractor.test.ts
 import { describe, it, expect, vi } from 'vitest';
-import { extractByLLM } from '../../../../src/providers/memory/memoryfs/extractor.js';
+import { extractByLLM } from '../../../../src/providers/memory/cortex/extractor.js';
 import type { ConversationTurn } from '../../../../src/providers/memory/types.js';
 import type { LLMProvider, ChatChunk } from '../../../../src/providers/llm/types.js';
 

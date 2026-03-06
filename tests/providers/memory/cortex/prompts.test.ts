@@ -1,4 +1,4 @@
-// tests/providers/memory/memoryfs/prompts.test.ts
+// tests/providers/memory/cortex/prompts.test.ts
 import { describe, it, expect } from 'vitest';
 import {
   buildSummaryPrompt,
@@ -6,7 +6,7 @@ import {
   buildPatchPrompt,
   parsePatchResponse,
   stripCodeFences,
-} from '../../../../src/providers/memory/memoryfs/prompts.js';
+} from '../../../../src/providers/memory/cortex/prompts.js';
 
 describe('buildSummaryPrompt', () => {
   it('includes category name and target length', () => {

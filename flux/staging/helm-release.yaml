@@ -23,7 +23,7 @@ spec:
     config:
       profile: balanced
       providers:
-        memory: memoryfs
+        memory: cortex
         scanner: regex
         channels: []
         web: none

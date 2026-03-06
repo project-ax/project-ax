@@ -1,4 +1,4 @@
-// src/providers/memory/memoryfs/migrations.ts — Dialect-aware memory migrations
+// src/providers/memory/cortex/migrations.ts — Dialect-aware memory migrations
 import type { Kysely } from 'kysely';
 import type { MigrationSet } from '../../../utils/migrator.js';
 

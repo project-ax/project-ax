@@ -1,4 +1,4 @@
-// src/providers/memory/memoryfs/prompts.ts — LLM prompt templates for category summary generation.
+// src/providers/memory/cortex/prompts.ts — LLM prompt templates for category summary generation.
 // Adapted from memU's category_summary/category.py and category_with_refs.py.
 // Pure string manipulation, no I/O.
 

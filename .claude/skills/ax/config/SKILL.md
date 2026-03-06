@@ -40,7 +40,10 @@ Validated by `ConfigSchema` (Zod `strictObject` -- rejects unknown keys).
 | `providers.audit` | string | required | Audit provider |
 | `providers.sandbox` | string | required | Sandbox provider |
 | `providers.scheduler` | string | required | Scheduler provider |
-| `providers.skillScreener` | string | optional | Skill screener provider |
+| `providers.storage` | string | required | Storage provider (e.g., `file`, `database`) |
+| `providers.database` | string | optional | Database provider (e.g., `sqlite`, `postgresql`) |
+| `providers.eventbus` | string | required | Event bus provider (e.g., `inprocess`, `nats`) |
+| `providers.screener` | string | optional | Skill screener provider |
 | `channel_config` | `Record<string, ChannelAccessConfig>` | optional | Per-channel access policies |
 | `max_tokens` | number (256-200000) | 8192 | Max tokens for LLM calls |
 | `sandbox` | object | required | `timeout_sec` (1-3600), `memory_mb` (64-8192) |
@@ -63,6 +66,7 @@ Validated by `ConfigSchema` (Zod `strictObject` -- rejects unknown keys).
 | `webhooks.max_body_bytes` | number | optional | Max request body size |
 | `webhooks.model` | string | optional | LLM model for webhook transforms |
 | `webhooks.allowed_agent_ids` | string[] | optional | Restrict which agents webhooks can target |
+| `admin` | object | required | Admin dashboard: `enabled` (bool), `token` (string, optional), `port` (number) |
 | `delegation` | object | optional | `max_concurrent` (1-10, default 3), `max_depth` (1-5, default 2) |
 
 ## Models Configuration

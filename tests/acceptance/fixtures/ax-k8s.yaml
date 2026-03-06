@@ -20,7 +20,7 @@ models:
 
 # -- Providers -------------------------------------------------------------
 providers:
-  memory: memoryfs
+  memory: cortex
   audit: database
   credentials: plaintext
   sandbox: subprocess

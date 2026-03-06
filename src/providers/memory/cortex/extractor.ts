@@ -1,7 +1,7 @@
-// src/providers/memory/memoryfs/extractor.ts — Memory extraction via LLM
+// src/providers/memory/cortex/extractor.ts — Memory extraction via LLM
 import type { ConversationTurn } from '../types.js';
 import type { LLMProvider } from '../../llm/types.js';
-import type { MemoryFSItem, MemoryType } from './types.js';
+import type { CortexItem, MemoryType } from './types.js';
 import { MEMORY_TYPES } from './types.js';
 import { computeContentHash } from './content-hash.js';
 import { llmComplete } from './llm-helpers.js';
@@ -36,7 +36,7 @@ export async function extractByLLM(
   scope: string,
   llm: LLMProvider,
   model?: string,
-): Promise<Omit<MemoryFSItem, 'id'>[]> {
+): Promise<Omit<CortexItem, 'id'>[]> {
   const conversationText = conversation
     .map(t => `${t.role}: ${t.content}`)
     .join('\n');

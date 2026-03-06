@@ -1,7 +1,7 @@
 /**
  * Phase 2 Integration Tests
  *
- * Verifies Phase 2 providers: memU memory, Promptfoo ML scanner,
+ * Verifies Phase 2 providers: cortex memory, Guardian scanner,
  * OS keychain, multi-agent delegation, browser container, web search.
  * Tests architectural invariants still hold with expanded provider set.
  */
@@ -40,7 +40,7 @@ function powerUserConfig(): Config {
   return {
     profile: 'yolo',
     providers: {
-      memory: 'memoryfs', scanner: 'promptfoo',
+      memory: 'cortex', scanner: 'guardian',
       channels: [], web: 'tavily', browser: 'container',
       credentials: 'keychain', skills: 'git', audit: 'file',
       sandbox: 'docker', scheduler: 'full',
@@ -179,8 +179,8 @@ describe('Phase 2 Provider Map', () => {
     const { PROVIDER_MAP } = await import('../../src/host/provider-map.js');
 
     // Phase 2 providers
-    expect(PROVIDER_MAP.memory).toHaveProperty('memoryfs');
-    expect(PROVIDER_MAP.scanner).toHaveProperty('promptfoo');
+    expect(PROVIDER_MAP.memory).toHaveProperty('cortex');
+    expect(PROVIDER_MAP.scanner).toHaveProperty('guardian');
     expect(PROVIDER_MAP.channel).toHaveProperty('slack');
     expect(PROVIDER_MAP.web).toHaveProperty('tavily');
     expect(PROVIDER_MAP.browser).toHaveProperty('container');
@@ -234,12 +234,12 @@ describe('memU Memory Integration', () => {
 });
 
 // ═══════════════════════════════════════════════════════
-// Promptfoo ML Scanner Integration
+// Guardian Scanner Integration
 // ═══════════════════════════════════════════════════════
 
-describe('Promptfoo ML Scanner Integration', () => {
-  test('ML scanner blocks regex patterns', async () => {
-    const { create } = await import('../../src/providers/scanner/promptfoo.js');
+describe('Guardian Scanner Integration', () => {
+  test('guardian scanner blocks regex patterns', async () => {
+    const { create } = await import('../../src/providers/scanner/guardian.js');
     const scanner = await create({} as Config);
 
     const result = await scanner.scanInput({
@@ -249,11 +249,11 @@ describe('Promptfoo ML Scanner Integration', () => {
     });
 
     expect(result.verdict).toBe('BLOCK');
-    expect(result.reason).toContain('ML score');
+    expect(result.reason).toContain('regex');
   });
 
-  test('ML scanner passes clean input', async () => {
-    const { create } = await import('../../src/providers/scanner/promptfoo.js');
+  test('guardian scanner passes clean input', async () => {
+    const { create } = await import('../../src/providers/scanner/guardian.js');
     const scanner = await create({} as Config);
 
     const result = await scanner.scanInput({
@@ -265,8 +265,8 @@ describe('Promptfoo ML Scanner Integration', () => {
     expect(result.verdict).toBe('PASS');
   });
 
-  test('ML scanner detects credentials in output', async () => {
-    const { create } = await import('../../src/providers/scanner/promptfoo.js');
+  test('guardian scanner detects credentials in output', async () => {
+    const { create } = await import('../../src/providers/scanner/guardian.js');
     const scanner = await create({} as Config);
 
     const result = await scanner.scanOutput({
@@ -443,22 +443,22 @@ describe('Architectural Invariants', () => {
   });
 
   test('MemoryProvider has optional memorize method', async () => {
-    const { create: createMemoryfs } = await import('../../src/providers/memory/memoryfs/index.js');
-    const memoryfsProvider = await createMemoryfs({} as Config);
+    const { create: createCortex } = await import('../../src/providers/memory/cortex/index.js');
+    const cortexProvider = await createCortex({} as Config);
 
-    // memoryfs provider DOES have memorize (LLM-powered extraction)
-    expect(typeof memoryfsProvider.memorize).toBe('function');
+    // cortex provider DOES have memorize (LLM-powered extraction)
+    expect(typeof cortexProvider.memorize).toBe('function');
   });
 
   test('scanner providers share the same interface', async () => {
     const { create: createPatterns } = await import('../../src/providers/scanner/patterns.js');
-    const { create: createPromptfoo } = await import('../../src/providers/scanner/promptfoo.js');
+    const { create: createGuardian } = await import('../../src/providers/scanner/guardian.js');
 
     const patterns = await createPatterns({} as Config);
-    const promptfoo = await createPromptfoo({} as Config);
+    const guardian = await createGuardian({} as Config);
 
     // Both should have the same interface
-    for (const scanner of [patterns, promptfoo]) {
+    for (const scanner of [patterns, guardian]) {
       expect(typeof scanner.scanInput).toBe('function');
       expect(typeof scanner.scanOutput).toBe('function');
       expect(typeof scanner.canaryToken).toBe('function');
@@ -482,7 +482,7 @@ describe('Architectural Invariants', () => {
     expect(VALID_ACTIONS).toContain('web_search');
   });
 
-  test('router pipeline works with ML scanner', async () => {
+  test('router pipeline works with guardian scanner', async () => {
     const providers = mockProviders({ scanInputVerdict: 'BLOCK' });
     const { db, destroy } = await createMessageQueueStore(join(testDataDir, 'messages.db'));
     const taintBudget = new TaintBudget({ threshold: 0.60 });

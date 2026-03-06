@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeContentHash, buildRefId } from '../../../../src/providers/memory/memoryfs/content-hash.js';
+import { computeContentHash, buildRefId } from '../../../../src/providers/memory/cortex/content-hash.js';
 
 describe('computeContentHash', () => {
   it('produces deterministic 16-char hex hash', () => {

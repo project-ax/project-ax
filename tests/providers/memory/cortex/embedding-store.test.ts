@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { EmbeddingStore } from '../../../../src/providers/memory/memoryfs/embedding-store.js';
+import { EmbeddingStore } from '../../../../src/providers/memory/cortex/embedding-store.js';
 import { create as createSqliteDb } from '../../../../src/providers/database/sqlite.js';
 import type { DatabaseProvider } from '../../../../src/providers/database/types.js';
 import type { Config } from '../../../../src/types.js';

@@ -5,7 +5,7 @@ function mockConfig(): Config {
   return {
     profile: 'balanced',
     providers: {
-      memory: 'memoryfs', scanner: 'patterns',
+      memory: 'cortex', scanner: 'patterns',
       channels: ['cli'], web: 'none', browser: 'none',
       credentials: 'keychain', skills: 'readonly', audit: 'file',
       sandbox: 'nsjail', scheduler: 'none',

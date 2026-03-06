@@ -1,6 +1,6 @@
 ---
 name: ax-provider-memory
-description: Use when modifying memory/knowledge storage providers — file, SQLite+FTS5, memU knowledge graph, or MemoryFS v2 (embedding-based) in src/providers/memory/
+description: Use when modifying memory/knowledge storage providers — file, SQLite+FTS5, memU knowledge graph, or Cortex (embedding-based) in src/providers/memory/
 ---
 
 ## Overview
@@ -26,7 +26,7 @@ Defined in `src/providers/memory/types.ts`:
 | file | `src/providers/memory/file.ts` | JSON files under `data/memory/{scope}/` | Substring (`content.includes(query)`) |
 | sqlite | `src/providers/memory/sqlite.ts` | SQLite DB at `data/memory.db` | FTS5 via `entries_fts` virtual table |
 | memu | `src/providers/memory/memu.ts` | In-memory `Map<string, MemoryEntry>` | Substring match; knowledge graph extraction |
-| memoryfs | `src/providers/memory/memoryfs/` | SQLite items store + vector embeddings | Semantic search via sqlite-vec embeddings |
+| cortex | `src/providers/memory/cortex/` | SQLite items store + vector embeddings | Semantic search via sqlite-vec embeddings |
 
 All providers export `create(config: Config): Promise<MemoryProvider>`.
 
@@ -46,9 +46,9 @@ All providers export `create(config: Config): Promise<MemoryProvider>`.
 - Emits `ProactiveHint` with `kind: 'pending_task'` for action items via `onProactiveHint()` handler
 - Backs store with in-memory Map (production would use PostgreSQL knowledge graph)
 
-## MemoryFS v2 Provider
+## Cortex Provider
 
-Advanced embedding-based memory system in `src/providers/memory/memoryfs/`:
+Advanced embedding-based memory system in `src/providers/memory/cortex/`:
 
 - **`provider.ts`** -- Main provider wiring, `create(config)` factory
 - **`items-store.ts`** -- SQLite-backed item storage with CRUD operations
@@ -59,7 +59,7 @@ Advanced embedding-based memory system in `src/providers/memory/memoryfs/`:
 - **`salience.ts`** -- Salience scoring using memU formula (reinforcement count, recency, relevance)
 - **`content-hash.ts`** -- Content hashing for deduplication
 - **`prompts.ts`** -- LLM prompt templates for extraction and summarization
-- **`types.ts`** -- MemoryFS-specific types
+- **`types.ts`** -- Cortex-specific types
 
 Key features:
 - **Semantic search:** Queries use vector embeddings (via `src/utils/embedding-client.ts`) for similarity matching

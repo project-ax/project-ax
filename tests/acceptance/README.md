@@ -105,7 +105,7 @@ AX session IDs require **3 or more colon-separated segments**:
 --session "acceptance:bt1"
 
 # CORRECT
---session "acceptance:memoryfs:bt1"
+--session "acceptance:cortex:bt1"
 ```
 
 ## Tips

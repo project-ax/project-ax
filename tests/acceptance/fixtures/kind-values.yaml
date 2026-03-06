@@ -15,7 +15,7 @@ config:
     default:
       - openrouter/google/gemini-3-flash-preview
   providers:
-    memory: memoryfs
+    memory: cortex
     audit: database
     credentials: plaintext
     sandbox: subprocess

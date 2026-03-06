@@ -35,7 +35,7 @@ Sound familiar? It should. **OpenClaw** proved that AI agents can be genuinely u
 
 We love what OpenClaw does. We just couldn't sleep at night running it.
 
-AX gives you the same power — **multi-channel messaging, web access, browser automation, image generation, long-term memory, extensible skills, plugin ecosystem** — but with security guardrails that are actually enforced by the architecture, not just by good intentions. And at ~10,700 lines of TypeScript across 13 provider categories, it's still small enough to audit in a weekend.
+AX gives you the same power — **multi-channel messaging, web access, browser automation, image generation, long-term memory, extensible skills, plugin ecosystem** — but with security guardrails that are actually enforced by the architecture, not just by good intentions. And at ~10,700 lines of TypeScript across 16 provider categories, it's still small enough to audit in a weekend.
 
 The best part? **You decide where you sit on the spectrum.** Lock everything down, open everything up, or land somewhere in the middle. We give you the dial. We just make sure the safety net is always there, even when you crank it to 11.
 
@@ -70,8 +70,9 @@ A few things are non-negotiable regardless of which profile you choose. These ar
 |----------|---------|------------|
 | Linux | nsjail (~5ms start) | bwrap / Docker + gVisor |
 | macOS | Seatbelt (sandbox-exec) | Docker Desktop |
+| Kubernetes | k8s pods (gVisor runtime) | Configurable tier templates |
 
-We start with the lightest sandbox that does the job. If the agent needs heavier tools, we escalate mid-session. Most invocations never need more than nsjail — it starts in 5 milliseconds and uses about 1MB of memory.
+We start with the lightest sandbox that does the job. If the agent needs heavier tools, we escalate mid-session. Most local invocations never need more than nsjail — it starts in 5 milliseconds and uses about 1MB of memory. In Kubernetes, sandbox pods are ephemeral and disposable — no state, no mount complexity, just isolated compute with network policies enforcing zero egress.
 
 ## Security Profiles
 
@@ -124,6 +125,8 @@ Images flow through channels too — generate in Slack and the result gets uploa
 
 Real-time observability into everything your agent does. The event bus emits typed events — `llm.start`, `llm.chunk`, `llm.thinking`, `tool.call`, `scan.inbound`, `scan.outbound`, `completion.done` — and you can subscribe globally or per-request. Connect via the `/v1/events` SSE endpoint to watch your agent think in real time.
 
+Locally, the event bus runs in-process. In Kubernetes, it switches to **NATS JetStream** — events flow across pods so every agent-runtime instance sees the same stream. Same interface, same subscriptions, just distributed.
+
 ### Plugin Framework
 
 Extend AX with third-party providers without touching core code. The plugin system includes:
@@ -140,11 +143,15 @@ Plug AX into your existing observability stack. Set `OTEL_EXPORTER_OTLP_ENDPOINT
 
 Zero cost when disabled. The heavy OTel SDK packages are lazy-loaded only when tracing is actually configured.
 
-### Conversation History
+### Shared Database & Storage
 
-AX remembers. A SQLite-backed conversation store persists turns across restarts, so your agent picks up where it left off. Database schema is managed through Kysely migrations — SQLite by default, PostgreSQL-ready when you need it. Configure how much context to carry:
+AX consolidates all persistent state — conversations, memory, audit logs, message queues, session tracking — behind a shared `DatabaseProvider`. One database choice for the whole application. SQLite locally, PostgreSQL in production. Schema is managed through Kysely migrations, and vector search is available when sqlite-vec or pgvector extensions are loaded.
+
+The `StorageProvider` unifies conversation history, message queues, session tracking, and document storage behind a single interface. Use file-based storage for local development or database-backed storage for production deployments that need to survive pod restarts.
 
 ```yaml
+database: sqlite          # or postgresql
+storage: file             # or database
 history:
   max_turns: 100
   thread_context_turns: 20
@@ -183,6 +190,24 @@ You can also import skills from external registries (ClawHub). Imported skills g
 
 Agents can delegate tasks to specialized subagents. The `claude-code` runner handles coding tasks, while the `pi-coding-agent` runner handles general-purpose work. Delegation includes governance controls and workspace isolation — subagents can't access each other's state.
 
+### Kubernetes Deployment
+
+AX ships with a production-ready **Helm chart** for Kubernetes. The architecture splits into multiple pods — host (ingress layer), agent-runtime (conversation layer), pool controller (sandbox pod lifecycle), and ephemeral sandbox pods — all coordinated through NATS JetStream.
+
+```bash
+helm install ax ./charts/ax -f values.yaml
+```
+
+The chart includes:
+- **Multi-pod architecture** — host, agent-runtime, and pool controller scale independently with HPA
+- **NATS JetStream** — distributed event bus and IPC bridge for sandbox communication
+- **PostgreSQL** — external or embedded, shared across all providers
+- **Network policies** — defense-in-depth isolation for sandbox pods (zero egress, host-only ingress)
+- **Sandbox tiers** — light and heavy pod templates with configurable CPU/memory and gVisor runtime
+- **FluxCD overlays** — staging and production HelmRelease configs with SOPS encryption
+
+Works with any Kubernetes: GKE, EKS, AKS, kind, minikube. Zero vendor lock-in.
+
 ### Config Hot Reload
 
 Change `ax.yaml` and AX picks it up live — no restart required. Send `SIGHUP` or just save the file. New config is validated before the old server tears down, so a typo won't take you offline.
@@ -203,19 +228,22 @@ Every subsystem is a swappable provider. Here's what ships in the box:
 |----------|----------------|
 | **LLM** | Anthropic, OpenAI, OpenRouter, Groq, router (with fallback), traced (OTel wrapper) |
 | **Image** | OpenAI, OpenRouter, Gemini, router (with fallback) |
-| **Memory** | file, SQLite (with FTS5), memU (knowledge graph) |
-| **Scanner** | basic, patterns, promptfoo |
+| **Memory** | cortex (vector-backed, LLM-powered extraction and semantic search) |
+| **Scanner** | patterns (regex-only), guardian (regex + LLM classification) |
 | **Channel** | Slack |
 | **Web** | fetch, Tavily |
 | **Browser** | container (Playwright) |
-| **Credentials** | env, encrypted (AES-256-GCM), OS keychain |
+| **Credentials** | plaintext, OS keychain |
 | **Skills** | readonly, git-backed (with screening) |
-| **Audit** | file (JSONL), SQLite (queryable) |
-| **Sandbox** | subprocess, seatbelt, nsjail, bwrap, Docker |
-| **Scheduler** | cron, full (with active hours) |
+| **Audit** | file (JSONL), database (queryable) |
+| **Sandbox** | subprocess, seatbelt, nsjail, bwrap, Docker, k8s (Kubernetes pods) |
+| **Scheduler** | full (with active hours), plainjob |
 | **Screener** | static (rule-based) |
+| **Database** | SQLite (with sqlite-vec), PostgreSQL (with pgvector) |
+| **Storage** | file, database |
+| **EventBus** | inprocess, NATS JetStream |
 
-13 provider categories. 43 implementations. All swappable.
+16 provider categories. 45+ implementations. All swappable.
 
 ## Quick Start
 
@@ -238,21 +266,39 @@ npm test
 Edit `ax.yaml` to configure providers, security profile, and sandbox settings. The defaults are conservative — we'd rather you opt into power than accidentally leave the door open. But opting in is easy, and we won't judge.
 
 ```yaml
+# Local development (defaults)
 profile: paranoid
 models:
   default:
     - anthropic/claude-sonnet-4-20250514
 providers:
-  memory: file
-  scanner: basic
+  memory: cortex
+  scanner: patterns
   channels: []
   web: none
   browser: none
-  credentials: env
+  credentials: plaintext
   skills: readonly
   audit: file
   sandbox: subprocess
   scheduler: none
+  database: sqlite
+  storage: file
+  eventbus: inprocess
+```
+
+For Kubernetes production deployments, the Helm chart renders a ConfigMap with production-ready defaults:
+
+```yaml
+# K8s production (via Helm values)
+profile: paranoid
+providers:
+  sandbox: k8s
+  database: postgresql
+  storage: database
+  audit: database
+  eventbus: nats
+  scanner: guardian
 ```
 
 See the [architecture doc](docs/plans/ax-architecture-doc.md) for the full details.

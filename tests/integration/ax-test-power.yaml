@@ -1,12 +1,12 @@
 # Power user profile test config
-# Uses Phase 2 providers: promptfoo scanner, search web, memu memory
+# Uses Phase 2 providers: guardian scanner, search web, cortex memory
 # LLM is still mock for testing (no API key needed)
 profile: yolo
 models:
   default:
     - mock/default
 providers:
-  memory: memoryfs
+  memory: cortex
   scanner: patterns
   channels: []
   web: none

@@ -17,7 +17,7 @@ function makeConfig(overrides: Partial<Config['admin']> = {}): Config {
   return {
     profile: 'balanced',
     providers: {
-      memory: 'memoryfs',
+      memory: 'cortex',
       scanner: 'patterns',
       channels: [],
       web: 'none',

@@ -4,7 +4,7 @@ models:
   default:
     - mock/default
 providers:
-  memory: memoryfs
+  memory: cortex
   scanner: patterns
   channels: []
   web: none

@@ -1,4 +1,4 @@
-// src/providers/memory/memoryfs/summary-io.ts — Read/write category summary .md files
+// src/providers/memory/cortex/summary-io.ts — Read/write category summary .md files
 import { readFile, writeFile, rename, access, readdir, mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { safePath } from '../../../utils/safe-path.js';

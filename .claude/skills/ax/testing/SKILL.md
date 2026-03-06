@@ -80,7 +80,7 @@ tests/
       delegation-stress.test.ts    # Delegation depth/concurrency stress tests
   acceptance/              # Feature acceptance tests (live LLM)
     fixtures/              # Shared test fixtures
-    memoryfs-v2/           # MemoryFS v2 acceptance tests
+    cortex/                # Cortex acceptance tests
     plainjob-scheduler/    # PlainJob scheduler acceptance tests
     llm-webhook-transforms/ # Webhook transform acceptance tests
     skills-install/        # Skills installation acceptance tests
@@ -163,7 +163,7 @@ Since the skills were created, several new test categories have been added:
 - **Provider SDK tests**: `provider-sdk/harness.test.ts`, `interfaces.test.ts`
 - **Screener tests**: `providers/screener/static.test.ts` -- 5-layer static analysis
 - **Tool catalog sync tests**: `tool-catalog-sync.test.ts` -- verifies ipc-tools.ts and mcp-server.ts stay in sync
-- **Acceptance tests**: `tests/acceptance/` -- feature-level tests against live AX server with real LLM calls. Covers MemoryFS v2, plainjob scheduler, webhook transforms, and skills installation
+- **Acceptance tests**: `tests/acceptance/` -- feature-level tests against live AX server with real LLM calls. Covers Cortex, plainjob scheduler, webhook transforms, and skills installation
 - **History/memory tests**: `conversation-store-summary.test.ts`, `config-history.test.ts` -- conversation summarization and memory recall
 - **Persistence tests**: `job-store.test.ts`, `session-store.test.ts` -- scheduler jobs and session tracking
 

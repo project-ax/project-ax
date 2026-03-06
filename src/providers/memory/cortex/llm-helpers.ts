@@ -1,4 +1,4 @@
-// src/providers/memory/memoryfs/llm-helpers.ts — Streaming response collector + simple LLM call wrapper
+// src/providers/memory/cortex/llm-helpers.ts — Streaming response collector + simple LLM call wrapper
 import type { LLMProvider, ChatChunk } from '../../llm/types.js';
 
 /** Collect all text chunks from a streaming LLM response. */

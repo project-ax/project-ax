@@ -51,15 +51,16 @@ interface OnboardingAnswers {
 | Provider | Paranoid | Balanced | Yolo |
 |---|---|---|---|
 | agent | pi-coding-agent | pi-coding-agent | pi-coding-agent |
-| memory | file | sqlite | sqlite |
-| scanner | patterns | patterns | basic |
+| memory | cortex | cortex | cortex |
+| scanner | patterns | patterns | patterns |
 | web | none | fetch | fetch |
 | browser | none | none | container |
-| credentials | env | env | encrypted |
+| credentials | keychain | keychain | keychain |
 | skills | readonly | git | git |
-| audit | file | sqlite | sqlite |
-| sandbox | seatbelt/nsjail | seatbelt/nsjail | subprocess |
-| scheduler | none | cron | cron |
+| audit | file | file | file |
+| sandbox | seatbelt/bwrap | seatbelt/bwrap | seatbelt/bwrap |
+| scheduler | full | full | full |
+| screener | — | static | static |
 
 ## Agent Types
 

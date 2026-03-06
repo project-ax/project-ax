@@ -1,4 +1,4 @@
-// tests/providers/memory/memoryfs/semantic-dedup.test.ts
+// tests/providers/memory/cortex/semantic-dedup.test.ts
 // Separate file because vi.mock for embedding-client is hoisted and would
 // affect all tests if co-located in provider.test.ts.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -33,7 +33,7 @@ vi.mock('../../../../src/utils/embedding-client.js', () => ({
 }));
 
 // Import after vi.mock so the mock is in place
-const { create } = await import('../../../../src/providers/memory/memoryfs/provider.js');
+const { create } = await import('../../../../src/providers/memory/cortex/provider.js');
 
 const config = {
   history: { embedding_model: 'mock/test', embedding_dimensions: 3 },

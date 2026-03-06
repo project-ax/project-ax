@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { salienceScore } from '../../../../src/providers/memory/memoryfs/salience.js';
+import { salienceScore } from '../../../../src/providers/memory/cortex/salience.js';
 
 describe('salienceScore', () => {
   it('returns positive score for valid inputs', () => {

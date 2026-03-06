@@ -1,12 +1,12 @@
-// src/providers/memory/memoryfs/items-store.ts — Kysely-backed CRUD for MemoryFS items
+// src/providers/memory/cortex/items-store.ts — Kysely-backed CRUD for Cortex items
 import { randomUUID } from 'node:crypto';
 import { sql, type Kysely } from 'kysely';
-import type { MemoryFSItem } from './types.js';
+import type { CortexItem } from './types.js';
 
 export class ItemsStore {
   constructor(private db: Kysely<any>) {}
 
-  async insert(item: Omit<MemoryFSItem, 'id'>): Promise<string> {
+  async insert(item: Omit<CortexItem, 'id'>): Promise<string> {
     const id = randomUUID();
     await this.db.insertInto('items')
       .values({
@@ -31,7 +31,7 @@ export class ItemsStore {
     return id;
   }
 
-  async getById(id: string): Promise<MemoryFSItem | null> {
+  async getById(id: string): Promise<CortexItem | null> {
     const row = await this.db.selectFrom('items')
       .selectAll()
       .where('id', '=', id)
@@ -39,7 +39,7 @@ export class ItemsStore {
     return row ? this.rowToItem(row as Record<string, unknown>) : null;
   }
 
-  async findByHash(contentHash: string, scope: string, agentId?: string, userId?: string): Promise<MemoryFSItem | null> {
+  async findByHash(contentHash: string, scope: string, agentId?: string, userId?: string): Promise<CortexItem | null> {
     let query = this.db.selectFrom('items')
       .selectAll()
       .where('content_hash', '=', contentHash)
@@ -73,7 +73,7 @@ export class ItemsStore {
       .execute();
   }
 
-  async listByCategory(category: string, scope: string, limit?: number, userId?: string): Promise<MemoryFSItem[]> {
+  async listByCategory(category: string, scope: string, limit?: number, userId?: string): Promise<CortexItem[]> {
     let query = this.db.selectFrom('items')
       .selectAll()
       .where('category', '=', category)
@@ -94,7 +94,7 @@ export class ItemsStore {
     return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  async listByScope(scope: string, limit?: number, agentId?: string, userId?: string): Promise<MemoryFSItem[]> {
+  async listByScope(scope: string, limit?: number, agentId?: string, userId?: string): Promise<CortexItem[]> {
     let query = this.db.selectFrom('items')
       .selectAll()
       .where('scope', '=', scope);
@@ -118,7 +118,7 @@ export class ItemsStore {
     return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  async getAllForCategory(category: string, scope: string): Promise<MemoryFSItem[]> {
+  async getAllForCategory(category: string, scope: string): Promise<CortexItem[]> {
     const rows = await this.db.selectFrom('items')
       .selectAll()
       .where('category', '=', category)
@@ -128,7 +128,7 @@ export class ItemsStore {
     return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  async searchContent(query: string, scope: string, limit = 50, userId?: string): Promise<MemoryFSItem[]> {
+  async searchContent(query: string, scope: string, limit = 50, userId?: string): Promise<CortexItem[]> {
     let q = this.db.selectFrom('items')
       .selectAll()
       .where('scope', '=', scope)
@@ -144,7 +144,7 @@ export class ItemsStore {
     return rows.map(r => this.rowToItem(r as Record<string, unknown>));
   }
 
-  async getByIds(ids: string[]): Promise<MemoryFSItem[]> {
+  async getByIds(ids: string[]): Promise<CortexItem[]> {
     if (ids.length === 0) return [];
     const rows = await this.db.selectFrom('items')
       .selectAll()
@@ -180,11 +180,11 @@ export class ItemsStore {
     // Only meaningful for standalone usage.
   }
 
-  private rowToItem(row: Record<string, unknown>): MemoryFSItem {
+  private rowToItem(row: Record<string, unknown>): CortexItem {
     return {
       id: row.id as string,
       content: row.content as string,
-      memoryType: row.memory_type as MemoryFSItem['memoryType'],
+      memoryType: row.memory_type as CortexItem['memoryType'],
       category: row.category as string,
       contentHash: row.content_hash as string,
       source: (row.source as string) || undefined,

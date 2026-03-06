@@ -200,7 +200,7 @@ profile: ${profile}
 agent: ${agentType}
 
 providers:
-  memory: memoryfs
+  memory: cortex
   scanner: patterns
   channels: []
   web: none

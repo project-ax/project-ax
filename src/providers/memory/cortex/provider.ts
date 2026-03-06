@@ -1,4 +1,4 @@
-// src/providers/memory/memoryfs/provider.ts — MemoryFS provider wiring
+// src/providers/memory/cortex/provider.ts — Cortex provider wiring
 import { join } from 'node:path';
 import type { Config } from '../../../types.js';
 import type {
@@ -23,7 +23,7 @@ import { getLogger } from '../../../logger.js';
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
-const logger = getLogger().child({ component: 'memoryfs' });
+const logger = getLogger().child({ component: 'cortex' });
 
 const SEMANTIC_DEDUP_THRESHOLD = 0.8;
 
@@ -186,8 +186,8 @@ export async function create(config: Config, _name?: string, opts?: CreateOption
     logger.warn('backfill_error', { error: (err as Error).message });
   });
 
-  /** Convert internal MemoryFSItem to public MemoryEntry. */
-  function toEntry(item: import('./types.js').MemoryFSItem): MemoryEntry {
+  /** Convert internal CortexItem to public MemoryEntry. */
+  function toEntry(item: import('./types.js').CortexItem): MemoryEntry {
     return {
       id: item.id,
       scope: item.scope,

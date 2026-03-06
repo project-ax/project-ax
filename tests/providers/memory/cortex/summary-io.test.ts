@@ -8,7 +8,7 @@ import {
   listCategories,
   categoryExists,
   initDefaultCategories,
-} from '../../../../src/providers/memory/memoryfs/summary-io.js';
+} from '../../../../src/providers/memory/cortex/summary-io.js';
 
 describe('summary-io', () => {
   let memoryDir: string;

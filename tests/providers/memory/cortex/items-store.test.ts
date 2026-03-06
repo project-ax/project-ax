@@ -1,13 +1,13 @@
-// tests/providers/memory/memoryfs/items-store.test.ts
+// tests/providers/memory/cortex/items-store.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ItemsStore } from '../../../../src/providers/memory/memoryfs/items-store.js';
+import { ItemsStore } from '../../../../src/providers/memory/cortex/items-store.js';
 import { createKyselyDb } from '../../../../src/utils/database.js';
 import { runMigrations } from '../../../../src/utils/migrator.js';
-import { memoryMigrations } from '../../../../src/providers/memory/memoryfs/migrations.js';
-import type { MemoryFSItem } from '../../../../src/providers/memory/memoryfs/types.js';
+import { memoryMigrations } from '../../../../src/providers/memory/cortex/migrations.js';
+import type { CortexItem } from '../../../../src/providers/memory/cortex/types.js';
 import type { Kysely } from 'kysely';
 
 describe('ItemsStore', () => {
@@ -29,7 +29,7 @@ describe('ItemsStore', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  const sampleItem: Omit<MemoryFSItem, 'id'> = {
+  const sampleItem: Omit<CortexItem, 'id'> = {
     content: 'Prefers TypeScript over JavaScript',
     memoryType: 'profile',
     category: 'preferences',

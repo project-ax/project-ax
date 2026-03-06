@@ -1,6 +1,6 @@
-// tests/providers/memory/memoryfs/llm-helpers.test.ts
+// tests/providers/memory/cortex/llm-helpers.test.ts
 import { describe, it, expect, vi } from 'vitest';
-import { collectLLMText, llmComplete } from '../../../../src/providers/memory/memoryfs/llm-helpers.js';
+import { collectLLMText, llmComplete } from '../../../../src/providers/memory/cortex/llm-helpers.js';
 import type { LLMProvider, ChatChunk } from '../../../../src/providers/llm/types.js';
 
 /** Create an async iterable from an array of chunks. */

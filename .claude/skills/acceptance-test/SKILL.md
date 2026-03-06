@@ -176,9 +176,9 @@ Tests run in parallel at two levels:
 ```
 Lead Agent (you)
 ├── Shared K8s setup (build image once)
-├── Feature: memoryfs-v2
-│   ├── Agent: memoryfs-v2-local   (local env setup + structural + behavioral + integration)
-│   └── Agent: memoryfs-v2-k8s     (k8s env setup + behavioral + integration)
+├── Feature: cortex
+│   ├── Agent: cortex-local   (local env setup + structural + behavioral + integration)
+│   └── Agent: cortex-k8s     (k8s env setup + behavioral + integration)
 ├── Feature: plainjob-scheduler
 │   ├── Agent: plainjob-scheduler-local
 │   └── Agent: plainjob-scheduler-k8s
@@ -263,13 +263,13 @@ cp tests/acceptance/fixtures/.env.test.example .env.test
 | eventbus | inprocess | nats |
 | storage | file | database (postgresql) |
 | database | — | postgresql |
-| memory | memoryfs | memoryfs |
+| memory | cortex | cortex |
 | audit | file | database (postgresql) |
 | credentials | plaintext | plaintext |
 | skills | git | git |
 | scheduler | plainjob | plainjob |
 | screener | static | static |
-| scanner | promptfoo | promptfoo |
+| scanner | guardian | guardian |
 | browser | none | none |
 | web | none | none |
 
@@ -495,11 +495,11 @@ Here's how the lead agent spawns all agents for 3 features in a single message:
 ```
 Use the Task tool 6 times in one message (all in parallel):
 
-Task 1: subagent_type="general-purpose", name="memoryfs-v2-local", mode="bypassPermissions"
-  prompt: <local agent prompt for memoryfs-v2>
+Task 1: subagent_type="general-purpose", name="cortex-local", mode="bypassPermissions"
+  prompt: <local agent prompt for cortex>
 
-Task 2: subagent_type="general-purpose", name="memoryfs-v2-k8s", mode="bypassPermissions"
-  prompt: <k8s agent prompt for memoryfs-v2>
+Task 2: subagent_type="general-purpose", name="cortex-k8s", mode="bypassPermissions"
+  prompt: <k8s agent prompt for cortex>
 
 Task 3: subagent_type="general-purpose", name="plainjob-scheduler-local", mode="bypassPermissions"
   prompt: <local agent prompt for plainjob-scheduler>
@@ -684,8 +684,8 @@ AX requires session IDs with **3 or more colon-separated segments**. Two-segment
 --session "acceptance:bt1"
 
 # CORRECT — 3+ colon-separated segments
---session "acceptance:memoryfs:bt1"
---session "acceptance:memoryfs:k8s:bt1"  # k8s variant
+--session "acceptance:cortex:bt1"
+--session "acceptance:cortex:k8s:bt1"  # k8s variant
 ```
 
 ### Running structural tests
@@ -727,8 +727,8 @@ Agents use the correct commands for their environment:
 | Logs | `tail -f "$TEST_HOME/data/ax.log"` | `kubectl --context "$KUBE_CTX" -n "$K8S_NS" logs -f $HOST_POD` |
 
 **Local vs k8s data layout:**
-- **Local** uses file-based providers: audit is a JSONL file (`data/audit/audit.jsonl`), storage is flat files (`data/conversations/*.jsonl`, `data/sessions/*.json`). Memory (`memoryfs`) uses SQLite (`data/memory/_store.db`, `data/memory/_vec.db`) and markdown files (`data/memory/*.md`).
-- **K8s** uses the `database` provider backed by PostgreSQL for both storage and audit. Query via `$PG_POD` with `psql`. Memory (`memoryfs`) still uses SQLite files on the host pod's local filesystem. If the host pod has no `sqlite3` binary, use Node.js: `kubectl exec $HOST_POD -- node -e "const db = require('better-sqlite3')('/home/agent/.ax/data/memory/_store.db'); console.log(JSON.stringify(db.prepare('SELECT * FROM items').all()))"`
+- **Local** uses file-based providers: audit is a JSONL file (`data/audit/audit.jsonl`), storage is flat files (`data/conversations/*.jsonl`, `data/sessions/*.json`). Memory (`cortex`) uses SQLite (`data/memory/_store.db`, `data/memory/_vec.db`) and markdown files (`data/memory/*.md`).
+- **K8s** uses the `database` provider backed by PostgreSQL for both storage and audit. Query via `$PG_POD` with `psql`. Memory (`cortex`) still uses SQLite files on the host pod's local filesystem. If the host pod has no `sqlite3` binary, use Node.js: `kubectl exec $HOST_POD -- node -e "const db = require('better-sqlite3')('/home/agent/.ax/data/memory/_store.db'); console.log(JSON.stringify(db.prepare('SELECT * FROM items').all()))"`
 
 ### Running behavioral tests
 

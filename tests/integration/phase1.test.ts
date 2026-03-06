@@ -42,7 +42,7 @@ function mockConfig(profile: 'paranoid' | 'balanced' | 'yolo' = 'balanced'): Con
     profile,
     models: { default: ['mock/default'] },
     providers: {
-      memory: 'memoryfs', scanner: 'patterns',
+      memory: 'cortex', scanner: 'patterns',
       channels: [], web: 'none', browser: 'none',
       credentials: 'keychain', skills: 'readonly', audit: 'file',
       sandbox: 'subprocess', scheduler: 'none',
@@ -349,7 +349,7 @@ describe('Balanced Profile Config', () => {
 
     expect(config.profile).toBe('balanced');
     expect(config.providers.scanner).toBe('patterns');
-    expect(config.providers.memory).toBe('memoryfs');
+    expect(config.providers.memory).toBe('cortex');
     expect(config.providers.audit).toBe('file');
   });
 
@@ -396,7 +396,7 @@ describe('Provider Map', () => {
     expect(PROVIDER_MAP.llm).toHaveProperty('mock');
 
     // Memory providers
-    expect(PROVIDER_MAP.memory).toHaveProperty('memoryfs');
+    expect(PROVIDER_MAP.memory).toHaveProperty('cortex');
 
     // Scanner providers
     expect(PROVIDER_MAP.scanner).toHaveProperty('patterns');

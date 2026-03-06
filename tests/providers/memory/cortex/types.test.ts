@@ -1,21 +1,21 @@
-// tests/providers/memory/memoryfs/types.test.ts
+// tests/providers/memory/cortex/types.test.ts
 import { describe, it, expect } from 'vitest';
 import type {
-  MemoryFSItem,
-  MemoryFSConfig,
+  CortexItem,
+  CortexConfig,
   MemoryType,
-} from '../../../../src/providers/memory/memoryfs/types.js';
-import { MEMORY_TYPES } from '../../../../src/providers/memory/memoryfs/types.js';
+} from '../../../../src/providers/memory/cortex/types.js';
+import { MEMORY_TYPES } from '../../../../src/providers/memory/cortex/types.js';
 
-describe('MemoryFS types', () => {
+describe('Cortex types', () => {
   it('MEMORY_TYPES contains all six types', () => {
     expect(MEMORY_TYPES).toEqual([
       'profile', 'event', 'knowledge', 'behavior', 'skill', 'tool',
     ]);
   });
 
-  it('MemoryFSItem has required fields', () => {
-    const item: MemoryFSItem = {
+  it('CortexItem has required fields', () => {
+    const item: CortexItem = {
       id: 'mem_abc123',
       content: 'Prefers TypeScript over JavaScript',
       memoryType: 'profile',
@@ -32,8 +32,8 @@ describe('MemoryFS types', () => {
     expect(item.reinforcementCount).toBe(1);
   });
 
-  it('MemoryFSConfig has required fields', () => {
-    const config: MemoryFSConfig = {
+  it('CortexConfig has required fields', () => {
+    const config: CortexConfig = {
       memoryDir: '/tmp/memory',
       enableItemReferences: false,
       summaryTargetTokens: 400,

@@ -1,4 +1,4 @@
-// src/providers/memory/memoryfs/types.ts — MemoryFS provider types
+// src/providers/memory/cortex/types.ts — Cortex provider types
 import type { LLMProvider } from '../../llm/types.js';
 
 /** The six memory types, matching memU's MemoryType literal. */
@@ -14,7 +14,7 @@ export const MEMORY_TYPES = [
 export type MemoryType = typeof MEMORY_TYPES[number];
 
 /** A single atomic memory item stored in SQLite. */
-export interface MemoryFSItem {
+export interface CortexItem {
   id: string;
   content: string;
   memoryType: MemoryType;
@@ -36,8 +36,8 @@ export interface MemoryFSItem {
 /** Short ref ID for [ref:ID] citations in summaries. */
 export type RefId = string; // first 6 hex chars of content hash
 
-/** Configuration for the MemoryFS provider. */
-export interface MemoryFSConfig {
+/** Configuration for the Cortex provider. */
+export interface CortexConfig {
   memoryDir: string;              // root directory for .md files and _store.db
   enableItemReferences?: boolean; // default false -- opt-in [ref:ID] in summaries
   summaryTargetTokens?: number;   // default 400

@@ -20,7 +20,7 @@ config:
   models:
     default: ["anthropic/claude-sonnet-4-20250514"]
   providers:
-    memory: memoryfs
+    memory: cortex
     scanner: patterns
     channels: []
     web: none

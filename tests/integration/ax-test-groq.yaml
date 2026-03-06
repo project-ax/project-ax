@@ -4,7 +4,7 @@ models:
   default:
     - groq/test-model
 providers:
-  memory: memoryfs
+  memory: cortex
   scanner: patterns
   channels: []
   web: none

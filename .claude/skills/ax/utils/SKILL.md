@@ -95,7 +95,7 @@ Validates an already-resolved path is within `baseDir`.
 - Uses OpenAI-compatible embedding APIs (default: `text-embedding-3-small`)
 - **Compound model IDs:** Supports `provider/model` format (e.g., `openai/text-embedding-3-small`)
 - **Graceful degradation:** Returns `available: false` when API key is unavailable; callers can fall back to non-semantic search
-- Used by `src/host/memory-recall.ts` and `src/providers/memory/memoryfs/embedding-store.ts`
+- Used by `src/host/memory-recall.ts` and `src/providers/memory/cortex/embedding-store.ts`
 
 ## OpenAI-Compatible Helpers
 

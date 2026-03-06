@@ -5,7 +5,7 @@ description: Use when modifying data persistence — conversation history (SQLit
 
 ## Overview
 
-AX persists data in SQLite databases under `~/.ax/data/`. `ConversationStore` holds conversation history per session. `MessageQueue` tracks inbound messages through the scan/process/complete lifecycle. `FileStore` tracks uploaded file metadata. Both use the runtime-agnostic SQLite wrapper in `utils/sqlite.ts`.
+AX persists data using two patterns: (1) standalone SQLite databases under `~/.ax/data/` for conversation history, message queue, and file metadata, and (2) a shared `DatabaseProvider` (SQLite or PostgreSQL) for storage, audit, and memory. `ConversationStore` holds conversation history per session. `MessageQueue` tracks inbound messages through the scan/process/complete lifecycle. `FileStore` tracks uploaded file metadata. Standalone stores use the runtime-agnostic SQLite wrapper in `utils/sqlite.ts`. Provider-backed stores use Kysely via `src/utils/database.ts`.
 
 ## Key Files
 

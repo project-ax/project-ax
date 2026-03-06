@@ -2,6 +2,14 @@
 
 General refactoring, stale reference cleanup, path realignment, dependency updates.
 
+## [2026-03-05 20:44] — Rename memoryfs → cortex
+
+**Task:** Rename the "memoryfs" memory provider to "cortex" across the entire codebase
+**What I did:** Renamed directories (src, tests, acceptance), updated all type names (MemoryFSItem→CortexItem, MemoryFSConfig→CortexConfig), provider-map registration, config values in 13 YAML files, source file internals (headers, logger, JSDoc), 21+ test files, 4 skill files, and acceptance README. Used 6 parallel agents for efficiency.
+**Files touched:** 50+ files across src/, tests/, charts/, flux/, .claude/skills/, ax.yaml
+**Outcome:** Success — build passes, all 2325 tests pass, no remaining memoryfs references in src/ or YAML configs. Only 2 intentionally preserved historical skip-test descriptions in phase2.test.ts.
+**Notes:** Historical journal/lessons entries left as-is (append-only policy). Acceptance test plan/results/fixes docs under tests/acceptance/cortex/ still reference old name in historical context.
+
 ## [2026-03-05 19:25] — Database layer refactoring (14-task plan)
 
 **Task:** Consolidate 10+ standalone SQLite connections into a shared DatabaseProvider factory

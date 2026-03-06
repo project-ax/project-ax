@@ -1,5 +1,13 @@
 # Providers: Memory
 
+## [2026-03-05 00:00] — Rename MemoryFS types to Cortex in cortex provider
+
+**Task:** Rename MemoryFSItem->CortexItem, MemoryFSConfig->CortexConfig, update header comments from memoryfs->cortex, update MemoryFS->Cortex in comments, and change logger component from 'memoryfs' to 'cortex'
+**What I did:** Applied renames across 8 files in src/providers/memory/cortex/: types.ts (interface renames + JSDoc), items-store.ts (type refs + header), provider.ts (type refs + header + logger component), extractor.ts (type refs + header), summary-io.ts (header), migrations.ts (header), llm-helpers.ts (header), prompts.ts (header). Verified content-hash.ts, salience.ts, embedding-store.ts, and index.ts had no memoryfs references. Import paths (relative './types.js' etc.) left unchanged as instructed.
+**Files touched:** `src/providers/memory/cortex/types.ts`, `src/providers/memory/cortex/items-store.ts`, `src/providers/memory/cortex/provider.ts`, `src/providers/memory/cortex/extractor.ts`, `src/providers/memory/cortex/summary-io.ts`, `src/providers/memory/cortex/migrations.ts`, `src/providers/memory/cortex/llm-helpers.ts`, `src/providers/memory/cortex/prompts.ts`
+**Outcome:** Success — zero remaining MemoryFS/memoryfs references in cortex directory or anywhere in src/
+**Notes:** test plan file tests/acceptance/cortex/test-plan.md still references old names but is outside the requested scope.
+
 ## [2026-03-04 02:55] — Multi-user scoped memory implementation
 
 **Task:** Add per-user memory isolation to MemoryFS so DMs are user-scoped and channels are agent-scoped

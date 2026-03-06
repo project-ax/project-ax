@@ -1,10 +1,10 @@
-// tests/providers/memory/memoryfs/provider.test.ts
+// tests/providers/memory/cortex/provider.test.ts
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { create } from '../../../../src/providers/memory/memoryfs/provider.js';
+import { create } from '../../../../src/providers/memory/cortex/provider.js';
 import type { MemoryProvider, ConversationTurn } from '../../../../src/providers/memory/types.js';
 import type { Config } from '../../../../src/types.js';
 import type { LLMProvider, ChatChunk } from '../../../../src/providers/llm/types.js';
@@ -34,7 +34,7 @@ function mockLLM(responses: string[]): LLMProvider {
   };
 }
 
-describe('memoryfs provider', () => {
+describe('cortex provider', () => {
   let memory: MemoryProvider;
   let testHome: string;
 
@@ -206,7 +206,7 @@ describe('memoryfs provider', () => {
   });
 });
 
-describe('memoryfs provider with LLM', () => {
+describe('cortex provider with LLM', () => {
   let memory: MemoryProvider;
   let testHome: string;
   let llm: LLMProvider;

@@ -60,7 +60,7 @@ describe('Onboarding Wizard', () => {
     expect(config.profile).toBe('balanced');
     expect(config.providers.web).toBe('fetch');
     expect(config.providers.skills).toBe('git');
-    expect(config.providers.memory).toBe('memoryfs');
+    expect(config.providers.memory).toBe('cortex');
   });
 
   test('generates valid ax.yaml for yolo profile', async () => {
