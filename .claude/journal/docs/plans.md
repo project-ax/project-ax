@@ -2,6 +2,14 @@
 
 Architecture analysis, gap analysis, design documents, implementation plans.
 
+## [2026-03-06 14:00] — Design plan: K8s Helm presets + ax k8s init CLI
+
+**Task:** Evaluate whether to build a K8s operator for AX, and design a simpler alternative
+**What I did:** Brainstormed with user through the tradeoffs of a K8s operator vs Helm improvements. Concluded an operator is overkill for the target audience (developers who barely know K8s). Designed two complementary features: (1) Helm presets (small/medium/large) that collapse 230+ lines of values.yaml into a single key, (2) `ax k8s init` interactive CLI that creates secrets and generates a minimal values file. Covered preset definitions, CLI flow, DB migration strategy (auto on startup, no init job needed), file changes, and edge cases.
+**Files touched:** docs/plans/2026-03-06-k8s-presets-and-init-design.md (new)
+**Outcome:** Success — design document written and committed
+**Notes:** Key decisions: no dev preset for K8s (just use npm start locally), CLI creates secrets via kubectl but does NOT run helm install, no new npm dependencies, presets use resolution order (user override > preset > chart default).
+
 ## [2026-03-05] — Add 5 missing provider skills to skills/ax
 
 **Task:** Add skills for provider categories that had implementations but no corresponding skill documentation.
