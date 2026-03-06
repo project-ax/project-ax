@@ -1,3 +1,4 @@
+{{- if ne .Values.poolController.enabled false }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -13,3 +14,4 @@ roleRef:
   kind: Role
   name: {{ include "ax.fullname" . }}-pool-manager
   apiGroup: rbac.authorization.k8s.io
+{{- end }}

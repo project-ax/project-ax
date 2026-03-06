@@ -63,7 +63,7 @@ Call with (dict "image" .Values.host.image "global" .Values.global "context" $)
 {{- define "ax.image" -}}
 {{- $registry := .image.registry | default .global.imageRegistry | default "" -}}
 {{- $repo := .image.repository -}}
-{{- $tag := .image.tag | default .context.Chart.AppVersion -}}
+{{- $tag := .image.tag | default .global.imageTag | default .context.Chart.AppVersion -}}
 {{- if $registry -}}
 {{- printf "%s/%s:%s" $registry $repo $tag -}}
 {{- else -}}

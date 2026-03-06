@@ -1,3 +1,4 @@
+{{- if ne .Values.poolController.enabled false }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -65,3 +66,4 @@ spec:
         - name: sandbox-templates
           configMap:
             name: {{ include "ax.fullname" . }}-sandbox-templates
+{{- end }}

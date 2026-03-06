@@ -4,6 +4,8 @@ Category-based organization of all journal entries. Total: 112 entries across 10
 
 ## Entries
 
+- 2026-03-06 00:00 — Helm chart deployment improvements (5 fixes) [infrastructure/helm-deploy-fixes.md](infrastructure/helm-deploy-fixes.md)
+- 2026-03-05 21:45 — LLM Webhook Transforms local acceptance tests (21/21 PASS) [testing/acceptance.md](testing/acceptance.md)
 - 2026-03-05 05:30 — Helm Chart + FluxCD GitOps Implementation [infrastructure/helm-fluxcd.md](infrastructure/helm-fluxcd.md)
 - 2026-03-05 08:00 — Add FluxCD sources, base kustomization, and SOPS config [host/k8s-deployment.md](host/k8s-deployment.md)
 - 2026-03-05 07:00 — Add NATS JetStream stream init hook job [host/k8s-deployment.md](host/k8s-deployment.md)

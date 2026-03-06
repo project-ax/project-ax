@@ -10,6 +10,7 @@ namespace:
 
 global:
   imageRegistry: ""
+  imageTag: ""
 
 # ─── AX Configuration ────────────────────────────────────────────
 # This entire block is rendered as ax.yaml and mounted into every pod.
@@ -126,6 +127,7 @@ agentRuntime:
 
 # ─── Pool Controller ─────────────────────────────────────────────
 poolController:
+  enabled: true
   replicas: 1
   image:
     registry: ""

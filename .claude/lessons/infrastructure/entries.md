@@ -28,6 +28,18 @@
 **Lesson:** Adding `AX_CONFIG_PATH` env var to `configPath()` in paths.ts is all that's needed to support ConfigMap-mounted config in k8s. The existing loadConfig() reads from configPath() and handles all parsing/validation. No changes needed to config.ts itself.
 **Tags:** config, helm, k8s, configmap
 
+### Helm `default` treats false as empty — use `ne` for boolean guards
+**Date:** 2026-03-06
+**Context:** Pool-controller `enabled: false` had no effect because `default true false` returns `true`
+**Lesson:** Helm's `default` function treats `false`, `0`, `""`, and `nil` as empty. For boolean opt-out guards, use `{{- if ne .Values.foo.enabled false }}` instead of `{{- if (default true .Values.foo.enabled) }}`.
+**Tags:** helm, boolean, guard, template
+
+### Bitnami PostgreSQL subchart only creates postgres-password key
+**Date:** 2026-03-06
+**Context:** Chart expected a `url` key with full connection string, but bitnami only creates `postgres-password`
+**Lesson:** When using bitnami PostgreSQL subchart, construct DATABASE_URL from PGPASSWORD using `$(VAR_NAME)` env var expansion. Define PGPASSWORD first from secretKeyRef, then reference it in DATABASE_URL value field.
+**Tags:** helm, postgresql, bitnami, database-url
+
 ### Security contexts must stay hardcoded in k8s-client.ts
 **Date:** 2026-03-05
 **Context:** Making sandbox tier configs Helm-configurable via SANDBOX_TEMPLATE_DIR

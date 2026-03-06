@@ -5,6 +5,9 @@
 # within its own pod. Pool controller is disabled — sandbox pods
 # are not needed when agent-runtime uses subprocess sandbox.
 
+global:
+  imageTag: test
+
 # ─── AX Config overrides ─────────────────────────────────────────
 # Must match tests/acceptance/fixtures/ax-k8s.yaml — the chart renders
 # this block as ax.yaml inside the ConfigMap.
@@ -60,9 +63,6 @@ namespace:
 
 host:
   replicas: 1
-  image:
-    repository: ax/host
-    tag: test
   resources:
     requests: { cpu: "500m", memory: "1Gi" }
     limits: { cpu: "1", memory: "2Gi" }

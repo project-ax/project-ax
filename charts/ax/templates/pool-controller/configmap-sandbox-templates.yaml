@@ -1,3 +1,4 @@
+{{- if ne .Values.poolController.enabled false }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -28,3 +29,4 @@ data:
       }
     }
   {{- end }}
+{{- end }}
