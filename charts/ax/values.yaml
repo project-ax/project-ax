@@ -62,7 +62,7 @@ host:
   replicas:   # null → use preset (small=1, medium=2, large=3) or default 2
   image:
     registry: ""
-    repository: ax/host
+    repository: ax
     tag: ""  # Defaults to Chart.appVersion
   command: ["node", "dist/host/host-process.js"]
   ports:
@@ -100,7 +100,7 @@ agentRuntime:
   replicas:   # null → use preset (small=1, medium=3, large=5) or default 3
   image:
     registry: ""
-    repository: ax/host
+    repository: ax
     tag: ""
   command: ["node", "dist/host/agent-runtime-process.js"]
   ports:
@@ -126,7 +126,7 @@ poolController:
   replicas: 1
   image:
     registry: ""
-    repository: ax/host
+    repository: ax
     tag: ""
   command: ["node", "dist/pool-controller/main.js"]
   ports:
@@ -151,7 +151,7 @@ poolController:
 sandbox:
   image:
     registry: ""
-    repository: ax/agent
+    repository: ax-sandbox
     tag: "latest"
   # Pod runtime class for sandbox pods (e.g., "gvisor" for GKE Autopilot).
   # Set to "" to disable (for kind/minikube/non-gVisor clusters).

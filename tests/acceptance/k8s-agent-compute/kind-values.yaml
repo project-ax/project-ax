@@ -6,7 +6,7 @@ namespace:
 host:
   replicas: 1
   image:
-    repository: ax/host
+    repository: ax
     tag: test
   resources:
     requests: { cpu: "250m", memory: "256Mi" }
@@ -15,7 +15,7 @@ host:
 agentRuntime:
   replicas: 1
   image:
-    repository: ax/host
+    repository: ax
     tag: test
   resources:
     requests: { cpu: "500m", memory: "1Gi" }
@@ -24,13 +24,13 @@ agentRuntime:
 poolController:
   replicas: 1
   image:
-    repository: ax/host
+    repository: ax
     tag: test
   reconcileIntervalMs: 3000  # faster for testing
 
 sandbox:
   image:
-    repository: ax/agent
+    repository: ax-sandbox
     tag: test
   runtimeClass: ""  # gVisor not available on kind
   tiers:
