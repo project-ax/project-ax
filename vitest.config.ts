@@ -8,6 +8,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/.worktrees/**',
+      'dashboard/tests/**',
     ],
   },
 });
