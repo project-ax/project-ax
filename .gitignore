@@ -43,4 +43,4 @@ npm-debug.log*
 
 # misc
 test-results/
-ax-values.yml
+ax-values.yaml
