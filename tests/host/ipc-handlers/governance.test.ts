@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createGovernanceHandlers } from '../../../src/host/ipc-handlers/governance.js';
-import { AgentRegistry } from '../../../src/host/agent-registry.js';
+import { FileAgentRegistry, type AgentRegistry } from '../../../src/host/agent-registry.js';
 import type { IPCContext } from '../../../src/host/ipc-server.js';
 import type { ProviderRegistry } from '../../../src/types.js';
 
@@ -58,7 +58,7 @@ describe('Governance IPC handlers', () => {
     // Seed admins file so existing tests (which use alice) pass admin gate
     writeFileSync(join(agentTopDirPath, 'admins'), 'alice\n', 'utf-8');
 
-    registry = new AgentRegistry(join(tmpDir, 'registry.json'));
+    registry = new FileAgentRegistry(join(tmpDir, 'registry.json'));
     ctx = { sessionId: 'sess-1', agentId: 'main', userId: 'alice' };
   });
 

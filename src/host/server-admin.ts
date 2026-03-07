@@ -197,7 +197,7 @@ async function handleAdminAPI(
 
   // GET /admin/api/status
   if (pathname === '/admin/api/status' && method === 'GET') {
-    const agents = agentRegistry.list();
+    const agents = await agentRegistry.list();
     const active = agents.filter(a => a.status === 'active').length;
     sendJSON(res, {
       status: 'ok',
@@ -210,7 +210,7 @@ async function handleAdminAPI(
 
   // GET /admin/api/agents
   if (pathname === '/admin/api/agents' && method === 'GET') {
-    const agents = agentRegistry.list();
+    const agents = await agentRegistry.list();
     sendJSON(res, agents);
     return;
   }
@@ -219,9 +219,9 @@ async function handleAdminAPI(
   const agentMatch = pathname.match(/^\/admin\/api\/agents\/([^/]+)$/);
   if (agentMatch && method === 'GET') {
     const id = decodeURIComponent(agentMatch[1]);
-    const agent = agentRegistry.get(id);
+    const agent = await agentRegistry.get(id);
     if (!agent) { sendError(res, 404, 'Agent not found'); return; }
-    const children = agentRegistry.children(id);
+    const children = await agentRegistry.children(id);
     sendJSON(res, { ...agent, children });
     return;
   }
@@ -230,9 +230,9 @@ async function handleAdminAPI(
   const killMatch = pathname.match(/^\/admin\/api\/agents\/([^/]+)\/kill$/);
   if (killMatch && method === 'POST') {
     const id = decodeURIComponent(killMatch[1]);
-    const agent = agentRegistry.get(id);
+    const agent = await agentRegistry.get(id);
     if (!agent) { sendError(res, 404, 'Agent not found'); return; }
-    agentRegistry.update(id, { status: 'suspended' });
+    await agentRegistry.update(id, { status: 'suspended' });
     sendJSON(res, { ok: true, agentId: id });
     return;
   }

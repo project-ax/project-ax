@@ -20,7 +20,7 @@ import { createImageHandlers } from './ipc-handlers/image.js';
 import { createPluginHandlers } from './ipc-handlers/plugin.js';
 import { createOrchestrationHandlers } from './ipc-handlers/orchestration.js';
 import { createSandboxToolHandlers } from './ipc-handlers/sandbox-tools.js';
-import { AgentRegistry } from './agent-registry.js';
+import { type AgentRegistry, FileAgentRegistry } from './agent-registry.js';
 import type { Orchestrator } from './orchestration/orchestrator.js';
 import type { NATSSandboxDispatcher } from './nats-sandbox-dispatch.js';
 
@@ -115,7 +115,7 @@ export function createIPCHandler(providers: ProviderRegistry, opts?: IPCHandlerO
       agentDir: opts?.agentDir,
       agentName,
       profile,
-      registry: opts?.agentRegistry ?? new AgentRegistry(),
+      registry: opts?.agentRegistry ?? new FileAgentRegistry(),
     }),
     ...createPluginHandlers(providers),
     ...(opts?.orchestrator ? createOrchestrationHandlers(opts.orchestrator) : {}),

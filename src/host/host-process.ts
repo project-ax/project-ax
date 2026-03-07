@@ -21,7 +21,7 @@ import { isValidSessionId, webhookTransformPath } from '../paths.js';
 import { createWebhookHandler } from './server-webhooks.js';
 import { createWebhookTransform } from './webhook-transform.js';
 import { createAdminHandler } from './server-admin.js';
-import { AgentRegistry } from './agent-registry.js';
+import { createAgentRegistry } from './agent-registry.js';
 import {
   encode, decode,
   sessionRequestSubject, resultSubject, eventSubject,
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
         config,
         providers,
         eventBus: providers.eventbus,
-        agentRegistry: new AgentRegistry(),
+        agentRegistry: await createAgentRegistry(providers.database),
         startTime,
       })
     : null;

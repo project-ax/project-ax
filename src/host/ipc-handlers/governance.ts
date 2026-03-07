@@ -14,7 +14,7 @@ import type { ProviderRegistry } from '../../types.js';
 import type { IPCContext } from '../ipc-server.js';
 import { agentDir as agentDirPath, agentIdentityDir, proposalsDir } from '../../paths.js';
 import { isAgentBootstrapMode, isAdmin } from '../server.js';
-import { AgentRegistry } from '../agent-registry.js';
+import type { AgentRegistry } from '../agent-registry.js';
 
 export interface GovernanceHandlerOptions {
   agentDir?: string;
@@ -167,13 +167,13 @@ export function createGovernanceHandlers(providers: ProviderRegistry, opts: Gove
 
     agent_registry_list: async (req: any) => {
       const agents = req.status
-        ? registry.list(req.status)
-        : registry.list();
+        ? await registry.list(req.status)
+        : await registry.list();
       return { agents };
     },
 
     agent_registry_get: async (req: any) => {
-      const agent = registry.get(req.agentId);
+      const agent = await registry.get(req.agentId);
       if (!agent) {
         return { ok: false, error: `Agent "${req.agentId}" not found` };
       }

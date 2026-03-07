@@ -24,7 +24,7 @@ import { createIPCHandler, createIPCServer, type DelegateRequest, type IPCContex
 import { TaintBudget, thresholdForProfile } from './taint-budget.js';
 import { processCompletion, type CompletionDeps } from './server-completions.js';
 import { createOrchestrator } from './orchestration/orchestrator.js';
-import { AgentRegistry } from './agent-registry.js';
+import { createAgentRegistry } from './agent-registry.js';
 import { FileStore } from '../file-store.js';
 import { axHome, dataDir, agentDir as agentDirPath, agentIdentityDir, agentIdentityFilesDir, agentSkillsDir } from '../paths.js';
 import { templatesDir as resolveTemplatesDir, seedSkillsDir as resolveSeedSkillsDir } from '../utils/assets.js';
@@ -169,8 +169,8 @@ async function main(): Promise<void> {
 
   const orchestrator = createOrchestrator(eventBus, providers.audit);
   const disableAutoState = orchestrator.enableAutoState();
-  const agentRegistry = new AgentRegistry();
-  agentRegistry.ensureDefault();
+  const agentRegistry = await createAgentRegistry(providers.database);
+  await agentRegistry.ensureDefault();
 
   const handleIPC = createIPCHandler(providers, {
     taintBudget,

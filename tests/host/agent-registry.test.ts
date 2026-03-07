@@ -2,27 +2,27 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { AgentRegistry } from '../../src/host/agent-registry.js';
+import { FileAgentRegistry } from '../../src/host/agent-registry.js';
 
 describe('AgentRegistry', () => {
   let tmpDir: string;
-  let registry: AgentRegistry;
+  let registry: FileAgentRegistry;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ax-registry-test-'));
-    registry = new AgentRegistry(join(tmpDir, 'registry.json'));
+    registry = new FileAgentRegistry(join(tmpDir, 'registry.json'));
   });
 
   afterEach(() => {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test('list returns empty array when no registry file exists', () => {
-    expect(registry.list()).toEqual([]);
+  test('list returns empty array when no registry file exists', async () => {
+    expect(await registry.list()).toEqual([]);
   });
 
-  test('register creates an agent entry', () => {
-    const entry = registry.register({
+  test('register creates an agent entry', async () => {
+    const entry = await registry.register({
       id: 'test-agent',
       name: 'Test Agent',
       description: 'A test agent',
@@ -40,8 +40,8 @@ describe('AgentRegistry', () => {
     expect(entry.updatedAt).toBeTruthy();
   });
 
-  test('get retrieves a registered agent', () => {
-    registry.register({
+  test('get retrieves a registered agent', async () => {
+    await registry.register({
       id: 'my-agent',
       name: 'My Agent',
       status: 'active',
@@ -51,17 +51,17 @@ describe('AgentRegistry', () => {
       createdBy: 'test',
     });
 
-    const found = registry.get('my-agent');
+    const found = await registry.get('my-agent');
     expect(found).not.toBeNull();
     expect(found!.id).toBe('my-agent');
     expect(found!.name).toBe('My Agent');
   });
 
-  test('get returns null for unknown agent', () => {
-    expect(registry.get('nonexistent')).toBeNull();
+  test('get returns null for unknown agent', async () => {
+    expect(await registry.get('nonexistent')).toBeNull();
   });
 
-  test('register throws on duplicate ID', () => {
+  test('register throws on duplicate ID', async () => {
     const entry = {
       id: 'dup',
       name: 'Dup',
@@ -72,12 +72,12 @@ describe('AgentRegistry', () => {
       createdBy: 'test',
     };
 
-    registry.register(entry);
-    expect(() => registry.register(entry)).toThrow('already exists');
+    await registry.register(entry);
+    await expect(registry.register(entry)).rejects.toThrow('already exists');
   });
 
-  test('update modifies mutable fields', () => {
-    registry.register({
+  test('update modifies mutable fields', async () => {
+    await registry.register({
       id: 'up-agent',
       name: 'Original Name',
       status: 'active',
@@ -87,7 +87,7 @@ describe('AgentRegistry', () => {
       createdBy: 'test',
     });
 
-    const updated = registry.update('up-agent', {
+    const updated = await registry.update('up-agent', {
       name: 'New Name',
       status: 'suspended',
       capabilities: ['general', 'web'],
@@ -101,12 +101,12 @@ describe('AgentRegistry', () => {
     expect(updated.createdBy).toBe('test');
   });
 
-  test('update throws for unknown agent', () => {
-    expect(() => registry.update('ghost', { name: 'X' })).toThrow('not found');
+  test('update throws for unknown agent', async () => {
+    await expect(registry.update('ghost', { name: 'X' })).rejects.toThrow('not found');
   });
 
-  test('remove deletes an agent', () => {
-    registry.register({
+  test('remove deletes an agent', async () => {
+    await registry.register({
       id: 'rm-agent',
       name: 'Remove Me',
       status: 'active',
@@ -116,99 +116,99 @@ describe('AgentRegistry', () => {
       createdBy: 'test',
     });
 
-    expect(registry.remove('rm-agent')).toBe(true);
-    expect(registry.get('rm-agent')).toBeNull();
-    expect(registry.list()).toHaveLength(0);
+    expect(await registry.remove('rm-agent')).toBe(true);
+    expect(await registry.get('rm-agent')).toBeNull();
+    expect(await registry.list()).toHaveLength(0);
   });
 
-  test('remove returns false for unknown agent', () => {
-    expect(registry.remove('ghost')).toBe(false);
+  test('remove returns false for unknown agent', async () => {
+    expect(await registry.remove('ghost')).toBe(false);
   });
 
-  test('list filters by status', () => {
-    registry.register({
+  test('list filters by status', async () => {
+    await registry.register({
       id: 'a1', name: 'Active', status: 'active',
       parentId: null, agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'a2', name: 'Suspended', status: 'suspended',
       parentId: null, agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'a3', name: 'Archived', status: 'archived',
       parentId: null, agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
 
-    expect(registry.list('active')).toHaveLength(1);
-    expect(registry.list('suspended')).toHaveLength(1);
-    expect(registry.list('archived')).toHaveLength(1);
-    expect(registry.list()).toHaveLength(3);
+    expect(await registry.list('active')).toHaveLength(1);
+    expect(await registry.list('suspended')).toHaveLength(1);
+    expect(await registry.list('archived')).toHaveLength(1);
+    expect(await registry.list()).toHaveLength(3);
   });
 
-  test('findByCapability returns matching active agents', () => {
-    registry.register({
+  test('findByCapability returns matching active agents', async () => {
+    await registry.register({
       id: 'web-agent', name: 'Web', status: 'active',
       parentId: null, agentType: 'pi-coding-agent', capabilities: ['web', 'general'], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'code-agent', name: 'Coder', status: 'active',
       parentId: null, agentType: 'pi-coding-agent', capabilities: ['coding'], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'off-agent', name: 'Offline', status: 'suspended',
       parentId: null, agentType: 'pi-coding-agent', capabilities: ['web'], createdBy: 'test',
     });
 
-    const webAgents = registry.findByCapability('web');
+    const webAgents = await registry.findByCapability('web');
     expect(webAgents).toHaveLength(1);
     expect(webAgents[0].id).toBe('web-agent');
   });
 
-  test('children returns child agents of a parent', () => {
-    registry.register({
+  test('children returns child agents of a parent', async () => {
+    await registry.register({
       id: 'parent', name: 'Parent', status: 'active',
       parentId: null, agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'child1', name: 'Child 1', status: 'active',
       parentId: 'parent', agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'child2', name: 'Child 2', status: 'active',
       parentId: 'parent', agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
-    registry.register({
+    await registry.register({
       id: 'orphan', name: 'Orphan', status: 'active',
       parentId: null, agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
 
-    const kids = registry.children('parent');
+    const kids = await registry.children('parent');
     expect(kids).toHaveLength(2);
     expect(kids.map(k => k.id).sort()).toEqual(['child1', 'child2']);
   });
 
-  test('ensureDefault creates main agent on first call', () => {
-    const main = registry.ensureDefault();
+  test('ensureDefault creates main agent on first call', async () => {
+    const main = await registry.ensureDefault();
     expect(main.id).toBe('main');
     expect(main.status).toBe('active');
     expect(main.createdBy).toBe('system');
   });
 
-  test('ensureDefault returns existing main agent on subsequent calls', () => {
-    const first = registry.ensureDefault();
-    const second = registry.ensureDefault();
+  test('ensureDefault returns existing main agent on subsequent calls', async () => {
+    const first = await registry.ensureDefault();
+    const second = await registry.ensureDefault();
     expect(first.createdAt).toBe(second.createdAt);
   });
 
-  test('persists across registry instances', () => {
+  test('persists across registry instances', async () => {
     const path = join(tmpDir, 'persist.json');
-    const r1 = new AgentRegistry(path);
-    r1.register({
+    const r1 = new FileAgentRegistry(path);
+    await r1.register({
       id: 'persist-test', name: 'Persist', status: 'active',
       parentId: null, agentType: 'pi-coding-agent', capabilities: [], createdBy: 'test',
     });
 
-    const r2 = new AgentRegistry(path);
-    expect(r2.get('persist-test')).not.toBeNull();
+    const r2 = new FileAgentRegistry(path);
+    expect(await r2.get('persist-test')).not.toBeNull();
   });
 });

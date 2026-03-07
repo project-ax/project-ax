@@ -41,7 +41,7 @@ import { FileStore } from '../file-store.js';
 import { createWebhookHandler } from './server-webhooks.js';
 import { createWebhookTransform } from './webhook-transform.js';
 import { createAdminHandler } from './server-admin.js';
-import { AgentRegistry } from './agent-registry.js';
+import { createAgentRegistry } from './agent-registry.js';
 import { webhookTransformPath } from '../paths.js';
 
 // =====================================================
@@ -366,8 +366,8 @@ export async function createServer(
   const disableAutoState = orchestrator.enableAutoState();
 
   // Create shared agent registry
-  const agentRegistry = new AgentRegistry();
-  agentRegistry.ensureDefault();
+  const agentRegistry = await createAgentRegistry(providers.database);
+  await agentRegistry.ensureDefault();
 
   const handleIPC = createIPCHandler(providers, {
     taintBudget,

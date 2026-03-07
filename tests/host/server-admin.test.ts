@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { createAdminHandler, _rateLimits, type AdminDeps } from '../../src/host/server-admin.js';
 import type { Config } from '../../src/types.js';
-import { AgentRegistry } from '../../src/host/agent-registry.js';
+import { FileAgentRegistry } from '../../src/host/agent-registry.js';
 import { createEventBus } from '../../src/host/event-bus.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -55,11 +55,11 @@ function makeConfig(overrides: Partial<Config['admin']> = {}): Config {
   } as Config;
 }
 
-function mockDeps(configOverrides: Partial<Config['admin']> = {}): AdminDeps {
+async function mockDeps(configOverrides: Partial<Config['admin']> = {}): Promise<AdminDeps> {
   const tmpDir = mkdtempSync(join(tmpdir(), 'ax-admin-test-'));
   const config = makeConfig(configOverrides);
-  const registry = new AgentRegistry(join(tmpDir, 'registry.json'));
-  registry.ensureDefault();
+  const registry = new FileAgentRegistry(join(tmpDir, 'registry.json'));
+  await registry.ensureDefault();
 
   return {
     config,
@@ -131,7 +131,7 @@ describe('admin auth', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -166,8 +166,8 @@ describe('admin auth', () => {
     expect(res.status).toBe(429);
   });
 
-  it('auto-generates token when not configured', () => {
-    const deps = mockDeps({ token: undefined });
+  it('auto-generates token when not configured', async () => {
+    const deps = await mockDeps({ token: undefined });
     createAdminHandler(deps);
     expect(deps.config.admin.token).toBeDefined();
     expect(deps.config.admin.token!.length).toBeGreaterThanOrEqual(32);
@@ -180,7 +180,7 @@ describe('GET /admin/api/status', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -206,7 +206,7 @@ describe('GET /admin/api/agents', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -230,7 +230,7 @@ describe('GET /admin/api/agents/:id', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -264,7 +264,7 @@ describe('GET /admin/api/audit', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -292,7 +292,7 @@ describe('GET /admin/api/config', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -317,7 +317,7 @@ describe('GET /admin/api/events', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    deps = mockDeps();
+    deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;
@@ -374,7 +374,7 @@ describe('setup endpoints', () => {
 
   beforeEach(async () => {
     _rateLimits.clear();
-    const deps = mockDeps();
+    const deps = await mockDeps();
     const handler = createAdminHandler(deps);
     const result = await startTestServer(handler);
     server = result.server;

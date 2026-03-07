@@ -36,7 +36,7 @@ import type { ChatChunk } from '../../src/providers/llm/types.js';
 import type { CronJobDef } from '../../src/providers/scheduler/types.js';
 import type { BrowserSession, PageSnapshot } from '../../src/providers/browser/types.js';
 import type { SkillProposal, ProposalResult, SkillMeta, SkillLogEntry } from '../../src/providers/skills/types.js';
-import { AgentRegistry, type AgentRegistryEntry } from '../../src/host/agent-registry.js';
+import { FileAgentRegistry, type AgentRegistry, type AgentRegistryEntry } from '../../src/host/agent-registry.js';
 
 import { ScriptedLLM, textTurn, type LLMTurn } from './scripted-llm.js';
 
@@ -166,10 +166,10 @@ export class TestHarness {
     }
 
     // Agent registry — uses temp dir since AX_HOME is set
-    this.agentRegistry = new AgentRegistry(join(this.tmpDir, 'registry.json'));
+    this.agentRegistry = new FileAgentRegistry(join(this.tmpDir, 'registry.json'));
     if (opts.seedAgents) {
       for (const agent of opts.seedAgents) {
-        this.agentRegistry.register(agent);
+        void this.agentRegistry.register(agent);
       }
     }
 
