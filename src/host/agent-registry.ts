@@ -1,11 +1,11 @@
 /**
- * Agent Registry — JSON-based registry of enterprise agents.
+ * Agent Registry — tracks registered agents, capabilities, status, relationships.
  *
- * Tracks registered agents, their capabilities, status, and relationships.
- * Stored at ~/.ax/registry.json (see paths.ts:registryPath).
+ * Two implementations:
+ *   - FileAgentRegistry  — JSON file at ~/.ax/registry.json (used with SQLite / no database)
+ *   - DatabaseAgentRegistry — PostgreSQL-backed (see agent-registry-db.ts)
  *
- * Thread-safe for single-process use (no file locking). Reads on-demand,
- * writes atomically via rename.
+ * Use createAgentRegistry() factory to get the right one.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { registryPath } from '../paths.js';
 import { getLogger } from '../logger.js';
+import type { DatabaseProvider } from '../providers/database/types.js';
 
 const logger = getLogger().child({ component: 'agent-registry' });
 
@@ -45,23 +46,37 @@ export interface AgentRegistryEntry {
   createdBy: string;
 }
 
-export interface AgentRegistryData {
+// ═══════════════════════════════════════════════════════
+// Interface
+// ═══════════════════════════════════════════════════════
+
+export interface AgentRegistry {
+  list(status?: AgentStatus): Promise<AgentRegistryEntry[]>;
+  get(agentId: string): Promise<AgentRegistryEntry | null>;
+  register(entry: Omit<AgentRegistryEntry, 'createdAt' | 'updatedAt'>): Promise<AgentRegistryEntry>;
+  update(agentId: string, updates: Partial<Pick<AgentRegistryEntry, 'name' | 'description' | 'status' | 'capabilities'>>): Promise<AgentRegistryEntry>;
+  remove(agentId: string): Promise<boolean>;
+  findByCapability(capability: string): Promise<AgentRegistryEntry[]>;
+  children(parentId: string): Promise<AgentRegistryEntry[]>;
+  ensureDefault(): Promise<AgentRegistryEntry>;
+}
+
+// ═══════════════════════════════════════════════════════
+// File-based implementation
+// ═══════════════════════════════════════════════════════
+
+interface AgentRegistryData {
   version: 1;
   agents: AgentRegistryEntry[];
 }
 
-// ═══════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════
-
-export class AgentRegistry {
+export class FileAgentRegistry implements AgentRegistry {
   private readonly filePath: string;
 
   constructor(filePath?: string) {
     this.filePath = filePath ?? registryPath();
   }
 
-  /** Load the registry from disk. Returns empty registry if file doesn't exist. */
   private load(): AgentRegistryData {
     try {
       if (!existsSync(this.filePath)) {
@@ -79,7 +94,6 @@ export class AgentRegistry {
     }
   }
 
-  /** Save the registry to disk atomically (write-then-rename). */
   private save(data: AgentRegistryData): void {
     const dir = dirname(this.filePath);
     mkdirSync(dir, { recursive: true });
@@ -88,94 +102,63 @@ export class AgentRegistry {
     renameSync(tmpPath, this.filePath);
   }
 
-  /** List all agents, optionally filtered by status. */
-  list(status?: AgentStatus): AgentRegistryEntry[] {
+  async list(status?: AgentStatus): Promise<AgentRegistryEntry[]> {
     const data = this.load();
-    if (status) {
-      return data.agents.filter(a => a.status === status);
-    }
-    return data.agents;
+    return status ? data.agents.filter(a => a.status === status) : data.agents;
   }
 
-  /** Get a single agent by ID. Returns null if not found. */
-  get(agentId: string): AgentRegistryEntry | null {
+  async get(agentId: string): Promise<AgentRegistryEntry | null> {
     const data = this.load();
     return data.agents.find(a => a.id === agentId) ?? null;
   }
 
-  /** Register a new agent. Returns the created entry. */
-  register(entry: Omit<AgentRegistryEntry, 'createdAt' | 'updatedAt'>): AgentRegistryEntry {
+  async register(entry: Omit<AgentRegistryEntry, 'createdAt' | 'updatedAt'>): Promise<AgentRegistryEntry> {
     const data = this.load();
-
-    // Check for duplicate ID
     if (data.agents.some(a => a.id === entry.id)) {
       throw new Error(`Agent "${entry.id}" already exists in registry`);
     }
-
     const now = new Date().toISOString();
-    const full: AgentRegistryEntry = {
-      ...entry,
-      createdAt: now,
-      updatedAt: now,
-    };
-
+    const full: AgentRegistryEntry = { ...entry, createdAt: now, updatedAt: now };
     data.agents.push(full);
     this.save(data);
     logger.info('agent_registered', { agentId: entry.id, agentType: entry.agentType });
     return full;
   }
 
-  /** Update an existing agent's mutable fields. Returns updated entry. */
-  update(agentId: string, updates: Partial<Pick<AgentRegistryEntry, 'name' | 'description' | 'status' | 'capabilities'>>): AgentRegistryEntry {
+  async update(agentId: string, updates: Partial<Pick<AgentRegistryEntry, 'name' | 'description' | 'status' | 'capabilities'>>): Promise<AgentRegistryEntry> {
     const data = this.load();
     const idx = data.agents.findIndex(a => a.id === agentId);
-    if (idx === -1) {
-      throw new Error(`Agent "${agentId}" not found in registry`);
-    }
-
-    const agent = data.agents[idx];
-    const updated: AgentRegistryEntry = {
-      ...agent,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
+    if (idx === -1) throw new Error(`Agent "${agentId}" not found in registry`);
+    const updated: AgentRegistryEntry = { ...data.agents[idx], ...updates, updatedAt: new Date().toISOString() };
     data.agents[idx] = updated;
     this.save(data);
     logger.info('agent_updated', { agentId, updates: Object.keys(updates) });
     return updated;
   }
 
-  /** Remove an agent from the registry. Returns true if found and removed. */
-  remove(agentId: string): boolean {
+  async remove(agentId: string): Promise<boolean> {
     const data = this.load();
     const idx = data.agents.findIndex(a => a.id === agentId);
     if (idx === -1) return false;
-
     data.agents.splice(idx, 1);
     this.save(data);
     logger.info('agent_removed', { agentId });
     return true;
   }
 
-  /** Find agents by capability tag. */
-  findByCapability(capability: string): AgentRegistryEntry[] {
+  async findByCapability(capability: string): Promise<AgentRegistryEntry[]> {
     const data = this.load();
-    return data.agents.filter(a =>
-      a.status === 'active' && a.capabilities.includes(capability)
-    );
+    return data.agents.filter(a => a.status === 'active' && a.capabilities.includes(capability));
   }
 
-  /** Get child agents of a parent. */
-  children(parentId: string): AgentRegistryEntry[] {
+  async children(parentId: string): Promise<AgentRegistryEntry[]> {
     const data = this.load();
     return data.agents.filter(a => a.parentId === parentId);
   }
 
-  /** Ensure the default 'main' agent exists. Called on server startup. */
-  ensureDefault(): AgentRegistryEntry {
-    const existing = this.get('main');
+  async ensureDefault(): Promise<AgentRegistryEntry> {
+    const existing = await this.get('main');
     if (existing) return existing;
-
     return this.register({
       id: 'main',
       name: 'Main Agent',
@@ -187,4 +170,16 @@ export class AgentRegistry {
       createdBy: 'system',
     });
   }
+}
+
+// ═══════════════════════════════════════════════════════
+// Factory
+// ═══════════════════════════════════════════════════════
+
+export async function createAgentRegistry(database?: DatabaseProvider): Promise<AgentRegistry> {
+  if (database?.type === 'postgresql') {
+    const { DatabaseAgentRegistry } = await import('./agent-registry-db.js');
+    return DatabaseAgentRegistry.create(database);
+  }
+  return new FileAgentRegistry();
 }

@@ -22,7 +22,7 @@ spec:
       serviceAccountName: {{ include "ax.fullname" . }}-agent-runtime
       containers:
         - name: agent-runtime
-          image: {{ include "ax.image" (dict "image" .Values.agentRuntime.image "global" .Values.global "context" $) }}
+          image: {{ include "ax.image" (dict "image" .Values.agentRuntime.image "imageDefaults" .Values.imageDefaults "context" $) }}
           command: {{ .Values.agentRuntime.command | toJson }}
           ports:
             - name: metrics
@@ -49,7 +49,7 @@ spec:
             - name: K8S_NAMESPACE
               value: {{ include "ax.namespace" . | quote }}
             - name: K8S_POD_IMAGE
-              value: {{ include "ax.image" (dict "image" .Values.sandbox.image "global" .Values.global "context" $) | quote }}
+              value: {{ include "ax.image" (dict "image" .Values.sandbox.image "imageDefaults" .Values.imageDefaults "context" $) | quote }}
             - name: K8S_RUNTIME_CLASS
               value: {{ include "ax.preset.sandboxRuntimeClass" . | quote }}
             {{- with .Values.agentRuntime.env }}

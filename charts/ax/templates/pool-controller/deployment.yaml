@@ -22,7 +22,7 @@ spec:
       serviceAccountName: {{ include "ax.fullname" . }}-pool-controller
       containers:
         - name: controller
-          image: {{ include "ax.image" (dict "image" .Values.poolController.image "global" .Values.global "context" $) }}
+          image: {{ include "ax.image" (dict "image" .Values.poolController.image "imageDefaults" .Values.imageDefaults "context" $) }}
           command: {{ .Values.poolController.command | toJson }}
           ports:
             - name: metrics
@@ -38,7 +38,7 @@ spec:
             - name: SANDBOX_TEMPLATE_DIR
               value: "/etc/ax/sandbox-templates"
             - name: K8S_POD_IMAGE
-              value: {{ include "ax.image" (dict "image" .Values.sandbox.image "global" .Values.global "context" $) | quote }}
+              value: {{ include "ax.image" (dict "image" .Values.sandbox.image "imageDefaults" .Values.imageDefaults "context" $) | quote }}
             - name: NATS_URL
               value: {{ include "ax.natsUrl" . | quote }}
             {{- with .Values.poolController.env }}

@@ -20,6 +20,8 @@ import type { OpenAIChatRequest, OpenAIStreamChunk } from './server-http.js';
 import { isValidSessionId, webhookTransformPath } from '../paths.js';
 import { createWebhookHandler } from './server-webhooks.js';
 import { createWebhookTransform } from './webhook-transform.js';
+import { createAdminHandler } from './server-admin.js';
+import { AgentRegistry } from './agent-registry.js';
 import {
   encode, decode,
   sessionRequestSubject, resultSubject, eventSubject,
@@ -109,6 +111,19 @@ async function main(): Promise<void> {
       })
     : null;
 
+  // ── Admin dashboard handler (optional — only if config has admin.enabled) ──
+
+  const startTime = Date.now();
+  const adminHandler = config.admin?.enabled
+    ? createAdminHandler({
+        config,
+        providers,
+        eventBus: providers.eventbus,
+        agentRegistry: new AgentRegistry(),
+        startTime,
+      })
+    : null;
+
   // ── Request Handler ──
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -174,6 +189,24 @@ async function main(): Promise<void> {
       } catch (err) {
         logger.error('webhook_handler_failed', { error: (err as Error).message });
         if (!res.headersSent) sendError(res, 500, 'Webhook processing failed');
+      }
+      return;
+    }
+
+    // Redirect root to admin dashboard
+    if (adminHandler && (url === '/' || url === '')) {
+      res.writeHead(302, { Location: '/admin' });
+      res.end();
+      return;
+    }
+
+    // Admin dashboard: /admin/*
+    if (adminHandler && url.startsWith('/admin')) {
+      try {
+        await adminHandler(req, res, url.split('?')[0]);
+      } catch (err) {
+        logger.error('admin_failed', { error: (err as Error).message });
+        if (!res.headersSent) sendError(res, 500, 'Admin request failed');
       }
       return;
     }

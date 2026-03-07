@@ -41,5 +41,6 @@ charts/*/Chart.lock
 *.log
 npm-debug.log*
 
-# tests
+# misc
 test-results/
+ax-values.yml

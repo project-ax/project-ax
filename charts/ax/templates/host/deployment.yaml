@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: host
-          image: {{ include "ax.image" (dict "image" .Values.host.image "global" .Values.global "context" $) }}
+          image: {{ include "ax.image" (dict "image" .Values.host.image "imageDefaults" .Values.imageDefaults "context" $) }}
           command: {{ .Values.host.command | toJson }}
           ports:
             - name: http

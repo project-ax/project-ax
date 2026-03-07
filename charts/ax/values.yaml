@@ -15,9 +15,11 @@ namespace:
   name: ax
 
 global:
-  imageRegistry: "ghcr.io/project-ax"
-  imageTag: ""
   imagePullSecrets: []
+
+imageDefaults:
+  registry: "ghcr.io/project-ax"
+  tag: "latest"
 
 # ─── AX Configuration ────────────────────────────────────────────
 # This entire block is rendered as ax.yaml and mounted into every pod.
@@ -165,6 +167,18 @@ sandbox:
 # Cloud SQL, RDS, self-hosted, etc. Deploy vendor-specific proxies
 # (e.g. Cloud SQL Auth Proxy) separately if needed.
 postgresql:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 17.6.0-debian-12-r4
+  # Bitnami subchart values (passed directly to the subchart).
+  auth:
+    database: ax
+    username: postgres
+    existingSecret: ""
+  primary:
+    persistence:
+      size: 10Gi
   external:
     enabled: true
     existingSecret: "ax-db-credentials"
@@ -172,15 +186,8 @@ postgresql:
   internal:
     enabled: false
     # Image used by the pg-init job (pgvector setup, custom user creation).
-    # Must include psql CLI. Defaults to bitnami/postgresql:17.
+    # Must include psql CLI. Defaults to docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4.
     initImage: ""
-    auth:
-      database: ax
-      username: postgres
-      existingSecret: ""
-    primary:
-      persistence:
-        size: 10Gi
 
 # ─── NATS (subchart) ─────────────────────────────────────────────
 nats:

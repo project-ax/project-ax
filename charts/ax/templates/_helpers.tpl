@@ -58,12 +58,12 @@ app.kubernetes.io/name: {{ include "ax.fullname" .context }}-{{ .component }}
 
 {{/*
 Container image string for a component.
-Call with (dict "image" .Values.host.image "global" .Values.global "context" $)
+Call with (dict "image" .Values.host.image "imageDefaults" .Values.imageDefaults "context" $)
 */}}
 {{- define "ax.image" -}}
-{{- $registry := .image.registry | default .global.imageRegistry | default "" -}}
+{{- $registry := .image.registry | default .imageDefaults.registry | default "" -}}
 {{- $repo := .image.repository -}}
-{{- $tag := .image.tag | default .global.imageTag | default .context.Chart.AppVersion -}}
+{{- $tag := .image.tag | default .imageDefaults.tag | default .context.Chart.AppVersion -}}
 {{- if $registry -}}
 {{- printf "%s/%s:%s" $registry $repo $tag -}}
 {{- else -}}
@@ -94,14 +94,14 @@ Include with: {{ include "ax.databaseEnv" . | nindent <N> }}
       name: {{ .Values.postgresql.external.existingSecret | default "ax-db-credentials" }}
       key: {{ .Values.postgresql.external.secretKey | default "url" }}
 {{- else }}
-{{- $pgUser := .Values.postgresql.internal.auth.username | default "postgres" }}
+{{- $pgUser := .Values.postgresql.auth.username | default "postgres" }}
 - name: PGPASSWORD
   valueFrom:
     secretKeyRef:
       name: {{ include "ax.fullname" . }}-postgresql
       key: {{ if eq $pgUser "postgres" }}postgres-password{{ else }}password{{ end }}
 - name: DATABASE_URL
-  value: "postgresql://{{ $pgUser }}:$(PGPASSWORD)@{{ include "ax.fullname" . }}-postgresql:5432/{{ .Values.postgresql.internal.auth.database | default "ax" }}"
+  value: "postgresql://{{ $pgUser }}:$(PGPASSWORD)@{{ include "ax.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database | default "ax" }}"
 {{- end -}}
 {{- end }}
 

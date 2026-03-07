@@ -1,6 +1,6 @@
 {{- if and (not .Values.postgresql.external.enabled) .Values.postgresql.internal.enabled }}
-{{- $pgUser := .Values.postgresql.internal.auth.username | default "postgres" }}
-{{- $pgDb := .Values.postgresql.internal.auth.database | default "ax" }}
+{{- $pgUser := .Values.postgresql.auth.username | default "postgres" }}
+{{- $pgDb := .Values.postgresql.auth.database | default "ax" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -22,7 +22,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: pg-init
-          image: {{ .Values.postgresql.internal.initImage | default "bitnami/postgresql:17" }}
+          image: {{ .Values.postgresql.internal.initImage | default (printf "%s/%s:%s" (.Values.postgresql.image.registry | default "docker.io") (.Values.postgresql.image.repository | default "bitnamilegacy/postgresql") (.Values.postgresql.image.tag | default "17.6.0-debian-12-r4")) }}
           command: ["/bin/bash", "-c"]
           args:
             - |

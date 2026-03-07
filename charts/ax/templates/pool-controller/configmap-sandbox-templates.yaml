@@ -7,7 +7,7 @@ metadata:
   labels:
     {{- include "ax.componentLabels" (dict "component" "pool-controller" "context" $) | nindent 4 }}
 data:
-  {{- $sandboxImage := include "ax.image" (dict "image" .Values.sandbox.image "global" .Values.global "context" $) }}
+  {{- $sandboxImage := include "ax.image" (dict "image" .Values.sandbox.image "imageDefaults" .Values.imageDefaults "context" $) }}
   {{- $natsUrl := include "ax.natsUrl" . }}
   {{- $tiers := include "ax.preset.sandboxTiers" . | fromYaml }}
   {{- range $tierName, $tier := $tiers }}
