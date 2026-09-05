@@ -4,6 +4,7 @@ Documentation, plans, architecture docs, website updates, GitHub Pages.
 
 ## Entries
 
+- 2026-09-05 00:46 — Research: open standards landscape for 24/7 autonomous agents [plans.md](plans.md)
 - 2026-04-18 16:30 — Plan: tool modules as git-native artifacts [plans.md](plans.md)
 - 2026-04-18 07:02 — Design: skills as git-native only (single source of truth) [plans.md](plans.md)
 - 2026-04-17 05:45 — Exploration: coding agents platform on AX (sidecar services + delegation) [plans.md](plans.md)

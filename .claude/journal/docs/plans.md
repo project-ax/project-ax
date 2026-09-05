@@ -2,6 +2,14 @@
 
 Architecture analysis, gap analysis, design documents, implementation plans.
 
+## [2026-09-05 00:46] — Research: open standards landscape for 24/7 autonomous agents
+
+**Task:** User asked whether open standards now exist for building OpenClaw-style always-on autonomous agents; then asked to re-check the first answer.
+**What I did:** Web-searched the 2026 standards landscape twice. First pass surfaced AAIF/MCP/A2A/AGENTS.md, SPIFFE-WIMSE/AIMS identity, AuthZEN, Agent Control Standard. Re-check caught three things the first pass missed or got stale: (1) Agent Skills / SKILL.md is a real open spec (Anthropic, 2025-12-18, AAIF-stewarded, ~32-40 tools reading the same folder format); (2) MCP 2026-07-28 shipped a stateless core plus an official extension framework — Tasks (durable long-running calls that survive disconnect/crash), MCP Apps, Enterprise-Managed Authorization, with elicitation now going through MRTR; (3) A2A moved to AAIF on 2026-08-17, AAIF now 250+ members. Also noted OpenClaw ships an opt-in A2A 1.0 channel plugin, and that its Gateway/Brain/Skills/Heartbeat/Memory shape is a de-facto pattern, not a spec.
+**Files touched:** `.claude/journal/docs/plans.md`, `.claude/journal/docs/index.md`, `.claude/lessons/workflow/entries.md`
+**Outcome:** Success — answer delivered with corrections; no code changes.
+**Notes:** Bearing on AX: our skills pipeline should be checked against the SKILL.md frontmatter spec (`src/utils/skill-format-parser.ts`) since that is now the cross-vendor format; MCP Tasks is the standards-track answer for long-running tool calls, though agent-side adoption looked thin as of Aug 2026 (conference talk literally titled "MCP Tasks (async): Why Aren't Any Agents Supporting Them?"). Still unstandardized and therefore still ours to define: the heartbeat/autonomy loop, channel gateways, memory format/portability, sandbox contracts, end-to-end delegated authority. Several arXiv security analyses of OpenClaw (2026-02 to 2026-06) are worth mining for our threat model.
+
 ## [2026-04-18 16:30] — Plan: tool modules as git-native artifacts
 
 **Task:** After the 8-step skills-SSOT migration landed, live testing surfaced a conceptual inconsistency: `.ax/skills/` is git-authoritative but `.ax/tools/` (just renamed from `/workspace/tools/` in a fix-up) is per-turn auto-regenerated + gitignored. Same thesis as the main migration said git should be the one truth for what the agent sees. Plan the follow-up: generate tool modules at skill-approval time, commit them to `.ax/tools/<skill>/`, delete the per-turn flow.
